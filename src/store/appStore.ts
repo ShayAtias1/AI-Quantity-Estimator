@@ -20,9 +20,23 @@ export function createEmptyProject(name: string, pdfFileName: string): Project {
     pages: {},
     rooms: [],
     defaultCladdingHeightM: 2.0,
-    defaultTilingWastePercent: 10,
-    defaultCladdingWastePercent: 15,
-    defaultPanelsWastePercent: 10,
+    defaultTilingWastePercent: 0,
+    defaultCladdingWastePercent: 0,
+    defaultPanelsWastePercent: 0,
+  };
+}
+
+function newRoom(project: Project, pageNumber: number, points: Point[]): Room {
+  return {
+    id: uuid(),
+    pageNumber,
+    points,
+    closed: true,
+    name: `חדר ${project.rooms.length + 1}`,
+    apartmentNumber: '',
+    notes: '',
+    workItems: [],
+    color: nextColor(project.rooms.length),
   };
 }
 
@@ -49,6 +63,7 @@ interface AppState {
   addDrawingPoint: (p: Point) => void;
   clearDrawingPoints: () => void;
   finishDrawing: () => void;
+  finishRectangle: (p1: Point, p2: Point) => void;
 
   updateRoom: (id: string, patch: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
@@ -124,17 +139,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ drawingPoints: [] });
       return;
     }
-    const room: Room = {
-      id: uuid(),
-      pageNumber: currentPage,
-      points: drawingPoints,
-      closed: true,
-      name: `חדר ${project.rooms.length + 1}`,
-      apartmentNumber: '',
-      notes: '',
-      workItems: [],
-      color: nextColor(project.rooms.length),
-    };
+    const room = newRoom(project, currentPage, drawingPoints);
+    const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
+    set({ project: updated, drawingPoints: [], selectedRoomId: room.id, toolMode: 'select' });
+    scheduleSave(get);
+  },
+  finishRectangle: (p1, p2) => {
+    const { project, currentPage } = get();
+    if (!project) return;
+    const points: Point[] = [p1, { x: p2.x, y: p1.y }, p2, { x: p1.x, y: p2.y }];
+    const room = newRoom(project, currentPage, points);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, toolMode: 'select' });
     scheduleSave(get);

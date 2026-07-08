@@ -93,7 +93,7 @@ export interface Project {
   defaultPanelsWastePercent: number;
 }
 
-export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw';
+export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect';
 
 /** One row per room, matching the contractor-facing quantities report layout. */
 export interface RoomQuantitySummary {

@@ -32,6 +32,7 @@ export default function PdfViewer() {
   const drawingPoints = useAppStore((s) => s.drawingPoints);
   const addDrawingPoint = useAppStore((s) => s.addDrawingPoint);
   const finishDrawing = useAppStore((s) => s.finishDrawing);
+  const finishRectangle = useAppStore((s) => s.finishRectangle);
   const clearDrawingPoints = useAppStore((s) => s.clearDrawingPoints);
   const moveRoomPoint = useAppStore((s) => s.moveRoomPoint);
   const deleteRoomPoint = useAppStore((s) => s.deleteRoomPoint);
@@ -48,6 +49,7 @@ export default function PdfViewer() {
   const vertexDrag = useRef<{ pointIndex: number } | null>(null);
   const spaceHeld = useRef(false);
   const isPanning = useRef(false);
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
 
   // Load PDF page
   useEffect(() => {
@@ -90,6 +92,10 @@ export default function PdfViewer() {
   }, [pageSize]);
 
   const room = project?.rooms.find((r) => r.id === selectedRoomId) ?? null;
+
+  useEffect(() => {
+    if (drawingPoints.length === 0) setHoverPoint(null);
+  }, [drawingPoints.length]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -136,6 +142,10 @@ export default function PdfViewer() {
     if (vertexDrag.current && room) {
       const native = screenToNative(e.clientX, e.clientY);
       moveRoomPoint(room.id, vertexDrag.current.pointIndex, native);
+      return;
+    }
+    if (toolMode === 'draw-rect' && drawingPoints.length === 1) {
+      setHoverPoint(screenToNative(e.clientX, e.clientY));
     }
   };
 
@@ -179,6 +189,16 @@ export default function PdfViewer() {
         }
       }
       addDrawingPoint(native);
+      return;
+    }
+
+    if (toolMode === 'draw-rect') {
+      if (drawingPoints.length === 0) {
+        addDrawingPoint(native);
+      } else {
+        finishRectangle(drawingPoints[0], native);
+        setHoverPoint(null);
+      }
       return;
     }
 
@@ -245,8 +265,8 @@ export default function PdfViewer() {
                 );
               })}
 
-            {/* In-progress drawing */}
-            {drawingPoints.length > 0 && (
+            {/* In-progress polygon drawing */}
+            {toolMode === 'draw' && drawingPoints.length > 0 && (
               <g>
                 <polyline
                   points={drawingPoints.map((p) => `${p.x},${p.y}`).join(' ')}
@@ -258,6 +278,26 @@ export default function PdfViewer() {
                 {drawingPoints.map((p, i) => (
                   <circle key={i} cx={p.x} cy={p.y} r={vertexR} fill="#ef4444" />
                 ))}
+              </g>
+            )}
+
+            {/* In-progress rectangle drawing */}
+            {toolMode === 'draw-rect' && drawingPoints.length > 0 && (
+              <g>
+                {hoverPoint && (
+                  <rect
+                    x={Math.min(drawingPoints[0].x, hoverPoint.x)}
+                    y={Math.min(drawingPoints[0].y, hoverPoint.y)}
+                    width={Math.abs(hoverPoint.x - drawingPoints[0].x)}
+                    height={Math.abs(hoverPoint.y - drawingPoints[0].y)}
+                    fill="#ef4444"
+                    fillOpacity={0.12}
+                    stroke="#ef4444"
+                    strokeWidth={strokeW}
+                    strokeDasharray={`${4 / zoom} ${4 / zoom}`}
+                  />
+                )}
+                <circle cx={drawingPoints[0].x} cy={drawingPoints[0].y} r={vertexR} fill="#ef4444" />
               </g>
             )}
 

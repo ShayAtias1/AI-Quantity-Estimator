@@ -387,6 +387,7 @@ input:focus, textarea:focus {
 .pdf-viewport.tool-pan { cursor: grab; }
 .pdf-viewport.tool-calibrate { cursor: crosshair; }
 .pdf-viewport.tool-draw { cursor: crosshair; }
+.pdf-viewport.tool-draw-rect { cursor: crosshair; }
 
 .pdf-content {
   position: absolute;

@@ -6,6 +6,7 @@ const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: 'pan', label: 'הזזה', icon: '✋', hint: 'גרירת התצוגה' },
   { mode: 'calibrate', label: 'כיול', icon: '📏', hint: 'סימון מרחק ידוע' },
   { mode: 'draw', label: 'סימון אזור', icon: '✏️', hint: 'סימון פוליגון חדש' },
+  { mode: 'draw-rect', label: 'מלבן', icon: '▭', hint: 'סימון מלבן — שתי פינות נגדיות' },
 ];
 
 export default function Toolbar() {
@@ -38,6 +39,17 @@ export default function Toolbar() {
           {drawingPoints.length >= 3 && (
             <button className="btn-primary small" onClick={() => finishDrawing()}>
               סגור אזור
+            </button>
+          )}
+        </div>
+      )}
+
+      {toolMode === 'draw-rect' && (
+        <div className="draw-hint">
+          {drawingPoints.length === 0 ? 'לחץ על פינה אחת של המלבן' : 'לחץ על הפינה הנגדית לסגירה'}
+          {drawingPoints.length > 0 && (
+            <button className="btn-secondary small" onClick={() => clearDrawingPoints()}>
+              נקה
             </button>
           )}
         </div>
