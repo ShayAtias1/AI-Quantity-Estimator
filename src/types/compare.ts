@@ -104,6 +104,9 @@ export interface RevisionLayer {
   colorTint: string;
   /** When true, render this layer with the PDF's own colors instead of the flat tint. */
   useSourceColors: boolean;
+  /** Markups and measurements belong to this specific revision — they don't show up when a different revision is active. */
+  markups: Markup[];
+  measurements: Measurement[];
 }
 
 /** Per-page data for one revision: its own page mapping, calibration and alignment against the original. */
@@ -138,8 +141,6 @@ export interface Comparison {
   revisions: RevisionLayer[];
   /** The revision currently shown/aligned/calibrated as the "revised" layer. */
   activeRevisionId: string;
-  markups: Markup[];
-  measurements: Measurement[];
   /** Customizable per comparison; defaults to DEFAULT_AREA_KIND_COLORS. */
   areaKindColors: Record<AreaKind, string>;
   autoDetectedChanges?: DetectedChange[];

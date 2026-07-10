@@ -23,6 +23,8 @@ export default function MarkupToolbar() {
   const deleteMarkup = useCompareStore((s) => s.deleteMarkup);
 
   if (!comparison) return null;
+  const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
+  const markups = activeRevision?.markups ?? [];
 
   return (
     <div className="markup-toolbar">
@@ -61,9 +63,9 @@ export default function MarkupToolbar() {
       )}
       {toolMode === 'markup' && markupTool === 'text' && <p className="alignment-hint">לחץ במקום להוספת הערה</p>}
 
-      {comparison.markups.length > 0 && (
+      {markups.length > 0 && (
         <ul className="measurement-list">
-          {comparison.markups.map((m) => (
+          {markups.map((m) => (
             <li key={m.id}>
               <span>
                 <span className="color-dot" style={{ background: m.color }} /> {MARKUP_TOOL_LABELS[m.tool]}

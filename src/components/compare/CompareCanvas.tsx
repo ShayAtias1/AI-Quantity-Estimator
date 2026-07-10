@@ -472,7 +472,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         const mult = 2;
         const areaTotals: Record<AreaKind, number> = { demolition: 0, construction: 0 };
         let hasAreaMeasurements = false;
-        for (const m of comparison.measurements) {
+        for (const m of activeRevision?.measurements ?? []) {
           if (m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number') {
             areaTotals[m.areaKind] += m.areaM2;
             hasAreaMeasurements = true;
@@ -716,7 +716,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             )}
 
             {/* Finished measurements */}
-            {comparison.measurements.map((m) => {
+            {(activeRevision?.measurements ?? []).map((m) => {
               const color = m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9';
               return (
                 <g key={m.id}>
@@ -757,7 +757,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             )}
 
             {/* Finished markups */}
-            {comparison.markups.map((m) => (
+            {(activeRevision?.markups ?? []).map((m) => (
               <MarkupShape key={m.id} markup={m} strokeW={strokeW} />
             ))}
           </svg>

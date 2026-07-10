@@ -98,7 +98,7 @@ export default function CompareStartScreen() {
               <div className="project-list-name">{c.name}</div>
               <div className="project-list-meta">
                 {c.apartmentNumber ? `דירה ${c.apartmentNumber} · ` : ''}
-                {c.markups.length} סימונים · עודכן {new Date(c.updatedAt).toLocaleDateString('he-IL')}
+                {c.revisions.reduce((sum, r) => sum + r.markups.length, 0)} סימונים · עודכן {new Date(c.updatedAt).toLocaleDateString('he-IL')}
               </div>
               <button className="icon-btn danger" onClick={(e) => handleDelete(e, c.id)} title="מחק">
                 ✕

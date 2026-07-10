@@ -26,7 +26,9 @@ export default function MeasureToolbar() {
   if (!comparison) return null;
   const page = comparison.pages[currentPageKey];
   const hasCalibration = !!(page?.originalCalibration || page?.revisions[comparison.activeRevisionId]?.revisedCalibration);
-  const activeRevisionLabel = comparison.revisions.find((r) => r.id === comparison.activeRevisionId)?.label ?? 'מעודכן';
+  const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
+  const activeRevisionLabel = activeRevision?.label ?? 'מעודכן';
+  const measurements = activeRevision?.measurements ?? [];
 
   return (
     <div className="measure-toolbar">
@@ -107,9 +109,9 @@ export default function MeasureToolbar() {
         </p>
       )}
 
-      {comparison.measurements.length > 0 && (
+      {measurements.length > 0 && (
         <ul className="measurement-list">
-          {comparison.measurements.map((m) => (
+          {measurements.map((m) => (
             <li key={m.id}>
               <span>
                 <span className="color-dot" style={{ background: m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9' }} />{' '}

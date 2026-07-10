@@ -38,6 +38,8 @@ export function createEmptyComparison(
     visible: true,
     colorTint: REVISION_COLOR_PALETTE[i % REVISION_COLOR_PALETTE.length],
     useSourceColors: false,
+    markups: [],
+    measurements: [],
   }));
   return {
     id: uuid(),
@@ -54,10 +56,13 @@ export function createEmptyComparison(
     pages: {},
     revisions,
     activeRevisionId: revisions[0]?.id ?? '',
-    markups: [],
-    measurements: [],
     areaKindColors: { ...DEFAULT_AREA_KIND_COLORS },
   };
+}
+
+/** Applies `updater` to the comparison's currently active revision, leaving the others untouched. */
+function updateActiveRevision(comparison: Comparison, updater: (r: RevisionLayer) => RevisionLayer): RevisionLayer[] {
+  return comparison.revisions.map((r) => (r.id === comparison.activeRevisionId ? updater(r) : r));
 }
 
 function emptyPage(originalPageNumber: number): ComparisonPage {
@@ -337,6 +342,8 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       visible: true,
       colorTint: REVISION_COLOR_PALETTE[comparison.revisions.length % REVISION_COLOR_PALETTE.length],
       useSourceColors: false,
+      markups: [],
+      measurements: [],
     };
     set({
       comparison: touch({ ...comparison, revisions: [...comparison.revisions, revision], activeRevisionId: id }),
@@ -377,6 +384,10 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       alignmentPairs: [],
       alignmentPendingOriginal: null,
       pickingAlignmentPoints: false,
+      measurePoints: [],
+      markupPoints: [],
+      selectedMarkupId: null,
+      selectedMeasurementId: null,
     });
     scheduleSave(get);
   },
@@ -435,13 +446,15 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   finishMeasurement: (measurement) => {
     const { comparison } = get();
     if (!comparison) return;
-    set({ comparison: touch({ ...comparison, measurements: [...comparison.measurements, measurement] }), measurePoints: [] });
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: [...r.measurements, measurement] }));
+    set({ comparison: touch({ ...comparison, revisions }), measurePoints: [] });
     scheduleSave(get);
   },
   deleteMeasurement: (id) => {
     const { comparison } = get();
     if (!comparison) return;
-    set({ comparison: touch({ ...comparison, measurements: comparison.measurements.filter((m) => m.id !== id) }) });
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: r.measurements.filter((m) => m.id !== id) }));
+    set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
   },
 
@@ -452,20 +465,25 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   finishMarkup: (markup) => {
     const { comparison } = get();
     if (!comparison) return;
-    set({ comparison: touch({ ...comparison, markups: [...comparison.markups, markup] }), markupPoints: [] });
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: [...r.markups, markup] }));
+    set({ comparison: touch({ ...comparison, revisions }), markupPoints: [] });
     scheduleSave(get);
   },
   updateMarkup: (id, patch) => {
     const { comparison } = get();
     if (!comparison) return;
-    const markups = comparison.markups.map((m) => (m.id === id ? { ...m, ...patch } : m));
-    set({ comparison: touch({ ...comparison, markups }) });
+    const revisions = updateActiveRevision(comparison, (r) => ({
+      ...r,
+      markups: r.markups.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    }));
+    set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
   },
   deleteMarkup: (id) => {
     const { comparison } = get();
     if (!comparison) return;
-    set({ comparison: touch({ ...comparison, markups: comparison.markups.filter((m) => m.id !== id) }) });
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: r.markups.filter((m) => m.id !== id) }));
+    set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
   },
 

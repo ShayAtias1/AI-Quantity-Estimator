@@ -9,8 +9,9 @@ export default function AreaSummaryPanel() {
   const setAreaKindColor = useCompareStore((s) => s.setAreaKindColor);
 
   if (!comparison) return null;
+  const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
 
-  const areaMeasurements = comparison.measurements.filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number');
+  const areaMeasurements = (activeRevision?.measurements ?? []).filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number');
   if (areaMeasurements.length === 0) return null;
 
   const totals: Record<AreaKind, number> = { demolition: 0, construction: 0 };
