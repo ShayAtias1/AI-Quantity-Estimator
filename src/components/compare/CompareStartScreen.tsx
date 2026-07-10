@@ -11,7 +11,7 @@ export default function CompareStartScreen() {
   const originalInputRef = useRef<HTMLInputElement>(null);
   const revisedInputRef = useRef<HTMLInputElement>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
-  const [revisedFile, setRevisedFile] = useState<File | null>(null);
+  const [revisedFiles, setRevisedFiles] = useState<File[]>([]);
   const [name, setName] = useState('');
   const [apartmentNumber, setApartmentNumber] = useState('');
 
@@ -32,25 +32,47 @@ export default function CompareStartScreen() {
     refresh();
   };
 
-  const pickPdf = (file: File | null | undefined, kind: 'original' | 'revised') => {
+  const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  const pickOriginal = (file: File | null | undefined) => {
     if (!file) return;
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    if (!isPdf(file)) {
       alert('נא לבחור קובץ PDF');
       return;
     }
-    if (kind === 'original') setOriginalFile(file);
-    else setRevisedFile(file);
+    setOriginalFile(file);
+  };
+
+  const pickRevised = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const picked = Array.from(files);
+    if (picked.some((f) => !isPdf(f))) {
+      alert('נא לבחור קבצי PDF בלבד');
+      return;
+    }
+    setRevisedFiles((prev) => [...prev, ...picked]);
+  };
+
+  const removeRevisedFile = (index: number) => {
+    setRevisedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const confirmCreate = async () => {
-    if (!originalFile || !revisedFile) return;
-    const comparison = createEmptyComparison(name || 'השוואת תוכניות', apartmentNumber, originalFile.name, revisedFile.name);
+    if (!originalFile || revisedFiles.length === 0) return;
+    const comparison = createEmptyComparison(
+      name || 'השוואת תוכניות',
+      apartmentNumber,
+      originalFile.name,
+      revisedFiles.map((f) => f.name)
+    );
     await saveComparePdfBlob(comparison.id, 'original', originalFile);
-    await saveComparePdfBlob(comparison.id, 'revised', revisedFile);
+    await Promise.all(
+      comparison.revisions.map((rev, i) => saveComparePdfBlob(comparison.id, `revision:${rev.id}`, revisedFiles[i]))
+    );
     await saveComparison(comparison);
     setCreating(false);
     setOriginalFile(null);
-    setRevisedFile(null);
+    setRevisedFiles([]);
     setName('');
     setApartmentNumber('');
     setComparison(comparison);
@@ -109,26 +131,39 @@ export default function CompareStartScreen() {
                 accept="application/pdf,.pdf"
                 hidden
                 onChange={(e) => {
-                  pickPdf(e.target.files?.[0], 'original');
+                  pickOriginal(e.target.files?.[0]);
                   e.target.value = '';
                 }}
               />
             </div>
             <div className="form-row">
-              <label>תוכנית מעודכנת (Revised)</label>
+              <label>תוכניות מעודכנות (Revised) — ניתן לבחור כמה תוכניות</label>
               <button className="btn-secondary" onClick={() => revisedInputRef.current?.click()}>
-                {revisedFile ? `✓ ${revisedFile.name}` : 'בחר קובץ PDF'}
+                + הוסף קובץ PDF
               </button>
               <input
                 ref={revisedInputRef}
                 type="file"
                 accept="application/pdf,.pdf"
+                multiple
                 hidden
                 onChange={(e) => {
-                  pickPdf(e.target.files?.[0], 'revised');
+                  pickRevised(e.target.files);
                   e.target.value = '';
                 }}
               />
+              {revisedFiles.length > 0 && (
+                <ul className="picked-file-list">
+                  {revisedFiles.map((f, i) => (
+                    <li key={i}>
+                      <span>✓ {f.name}</span>
+                      <button className="icon-btn danger" onClick={() => removeRevisedFile(i)}>
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="modal-actions">
               <button
@@ -136,12 +171,12 @@ export default function CompareStartScreen() {
                 onClick={() => {
                   setCreating(false);
                   setOriginalFile(null);
-                  setRevisedFile(null);
+                  setRevisedFiles([]);
                 }}
               >
                 ביטול
               </button>
-              <button className="btn-primary" onClick={confirmCreate} disabled={!originalFile || !revisedFile}>
+              <button className="btn-primary" onClick={confirmCreate} disabled={!originalFile || revisedFiles.length === 0}>
                 צור השוואה
               </button>
             </div>

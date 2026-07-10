@@ -13,7 +13,7 @@ export default function AlignmentTools() {
   const alignmentPendingOriginal = useCompareStore((s) => s.alignmentPendingOriginal);
 
   if (!comparison) return null;
-  const alignment = comparison.pages[currentPageKey]?.alignment ?? IDENTITY_TRANSFORM;
+  const alignment = comparison.pages[currentPageKey]?.revisions[comparison.activeRevisionId]?.alignment ?? IDENTITY_TRANSFORM;
 
   return (
     <div className="alignment-tools">

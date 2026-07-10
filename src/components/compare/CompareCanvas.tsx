@@ -4,7 +4,7 @@ import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
 import { useCompareStore } from '../../store/compareStore';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
-import { IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
+import { AREA_KIND_LABELS, IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
 import type { Point } from '../../types';
 import type { Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
@@ -81,7 +81,7 @@ function MarkupShape({ markup, strokeW }: { markup: Markup; strokeW: number }) {
 
 function useLayerRender(
   comparisonId: string | undefined,
-  layer: 'original' | 'revised',
+  layer: string,
   pageNumber: number,
   tint: string,
   useSourceColors: boolean,
@@ -92,7 +92,7 @@ function useLayerRender(
   const [source, setSource] = useState<PdfPlanSource | null>(null);
 
   useEffect(() => {
-    if (!comparisonId) return;
+    if (!comparisonId || !layer) return;
     let cancelled = false;
     loadPdfPlanSource(`${comparisonId}:${layer}`, () => loadComparePdfBlob(comparisonId, layer), pageNumber)
       .then(({ source: s, numPages }) => {
@@ -133,7 +133,6 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const toolMode = useCompareStore((s) => s.toolMode);
   const setOriginalNumPages = useCompareStore((s) => s.setOriginalNumPages);
   const setRevisedNumPages = useCompareStore((s) => s.setRevisedNumPages);
-  const updatePageQuiet = useCompareStore((s) => s.updatePageQuiet);
   const persist = useCompareStore((s) => s.persist);
   const pickingAlignmentPoints = useCompareStore((s) => s.pickingAlignmentPoints);
   const alignmentPendingOriginal = useCompareStore((s) => s.alignmentPendingOriginal);
@@ -147,9 +146,11 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
 
   const measureTool = useCompareStore((s) => s.measureTool);
   const measurePoints = useCompareStore((s) => s.measurePoints);
+  const pendingAreaKind = useCompareStore((s) => s.pendingAreaKind);
   const addMeasurePoint = useCompareStore((s) => s.addMeasurePoint);
   const clearMeasurePoints = useCompareStore((s) => s.clearMeasurePoints);
   const finishMeasurement = useCompareStore((s) => s.finishMeasurement);
+  const updateActiveRevisionPageQuiet = useCompareStore((s) => s.updateActiveRevisionPageQuiet);
 
   const markupTool = useCompareStore((s) => s.markupTool);
   const markupPoints = useCompareStore((s) => s.markupPoints);
@@ -176,15 +177,18 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const alignDrag = useRef<{ startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
   const swipeDrag = useRef(false);
 
+  const activeRevisionId = comparison?.activeRevisionId ?? '';
+  const activeRevision = comparison?.revisions.find((r) => r.id === activeRevisionId);
   const page = comparison?.pages[currentPageKey];
+  const revisionPage = page?.revisions[activeRevisionId];
   const originalPageNumber = page?.originalPageNumber ?? currentPageKey;
-  const revisedPageNumber = page?.revisedPageNumber ?? currentPageKey;
-  const alignment = page?.alignment ?? IDENTITY_TRANSFORM;
+  const revisedPageNumber = revisionPage?.revisedPageNumber ?? currentPageKey;
+  const alignment = revisionPage?.alignment ?? IDENTITY_TRANSFORM;
   // The revised layer's own transform-origin must be its own center, not the original page's —
   // otherwise, whenever the two PDFs have different page dimensions, rotation/scale pivot around
   // the wrong point and the alignment drifts (this was the reported "not quite accurate" bug).
   const pivot: Point = { x: revisedPageSize.width / 2, y: revisedPageSize.height / 2 };
-  const metersPerPixel = page?.originalCalibration?.metersPerPixel ?? page?.revisedCalibration?.metersPerPixel ?? 0;
+  const metersPerPixel = page?.originalCalibration?.metersPerPixel ?? revisionPage?.revisedCalibration?.metersPerPixel ?? 0;
 
   useLayerRender(
     comparison?.id,
@@ -198,10 +202,10 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   );
   useLayerRender(
     comparison?.id,
-    'revised',
+    activeRevisionId ? `revision:${activeRevisionId}` : '',
     revisedPageNumber,
-    comparison?.revisedColorTint ?? '#ef4444',
-    comparison?.revisedUseSourceColors ?? false,
+    activeRevision?.colorTint ?? '#ef4444',
+    activeRevision?.useSourceColors ?? false,
     revisedCanvasRef,
     setRevisedPageSize,
     setRevisedNumPages
@@ -235,17 +239,25 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       return;
     }
     let label = '';
+    let areaM2: number | undefined;
     if (measureTool === 'distance') {
       const m = pxToMeters(distancePx(measurePoints[0], measurePoints[1]), metersPerPixel);
       label = `${round(m, 2)} מ'`;
     } else if (measureTool === 'area') {
-      const m2 = polygonAreaM2(measurePoints, metersPerPixel);
-      label = `${round(m2, 2)} מ"ר`;
+      areaM2 = round(polygonAreaM2(measurePoints, metersPerPixel), 2);
+      label = `${areaM2} מ"ר`;
     } else {
       const m = polygonPerimeterM(measurePoints, true, metersPerPixel);
       label = `${round(m, 2)} מ'`;
     }
-    finishMeasurement({ id: uuid(), tool: measureTool, points: measurePoints, label });
+    finishMeasurement({
+      id: uuid(),
+      tool: measureTool,
+      points: measurePoints,
+      label,
+      areaKind: measureTool === 'area' && pendingAreaKind ? pendingAreaKind : undefined,
+      areaM2,
+    });
   };
 
   const finishOpenMarkup = () => {
@@ -305,7 +317,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     if (alignDrag.current) {
       const dx = (e.clientX - alignDrag.current.startX) / zoom;
       const dy = (e.clientY - alignDrag.current.startY) / zoom;
-      updatePageQuiet(currentPageKey, {
+      updateActiveRevisionPageQuiet(currentPageKey, {
         alignment: { ...alignment, offsetX: alignDrag.current.startOffsetX + dx, offsetY: alignDrag.current.startOffsetY + dy },
       });
       return;
@@ -444,12 +456,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.fill();
         ctx.fillStyle = '#374151';
         ctx.fillText('מקור', w - 200 * mult, 50 * mult);
-        ctx.fillStyle = comparison.revisedColorTint;
+        ctx.fillStyle = activeRevision?.colorTint ?? '#ef4444';
         ctx.beginPath();
         ctx.arc(w - 250 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#374151';
-        ctx.fillText('מעודכן', w - 260 * mult, 50 * mult);
+        ctx.fillText(activeRevision?.label ?? 'מעודכן', w - 260 * mult, 50 * mult);
 
         ctx.save();
         ctx.translate(0, headerH);
@@ -457,8 +469,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
           ctx.globalAlpha = comparison.originalOpacity;
           ctx.drawImage(originalCanvasRef.current, 0, 0, w, h);
         }
-        if (comparison.revisedVisible) {
-          ctx.globalAlpha = comparison.revisedOpacity;
+        if (activeRevision?.visible) {
+          ctx.globalAlpha = activeRevision.opacity;
           ctx.save();
           const px = pivot.x * mult;
           const py = pivot.y * mult;
@@ -488,7 +500,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
       },
     }),
-    [comparison, pageSize, revisedPageSize, alignment, pivot]
+    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision]
   );
 
   if (!comparison) return null;
@@ -496,16 +508,18 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const strokeW = 2 / zoom;
   const vertexR = 5 / zoom;
 
+  const revisedVisible = activeRevision?.visible ?? false;
+  const revisedBaseOpacity = activeRevision?.opacity ?? 0.75;
   let originalOpacity = comparison.originalVisible ? comparison.originalOpacity : 0;
-  let revisedOpacity = comparison.revisedVisible ? comparison.revisedOpacity : 0;
+  let revisedOpacity = revisedVisible ? revisedBaseOpacity : 0;
   let originalClip: string | undefined;
   let revisedClip: string | undefined;
   if (viewMode === 'blink') {
     originalOpacity = comparison.originalVisible && !blinkShowingRevised ? 1 : 0;
-    revisedOpacity = comparison.revisedVisible && blinkShowingRevised ? 1 : 0;
+    revisedOpacity = revisedVisible && blinkShowingRevised ? 1 : 0;
   } else if (viewMode === 'swipe') {
     originalOpacity = comparison.originalVisible ? 1 : 0;
-    revisedOpacity = comparison.revisedVisible ? 1 : 0;
+    revisedOpacity = revisedVisible ? 1 : 0;
     originalClip = `inset(0 ${(1 - swipePosition) * 100}% 0 0)`;
     revisedClip = `inset(0 0 0 ${swipePosition * 100}%)`;
   }
@@ -611,30 +625,27 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             )}
 
             {/* Finished measurements */}
-            {comparison.measurements.map((m) => (
-              <g key={m.id}>
-                {m.tool === 'distance' ? (
-                  <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke="#0ea5e9" strokeWidth={strokeW} />
-                ) : (
-                  <polygon
-                    points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
-                    fill="#0ea5e9"
-                    fillOpacity={0.12}
-                    stroke="#0ea5e9"
-                    strokeWidth={strokeW}
-                  />
-                )}
-                <text
-                  x={m.points[0].x}
-                  y={m.points[0].y - 8 / zoom}
-                  fontSize={12 / zoom}
-                  fill="#0ea5e9"
-                  fontWeight={600}
-                >
-                  {MEASURE_TOOL_LABELS[m.tool]}: {m.label}
-                </text>
-              </g>
-            ))}
+            {comparison.measurements.map((m) => {
+              const color = m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9';
+              return (
+                <g key={m.id}>
+                  {m.tool === 'distance' ? (
+                    <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke={color} strokeWidth={strokeW} />
+                  ) : (
+                    <polygon
+                      points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                      fill={color}
+                      fillOpacity={m.areaKind ? 0.28 : 0.12}
+                      stroke={color}
+                      strokeWidth={strokeW}
+                    />
+                  )}
+                  <text x={m.points[0].x} y={m.points[0].y - 8 / zoom} fontSize={12 / zoom} fill={color} fontWeight={600}>
+                    {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: {m.label}
+                  </text>
+                </g>
+              );
+            })}
 
             {/* Markup in progress (cloud multi-point) */}
             {markupPoints.length > 0 && (

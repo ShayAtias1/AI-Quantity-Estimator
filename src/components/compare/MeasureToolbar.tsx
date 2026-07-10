@@ -1,8 +1,9 @@
 import { useCompareStore } from '../../store/compareStore';
-import { MEASURE_TOOL_LABELS, type MeasureTool } from '../../types/compare';
+import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaKind, type MeasureTool } from '../../types/compare';
 
 const MEASURE_TOOLS: MeasureTool[] = ['distance', 'area', 'perimeter'];
 const MEASURE_ICONS: Record<MeasureTool, string> = { distance: '📏', area: '⬛', perimeter: '⭕' };
+const AREA_KINDS: AreaKind[] = ['demolition', 'construction'];
 
 export default function MeasureToolbar() {
   const comparison = useCompareStore((s) => s.comparison);
@@ -11,12 +12,15 @@ export default function MeasureToolbar() {
   const measureTool = useCompareStore((s) => s.measureTool);
   const setMeasureTool = useCompareStore((s) => s.setMeasureTool);
   const measurePoints = useCompareStore((s) => s.measurePoints);
+  const pendingAreaKind = useCompareStore((s) => s.pendingAreaKind);
+  const setPendingAreaKind = useCompareStore((s) => s.setPendingAreaKind);
   const startCalibration = useCompareStore((s) => s.startCalibration);
   const deleteMeasurement = useCompareStore((s) => s.deleteMeasurement);
 
   if (!comparison) return null;
   const page = comparison.pages[currentPageKey];
-  const hasCalibration = !!(page?.originalCalibration || page?.revisedCalibration);
+  const hasCalibration = !!(page?.originalCalibration || page?.revisions[comparison.activeRevisionId]?.revisedCalibration);
+  const activeRevisionLabel = comparison.revisions.find((r) => r.id === comparison.activeRevisionId)?.label ?? 'מעודכן';
 
   return (
     <div className="measure-toolbar">
@@ -34,7 +38,7 @@ export default function MeasureToolbar() {
           📏 כיול לפי מקור
         </button>
         <button className="btn-secondary small" onClick={() => startCalibration('revised')}>
-          📏 כיול לפי מעודכן
+          📏 כיול לפי {activeRevisionLabel}
         </button>
       </div>
 
@@ -50,6 +54,29 @@ export default function MeasureToolbar() {
           </button>
         ))}
       </div>
+
+      {toolMode === 'measure' && measureTool === 'area' && (
+        <div className="area-kind-row">
+          {AREA_KINDS.map((k) => (
+            <button
+              key={k}
+              className={`area-kind-btn ${pendingAreaKind === k ? 'active' : ''}`}
+              onClick={() => setPendingAreaKind(pendingAreaKind === k ? null : k)}
+            >
+              <span className="color-dot" style={{ background: comparison.areaKindColors[k] }} />
+              {AREA_KIND_LABELS[k]}
+              <input
+                type="color"
+                value={comparison.areaKindColors[k]}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => useCompareStore.getState().setAreaKindColor(k, e.target.value)}
+                title="שנה צבע"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
       {toolMode === 'measure' && measureTool && (
         <p className="alignment-hint">
           {measureTool === 'distance'
@@ -63,7 +90,8 @@ export default function MeasureToolbar() {
           {comparison.measurements.map((m) => (
             <li key={m.id}>
               <span>
-                {MEASURE_TOOL_LABELS[m.tool]}: <strong>{m.label}</strong>
+                <span className="color-dot" style={{ background: m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9' }} />{' '}
+                {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: <strong>{m.label}</strong>
               </span>
               <button className="icon-btn danger" onClick={() => deleteMeasurement(m.id)}>
                 ✕

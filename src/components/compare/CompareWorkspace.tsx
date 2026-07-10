@@ -4,6 +4,7 @@ import CompareCanvas, { type CompareCanvasHandle } from './CompareCanvas';
 import LayerPanel from './LayerPanel';
 import AlignmentTools from './AlignmentTools';
 import MeasureToolbar from './MeasureToolbar';
+import AreaSummaryPanel from './AreaSummaryPanel';
 import MarkupToolbar from './MarkupToolbar';
 import CompareCalibrationDialog from './CompareCalibrationDialog';
 import { useCompareStore } from '../../store/compareStore';
@@ -68,7 +69,12 @@ export default function CompareWorkspace() {
                 <AlignmentTools />
               </>
             )}
-            {tab === 'measure' && <MeasureToolbar />}
+            {tab === 'measure' && (
+              <>
+                <MeasureToolbar />
+                <AreaSummaryPanel />
+              </>
+            )}
             {tab === 'markup' && <MarkupToolbar />}
           </div>
         </div>

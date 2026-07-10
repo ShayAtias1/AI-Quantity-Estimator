@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
 import type {
   AlignmentPointPair,
+  AreaKind,
   Comparison,
   CompareToolMode,
   CompareViewMode,
@@ -11,13 +12,31 @@ import type {
   MarkupTool,
   Measurement,
   MeasureTool,
+  RevisionLayer,
+  RevisionPageData,
 } from '../types/compare';
-import { IDENTITY_TRANSFORM } from '../types/compare';
+import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Calibration, Point } from '../types';
 import { saveComparison as dbSaveComparison } from '../db/database';
 
-export function createEmptyComparison(name: string, apartmentNumber: string, originalFileName: string, revisedFileName: string): Comparison {
+const REVISION_COLOR_PALETTE = ['#ef4444', '#2563eb', '#9333ea', '#f59e0b', '#16a34a', '#0891b2'];
+
+export function createEmptyComparison(
+  name: string,
+  apartmentNumber: string,
+  originalFileName: string,
+  revisedFileNames: string[]
+): Comparison {
   const now = Date.now();
+  const revisions: RevisionLayer[] = revisedFileNames.map((fileName, i) => ({
+    id: uuid(),
+    label: revisedFileNames.length > 1 ? `מעודכן ${i + 1}` : 'מעודכן',
+    fileName,
+    opacity: 0.75,
+    visible: true,
+    colorTint: REVISION_COLOR_PALETTE[i % REVISION_COLOR_PALETTE.length],
+    useSourceColors: false,
+  }));
   return {
     id: uuid(),
     name,
@@ -26,26 +45,30 @@ export function createEmptyComparison(name: string, apartmentNumber: string, ori
     createdAt: now,
     updatedAt: now,
     originalFileName,
-    revisedFileName,
     originalOpacity: 1,
-    revisedOpacity: 0.75,
     originalVisible: true,
-    revisedVisible: true,
     originalColorTint: '#9ca3af',
-    revisedColorTint: '#ef4444',
     originalUseSourceColors: false,
-    revisedUseSourceColors: false,
     pages: {},
+    revisions,
+    activeRevisionId: revisions[0]?.id ?? '',
     markups: [],
     measurements: [],
+    areaKindColors: { ...DEFAULT_AREA_KIND_COLORS },
   };
 }
 
-function emptyPage(originalPageNumber: number, revisedPageNumber: number): ComparisonPage {
+function emptyPage(originalPageNumber: number): ComparisonPage {
   return {
     originalPageNumber,
-    revisedPageNumber,
     originalCalibration: null,
+    revisions: {},
+  };
+}
+
+function emptyRevisionPageData(revisedPageNumber: number): RevisionPageData {
+  return {
+    revisedPageNumber,
     revisedCalibration: null,
     alignment: IDENTITY_TRANSFORM,
     alignmentPoints: [],
@@ -71,6 +94,7 @@ interface CompareState {
 
   measureTool: MeasureTool | null;
   measurePoints: Point[];
+  pendingAreaKind: AreaKind | null;
 
   markupTool: MarkupTool | null;
   markupPoints: Point[];
@@ -91,11 +115,18 @@ interface CompareState {
   ensurePage: (pageKey: number) => ComparisonPage;
   updatePage: (pageKey: number, patch: Partial<ComparisonPage>) => void;
   updatePageQuiet: (pageKey: number, patch: Partial<ComparisonPage>) => void;
+  updateActiveRevisionPage: (pageKey: number, patch: Partial<RevisionPageData>) => void;
+  updateActiveRevisionPageQuiet: (pageKey: number, patch: Partial<RevisionPageData>) => void;
 
-  setLayerOpacity: (layer: 'original' | 'revised', opacity: number) => void;
-  setLayerVisible: (layer: 'original' | 'revised', visible: boolean) => void;
-  setLayerTint: (layer: 'original' | 'revised', color: string) => void;
-  setLayerSourceColors: (layer: 'original' | 'revised', useSource: boolean) => void;
+  setLayerOpacity: (layer: string, opacity: number) => void;
+  setLayerVisible: (layer: string, visible: boolean) => void;
+  setLayerTint: (layer: string, color: string) => void;
+  setLayerSourceColors: (layer: string, useSource: boolean) => void;
+
+  addRevision: (fileName: string) => string | null;
+  removeRevision: (id: string) => void;
+  renameRevision: (id: string, label: string) => void;
+  setActiveRevisionId: (id: string) => void;
 
   startCalibration: (layer: 'original' | 'revised') => void;
   addCalibrationPoint: (p: Point) => void;
@@ -109,6 +140,7 @@ interface CompareState {
   clearAlignmentPoints: (pageKey: number) => void;
 
   setMeasureTool: (t: MeasureTool | null) => void;
+  setPendingAreaKind: (k: AreaKind | null) => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (measurement: Measurement) => void;
@@ -121,6 +153,8 @@ interface CompareState {
   finishMarkup: (markup: Markup) => void;
   updateMarkup: (id: string, patch: Partial<Markup>) => void;
   deleteMarkup: (id: string) => void;
+
+  setAreaKindColor: (kind: AreaKind, color: string) => void;
 
   updateComparisonMeta: (patch: Partial<Pick<Comparison, 'name' | 'apartmentNumber' | 'notes'>>) => void;
 
@@ -158,6 +192,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
 
   measureTool: null,
   measurePoints: [],
+  pendingAreaKind: null,
 
   markupTool: null,
   markupPoints: [],
@@ -190,7 +225,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     if (!comparison) throw new Error('No active comparison');
     const existing = comparison.pages[pageKey];
     if (existing) return existing;
-    const created = emptyPage(pageKey, pageKey);
+    const created = emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: created };
     set({ comparison: touch({ ...comparison, pages }) });
     return created;
@@ -199,7 +234,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   updatePage: (pageKey, patch) => {
     const { comparison } = get();
     if (!comparison) return;
-    const current = comparison.pages[pageKey] ?? emptyPage(pageKey, pageKey);
+    const current = comparison.pages[pageKey] ?? emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: { ...current, ...patch } };
     set({ comparison: touch({ ...comparison, pages }) });
     scheduleSave(get);
@@ -209,37 +244,129 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   updatePageQuiet: (pageKey: number, patch: Partial<ComparisonPage>) => {
     const { comparison } = get();
     if (!comparison) return;
-    const current = comparison.pages[pageKey] ?? emptyPage(pageKey, pageKey);
+    const current = comparison.pages[pageKey] ?? emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: { ...current, ...patch } };
     set({ comparison: { ...comparison, pages } });
+  },
+
+  updateActiveRevisionPage: (pageKey, patch) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    const page = get().ensurePage(pageKey);
+    const revisionId = comparison.activeRevisionId;
+    if (!revisionId) return;
+    const rp = page.revisions[revisionId] ?? emptyRevisionPageData(pageKey);
+    get().updatePage(pageKey, { revisions: { ...page.revisions, [revisionId]: { ...rp, ...patch } } });
+  },
+
+  updateActiveRevisionPageQuiet: (pageKey, patch) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    const page = get().ensurePage(pageKey);
+    const revisionId = comparison.activeRevisionId;
+    if (!revisionId) return;
+    const rp = page.revisions[revisionId] ?? emptyRevisionPageData(pageKey);
+    get().updatePageQuiet(pageKey, { revisions: { ...page.revisions, [revisionId]: { ...rp, ...patch } } });
   },
 
   setLayerOpacity: (layer, opacity) => {
     const { comparison } = get();
     if (!comparison) return;
-    const patch = layer === 'original' ? { originalOpacity: opacity } : { revisedOpacity: opacity };
-    set({ comparison: touch({ ...comparison, ...patch }) });
+    if (layer === 'original') {
+      set({ comparison: touch({ ...comparison, originalOpacity: opacity }) });
+    } else {
+      const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, opacity } : r));
+      set({ comparison: touch({ ...comparison, revisions }) });
+    }
     scheduleSave(get);
   },
   setLayerVisible: (layer, visible) => {
     const { comparison } = get();
     if (!comparison) return;
-    const patch = layer === 'original' ? { originalVisible: visible } : { revisedVisible: visible };
-    set({ comparison: touch({ ...comparison, ...patch }) });
+    if (layer === 'original') {
+      set({ comparison: touch({ ...comparison, originalVisible: visible }) });
+    } else {
+      const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, visible } : r));
+      set({ comparison: touch({ ...comparison, revisions }) });
+    }
     scheduleSave(get);
   },
   setLayerTint: (layer, color) => {
     const { comparison } = get();
     if (!comparison) return;
-    const patch = layer === 'original' ? { originalColorTint: color } : { revisedColorTint: color };
-    set({ comparison: touch({ ...comparison, ...patch }) });
+    if (layer === 'original') {
+      set({ comparison: touch({ ...comparison, originalColorTint: color }) });
+    } else {
+      const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, colorTint: color } : r));
+      set({ comparison: touch({ ...comparison, revisions }) });
+    }
     scheduleSave(get);
   },
   setLayerSourceColors: (layer, useSource) => {
     const { comparison } = get();
     if (!comparison) return;
-    const patch = layer === 'original' ? { originalUseSourceColors: useSource } : { revisedUseSourceColors: useSource };
-    set({ comparison: touch({ ...comparison, ...patch }) });
+    if (layer === 'original') {
+      set({ comparison: touch({ ...comparison, originalUseSourceColors: useSource }) });
+    } else {
+      const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, useSourceColors: useSource } : r));
+      set({ comparison: touch({ ...comparison, revisions }) });
+    }
+    scheduleSave(get);
+  },
+
+  addRevision: (fileName) => {
+    const { comparison } = get();
+    if (!comparison) return null;
+    const id = uuid();
+    const revision: RevisionLayer = {
+      id,
+      label: `מעודכן ${comparison.revisions.length + 1}`,
+      fileName,
+      opacity: 0.75,
+      visible: true,
+      colorTint: REVISION_COLOR_PALETTE[comparison.revisions.length % REVISION_COLOR_PALETTE.length],
+      useSourceColors: false,
+    };
+    set({
+      comparison: touch({ ...comparison, revisions: [...comparison.revisions, revision], activeRevisionId: id }),
+    });
+    scheduleSave(get);
+    return id;
+  },
+  removeRevision: (id) => {
+    const { comparison } = get();
+    if (!comparison || comparison.revisions.length <= 1) return;
+    const revisions = comparison.revisions.filter((r) => r.id !== id);
+    const pages = Object.fromEntries(
+      Object.entries(comparison.pages).map(([key, p]) => {
+        if (!(id in p.revisions)) return [key, p];
+        const nextRevisions = { ...p.revisions };
+        delete nextRevisions[id];
+        return [key, { ...p, revisions: nextRevisions }];
+      })
+    );
+    const activeRevisionId = comparison.activeRevisionId === id ? revisions[0].id : comparison.activeRevisionId;
+    set({ comparison: touch({ ...comparison, revisions, pages, activeRevisionId }) });
+    scheduleSave(get);
+  },
+  renameRevision: (id, label) => {
+    const { comparison } = get();
+    if (!comparison || !label.trim()) return;
+    const revisions = comparison.revisions.map((r) => (r.id === id ? { ...r, label: label.trim() } : r));
+    set({ comparison: touch({ ...comparison, revisions }) });
+    scheduleSave(get);
+  },
+  setActiveRevisionId: (id) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    set({
+      comparison: touch({ ...comparison, activeRevisionId: id }),
+      calibrationPoints: [],
+      calibrationLayer: null,
+      alignmentPairs: [],
+      alignmentPendingOriginal: null,
+      pickingAlignmentPoints: false,
+    });
     scheduleSave(get);
   },
 
@@ -256,15 +383,16 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const pixelDistance = Math.hypot(b.x - a.x, b.y - a.y);
     if (pixelDistance === 0) return;
     const calibration: Calibration = { pixelDistance, realDistanceMeters, metersPerPixel: realDistanceMeters / pixelDistance };
-    const page = get().ensurePage(currentPageKey);
-    const patch: Partial<ComparisonPage> =
-      calibrationLayer === 'original' ? { originalCalibration: calibration } : { revisedCalibration: calibration };
-    get().updatePage(currentPageKey, { ...page, ...patch });
+    if (calibrationLayer === 'original') {
+      get().updatePage(currentPageKey, { originalCalibration: calibration });
+    } else {
+      get().updateActiveRevisionPage(currentPageKey, { revisedCalibration: calibration });
+    }
     set({ calibrationPoints: [], calibrationLayer: null, toolMode: 'select' });
   },
 
   setAlignmentTransform: (pageKey, transform) => {
-    get().updatePage(pageKey, { alignment: transform });
+    get().updateActiveRevisionPage(pageKey, { alignment: transform });
   },
   beginAlignmentPointPick: () =>
     set({ toolMode: 'align', pickingAlignmentPoints: true, alignmentPairs: [], alignmentPendingOriginal: null }),
@@ -280,16 +408,16 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const donePicking = pairs.length === 2;
     set({ alignmentPairs: pairs, alignmentPendingOriginal: null, pickingAlignmentPoints: !donePicking });
     if (donePicking) {
-      const page = get().ensurePage(currentPageKey);
-      get().updatePage(currentPageKey, { ...page, alignmentPoints: pairs });
+      get().updateActiveRevisionPage(currentPageKey, { alignmentPoints: pairs });
     }
   },
   clearAlignmentPicking: () => set({ alignmentPairs: [], alignmentPendingOriginal: null }),
   clearAlignmentPoints: (pageKey) => {
-    get().updatePage(pageKey, { alignmentPoints: [], alignment: IDENTITY_TRANSFORM });
+    get().updateActiveRevisionPage(pageKey, { alignmentPoints: [], alignment: IDENTITY_TRANSFORM });
   },
 
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
+  setPendingAreaKind: (k) => set({ pendingAreaKind: k }),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (measurement) => {
@@ -326,6 +454,13 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const { comparison } = get();
     if (!comparison) return;
     set({ comparison: touch({ ...comparison, markups: comparison.markups.filter((m) => m.id !== id) }) });
+    scheduleSave(get);
+  },
+
+  setAreaKindColor: (kind, color) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    set({ comparison: touch({ ...comparison, areaKindColors: { ...comparison.areaKindColors, [kind]: color } }) });
     scheduleSave(get);
   },
 

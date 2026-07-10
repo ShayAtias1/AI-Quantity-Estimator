@@ -738,6 +738,58 @@ input:focus, textarea:focus {
   cursor: not-allowed;
 }
 
+.revision-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.revision-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+.revision-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.revision-tab-remove {
+  color: var(--muted);
+  padding-inline-start: 4px;
+}
+.revision-tab-remove:hover {
+  color: var(--danger, #dc2626);
+}
+.revision-tab-add {
+  color: var(--accent);
+  border-style: dashed;
+}
+
+.picked-file-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.picked-file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
 /* ---------- compare: alignment tools ---------- */
 .alignment-tools {
   margin-top: 20px;
@@ -813,6 +865,79 @@ input:focus, textarea:focus {
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 12.5px;
+}
+
+/* ---------- compare: area kind selection & summary ---------- */
+.area-kind-row {
+  display: flex;
+  gap: 6px;
+}
+.area-kind-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.area-kind-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.area-kind-btn input[type='color'] {
+  margin-inline-start: auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.area-summary {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.area-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.area-summary-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.area-summary-row-header input[type='color'] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.area-summary-label {
+  font-weight: 500;
+  color: var(--text-h);
+}
+.area-summary-count {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.area-summary-total {
+  font-weight: 600;
+  color: var(--text-h);
 }
 
 /* ---------- compare: markup toolbar ---------- */
