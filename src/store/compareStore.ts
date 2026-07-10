@@ -7,6 +7,7 @@ import type {
   CompareToolMode,
   CompareViewMode,
   ComparisonPage,
+  ExportRegion,
   LayerTransform,
   Markup,
   MarkupTool,
@@ -103,6 +104,8 @@ interface CompareState {
   selectedMarkupId: string | null;
   selectedMeasurementId: string | null;
 
+  exportRegion: ExportRegion | null;
+
   setComparison: (c: Comparison | null) => void;
   setCurrentPageKey: (n: number) => void;
   setOriginalNumPages: (n: number) => void;
@@ -111,6 +114,7 @@ interface CompareState {
   setViewMode: (m: CompareViewMode) => void;
   setSwipePosition: (v: number) => void;
   toggleBlink: () => void;
+  setExportRegion: (r: ExportRegion | null) => void;
 
   ensurePage: (pageKey: number) => ComparisonPage;
   updatePage: (pageKey: number, patch: Partial<ComparisonPage>) => void;
@@ -201,7 +205,9 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   selectedMarkupId: null,
   selectedMeasurementId: null,
 
-  setComparison: (c) => set({ comparison: c, currentPageKey: 1 }),
+  exportRegion: null,
+
+  setComparison: (c) => set({ comparison: c, currentPageKey: 1, exportRegion: null }),
   setCurrentPageKey: (n) => set({ currentPageKey: n }),
   setOriginalNumPages: (n) => set({ originalNumPages: n }),
   setRevisedNumPages: (n) => set({ revisedNumPages: n }),
@@ -219,6 +225,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setViewMode: (m) => set({ viewMode: m }),
   setSwipePosition: (v) => set({ swipePosition: Math.min(1, Math.max(0, v)) }),
   toggleBlink: () => set((s) => ({ blinkShowingRevised: !s.blinkShowingRevised })),
+  setExportRegion: (r) => set({ exportRegion: r }),
 
   ensurePage: (pageKey) => {
     const { comparison } = get();

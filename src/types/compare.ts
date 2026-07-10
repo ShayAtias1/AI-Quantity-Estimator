@@ -3,7 +3,15 @@ import type { Calibration, Point } from './index';
 
 export type CompareLayer = 'original' | 'revised';
 
-export type CompareToolMode = 'select' | 'pan' | 'calibrate' | 'measure' | 'markup' | 'align';
+export type CompareToolMode = 'select' | 'pan' | 'calibrate' | 'measure' | 'markup' | 'align' | 'export-region';
+
+/** A rectangular crop window, in the original layer's native px space, used to limit PDF export to part of the plan. */
+export interface ExportRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export type MarkupTool = 'cloud' | 'arrow' | 'rectangle' | 'text' | 'dimension';
 

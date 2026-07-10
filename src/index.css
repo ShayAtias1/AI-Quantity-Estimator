@@ -389,6 +389,21 @@ input:focus, textarea:focus {
 .pdf-viewport.tool-draw { cursor: crosshair; }
 .pdf-viewport.tool-draw-rect { cursor: crosshair; }
 .pdf-viewport.tool-measure { cursor: crosshair; }
+.pdf-viewport.tool-export-region { cursor: crosshair; }
+
+.export-region-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  z-index: 20;
+  pointer-events: none;
+}
 
 .pdf-content {
   position: absolute;

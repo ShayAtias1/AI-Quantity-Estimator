@@ -4,9 +4,9 @@ import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
 import { useCompareStore } from '../../store/compareStore';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
-import { AREA_KIND_LABELS, IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
+import { IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
 import type { Point } from '../../types';
-import type { Markup } from '../../types/compare';
+import type { ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
 import { polygonAreaM2, polygonPerimeterM, distancePx, pxToMeters, round, cloudPath } from '../../lib/geometry';
 
@@ -165,6 +165,10 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const blinkShowingRevised = useCompareStore((s) => s.blinkShowingRevised);
   const toggleBlink = useCompareStore((s) => s.toggleBlink);
 
+  const setToolMode = useCompareStore((s) => s.setToolMode);
+  const exportRegion = useCompareStore((s) => s.exportRegion);
+  const setExportRegion = useCompareStore((s) => s.setExportRegion);
+
   const { containerRef, zoom, pan, screenToNative, handleWheel, fitToContainer, beginPanDrag, updatePanDrag, endPanDrag } =
     useCanvasTransform();
 
@@ -176,6 +180,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const isPanning = useRef(false);
   const alignDrag = useRef<{ startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
   const swipeDrag = useRef(false);
+  const regionDragStart = useRef<Point | null>(null);
+  const [regionDraft, setRegionDraft] = useState<ExportRegion | null>(null);
 
   const activeRevisionId = comparison?.activeRevisionId ?? '';
   const activeRevision = comparison?.revisions.find((r) => r.id === activeRevisionId);
@@ -307,6 +313,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     }
     if (toolMode === 'align' && !pickingAlignmentPoints) {
       alignDrag.current = { startX: e.clientX, startY: e.clientY, startOffsetX: alignment.offsetX, startOffsetY: alignment.offsetY };
+      return;
+    }
+    if (toolMode === 'export-region') {
+      const native = screenToNative(e.clientX, e.clientY);
+      regionDragStart.current = native;
+      setRegionDraft({ x: native.x, y: native.y, width: 0, height: 0 });
     }
   };
   const handleMouseMove = (e: MouseEvent) => {
@@ -322,6 +334,17 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       });
       return;
     }
+    if (regionDragStart.current) {
+      const native = screenToNative(e.clientX, e.clientY);
+      const start = regionDragStart.current;
+      setRegionDraft({
+        x: Math.min(start.x, native.x),
+        y: Math.min(start.y, native.y),
+        width: Math.abs(native.x - start.x),
+        height: Math.abs(native.y - start.y),
+      });
+      return;
+    }
     if (swipeDrag.current && pageSize.width) {
       const native = screenToNative(e.clientX, e.clientY);
       setSwipePosition(native.x / pageSize.width);
@@ -334,6 +357,14 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     if (alignDrag.current) {
       alignDrag.current = null;
       void persist();
+    }
+    if (regionDragStart.current) {
+      regionDragStart.current = null;
+      if (regionDraft && regionDraft.width > 4 / zoom && regionDraft.height > 4 / zoom) {
+        setExportRegion(regionDraft);
+      }
+      setRegionDraft(null);
+      setToolMode('select');
     }
   };
   const handleDividerMouseDown = (e: MouseEvent) => {
@@ -424,8 +455,63 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         if (!comparison || !pageSize.width || !originalCanvasRef.current || !revisedCanvasRef.current) return null;
         const mult = 2;
         const headerH = 70 * mult;
-        const w = pageSize.width * mult;
-        const h = pageSize.height * mult;
+        const fullW = pageSize.width * mult;
+        const fullH = pageSize.height * mult;
+
+        // Render the full page (both layers + overlay) at full resolution first, so an export-region
+        // crop can just be a sub-rectangle copy of it rather than re-deriving each layer's transform.
+        const bodyCanvas = document.createElement('canvas');
+        bodyCanvas.width = fullW;
+        bodyCanvas.height = fullH;
+        const bctx = bodyCanvas.getContext('2d');
+        if (!bctx) return null;
+
+        bctx.fillStyle = '#ffffff';
+        bctx.fillRect(0, 0, fullW, fullH);
+        if (comparison.originalVisible) {
+          bctx.globalAlpha = comparison.originalOpacity;
+          bctx.drawImage(originalCanvasRef.current, 0, 0, fullW, fullH);
+        }
+        if (activeRevision?.visible) {
+          bctx.globalAlpha = activeRevision.opacity;
+          bctx.save();
+          const px = pivot.x * mult;
+          const py = pivot.y * mult;
+          bctx.translate(px, py);
+          bctx.translate(alignment.offsetX * mult, alignment.offsetY * mult);
+          bctx.rotate((alignment.rotationDeg * Math.PI) / 180);
+          bctx.scale(alignment.scale, alignment.scale);
+          bctx.translate(-px, -py);
+          bctx.drawImage(revisedCanvasRef.current, 0, 0, revisedPageSize.width * mult, revisedPageSize.height * mult);
+          bctx.restore();
+        }
+        bctx.globalAlpha = 1;
+
+        if (svgRef.current) {
+          const svgString = new XMLSerializer().serializeToString(svgRef.current);
+          const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+          const img = new Image(fullW, fullH);
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Failed to rasterize overlay SVG'));
+            img.src = svgUrl;
+          });
+          bctx.drawImage(img, 0, 0, fullW, fullH);
+        }
+
+        // Clamp the selected export region to the page bounds; fall back to the full page.
+        const region = exportRegion
+          ? {
+              x: Math.max(0, Math.min(exportRegion.x, pageSize.width)),
+              y: Math.max(0, Math.min(exportRegion.y, pageSize.height)),
+              width: Math.max(0, Math.min(exportRegion.width, pageSize.width - Math.max(0, exportRegion.x))),
+              height: Math.max(0, Math.min(exportRegion.height, pageSize.height - Math.max(0, exportRegion.y))),
+            }
+          : { x: 0, y: 0, width: pageSize.width, height: pageSize.height };
+        if (region.width <= 0 || region.height <= 0) return null;
+
+        const w = region.width * mult;
+        const h = region.height * mult;
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h + headerH;
@@ -463,44 +549,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.fillStyle = '#374151';
         ctx.fillText(activeRevision?.label ?? 'מעודכן', w - 260 * mult, 50 * mult);
 
-        ctx.save();
-        ctx.translate(0, headerH);
-        if (comparison.originalVisible) {
-          ctx.globalAlpha = comparison.originalOpacity;
-          ctx.drawImage(originalCanvasRef.current, 0, 0, w, h);
-        }
-        if (activeRevision?.visible) {
-          ctx.globalAlpha = activeRevision.opacity;
-          ctx.save();
-          const px = pivot.x * mult;
-          const py = pivot.y * mult;
-          ctx.translate(px, py);
-          ctx.translate(alignment.offsetX * mult, alignment.offsetY * mult);
-          ctx.rotate((alignment.rotationDeg * Math.PI) / 180);
-          ctx.scale(alignment.scale, alignment.scale);
-          ctx.translate(-px, -py);
-          ctx.drawImage(revisedCanvasRef.current, 0, 0, revisedPageSize.width * mult, revisedPageSize.height * mult);
-          ctx.restore();
-        }
-        ctx.globalAlpha = 1;
-
-        if (svgRef.current) {
-          const svgString = new XMLSerializer().serializeToString(svgRef.current);
-          const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
-          const img = new Image(w, h);
-          await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('Failed to rasterize overlay SVG'));
-            img.src = svgUrl;
-          });
-          ctx.drawImage(img, 0, 0, w, h);
-        }
-        ctx.restore();
+        ctx.drawImage(bodyCanvas, region.x * mult, region.y * mult, w, h, 0, headerH, w, h);
 
         return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
       },
     }),
-    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision]
+    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision, exportRegion]
   );
 
   if (!comparison) return null;
@@ -640,9 +694,11 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
                       strokeWidth={strokeW}
                     />
                   )}
-                  <text x={m.points[0].x} y={m.points[0].y - 8 / zoom} fontSize={12 / zoom} fill={color} fontWeight={600}>
-                    {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: {m.label}
-                  </text>
+                  {m.tool !== 'area' && (
+                    <text x={m.points[0].x} y={m.points[0].y - 8 / zoom} fontSize={12 / zoom} fill={color} fontWeight={600}>
+                      {MEASURE_TOOL_LABELS[m.tool]}: {m.label}
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -669,7 +725,42 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             ))}
           </svg>
         )}
+
+        {/* Export region selection — kept in a separate svg so it's never rasterized into the exported PDF. */}
+        {pageSize.width > 0 && (exportRegion || regionDraft) && (
+          <svg className="overlay-svg region-select-svg" width={pageSize.width} height={pageSize.height} viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}>
+            {exportRegion && !regionDraft && (
+              <rect
+                x={exportRegion.x}
+                y={exportRegion.y}
+                width={exportRegion.width}
+                height={exportRegion.height}
+                fill="none"
+                stroke="#0f172a"
+                strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+                strokeWidth={strokeW}
+              />
+            )}
+            {regionDraft && (
+              <rect
+                x={regionDraft.x}
+                y={regionDraft.y}
+                width={regionDraft.width}
+                height={regionDraft.height}
+                fill="#0f172a"
+                fillOpacity={0.08}
+                stroke="#0f172a"
+                strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+                strokeWidth={strokeW}
+              />
+            )}
+          </svg>
+        )}
       </div>
+
+      {toolMode === 'export-region' && !regionDraft && (
+        <div className="export-region-hint">גרור על התוכנית כדי לבחור את האזור לייצוא</div>
+      )}
 
       {viewMode === 'swipe' && pageSize.width > 0 && (
         <div className="swipe-divider" style={{ transform: `translateX(${dividerScreenX}px)` }} onMouseDown={handleDividerMouseDown}>
