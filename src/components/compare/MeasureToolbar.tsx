@@ -20,6 +20,8 @@ export default function MeasureToolbar() {
   const setPendingAreaKind = useCompareStore((s) => s.setPendingAreaKind);
   const areaShape = useCompareStore((s) => s.areaShape);
   const setAreaShape = useCompareStore((s) => s.setAreaShape);
+  const orthoSnap = useCompareStore((s) => s.orthoSnap);
+  const setOrthoSnap = useCompareStore((s) => s.setOrthoSnap);
   const startCalibration = useCompareStore((s) => s.startCalibration);
   const deleteMeasurement = useCompareStore((s) => s.deleteMeasurement);
 
@@ -97,6 +99,13 @@ export default function MeasureToolbar() {
             ))}
           </div>
         </>
+      )}
+
+      {toolMode === 'measure' && (measureTool === 'perimeter' || (measureTool === 'area' && areaShape === 'polygon')) && (
+        <label className="source-color-toggle">
+          <input type="checkbox" checked={orthoSnap} onChange={(e) => setOrthoSnap(e.target.checked)} />
+          קווים ישרים בלבד (90°)
+        </label>
       )}
 
       {toolMode === 'measure' && measureTool && (

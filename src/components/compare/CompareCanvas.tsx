@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type MouseEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
@@ -11,6 +11,13 @@ import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/align
 import { polygonAreaM2, polygonPerimeterM, distancePx, pxToMeters, round, cloudPath } from '../../lib/geometry';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
+
+/** Snaps `candidate` so the segment from `from` is purely horizontal or vertical, whichever it's closer to. */
+function snapOrtho(from: Point, candidate: Point): Point {
+  const dx = candidate.x - from.x;
+  const dy = candidate.y - from.y;
+  return Math.abs(dx) >= Math.abs(dy) ? { x: candidate.x, y: from.y } : { x: from.x, y: candidate.y };
+}
 
 function arrowHeadPoints(from: Point, to: Point, size: number): string {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
@@ -66,17 +73,43 @@ function MarkupShape({ markup, strokeW }: { markup: Markup; strokeW: number }) {
     case 'cloud':
       return <path d={cloudPath(markup.points, 14 * strokeW)} fill={markup.color} fillOpacity={0.08} stroke={markup.color} strokeWidth={strokeW * 1.3} strokeLinejoin="round" />;
     case 'text':
-      return (
-        <g>
-          <rect x={a.x - 4 * strokeW} y={a.y - 14 * strokeW} width={(markup.text?.length ?? 0) * 7 * strokeW + 8 * strokeW} height={18 * strokeW} fill="#fff" fillOpacity={0.85} rx={3 * strokeW} />
-          <text x={a.x} y={a.y} fontSize={strokeW * 6.5} fill={markup.color} fontWeight={600}>
-            {markup.text}
-          </text>
-        </g>
-      );
+      return <TextMarkupLabel point={a} text={markup.text} color={markup.color} strokeW={strokeW} />;
     default:
       return null;
   }
+}
+
+/** Renders a text markup with its background box sized to the text's actual rendered bounds, not an estimate. */
+function TextMarkupLabel({ point, text, color, strokeW }: { point: Point; text?: string; color: string; strokeW: number }) {
+  const textRef = useRef<SVGTextElement>(null);
+  const [box, setBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!textRef.current) return;
+    const bbox = textRef.current.getBBox();
+    setBox({ x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height });
+  }, [text, strokeW, point.x, point.y]);
+
+  const padX = 3 * strokeW;
+  const padY = 2 * strokeW;
+  return (
+    <g>
+      {box && (
+        <rect
+          x={box.x - padX}
+          y={box.y - padY}
+          width={box.width + padX * 2}
+          height={box.height + padY * 2}
+          fill="#fff"
+          fillOpacity={0.85}
+          rx={3 * strokeW}
+        />
+      )}
+      <text ref={textRef} x={point.x} y={point.y} fontSize={strokeW * 6.5} fill={color} fontWeight={600}>
+        {text}
+      </text>
+    </g>
+  );
 }
 
 function useLayerRender(
@@ -148,6 +181,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const measurePoints = useCompareStore((s) => s.measurePoints);
   const pendingAreaKind = useCompareStore((s) => s.pendingAreaKind);
   const areaShape = useCompareStore((s) => s.areaShape);
+  const orthoSnap = useCompareStore((s) => s.orthoSnap);
   const addMeasurePoint = useCompareStore((s) => s.addMeasurePoint);
   const clearMeasurePoints = useCompareStore((s) => s.clearMeasurePoints);
   const finishMeasurement = useCompareStore((s) => s.finishMeasurement);
@@ -413,15 +447,16 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ]);
         return;
       }
+      const point = orthoSnap && measurePoints.length > 0 ? snapOrtho(measurePoints[measurePoints.length - 1], native) : native;
       if (measurePoints.length >= 3) {
         const first = measurePoints[0];
-        const distScreen = Math.hypot(native.x - first.x, native.y - first.y) * zoom;
+        const distScreen = Math.hypot(point.x - first.x, point.y - first.y) * zoom;
         if (distScreen < 10) {
           finishOpenMeasurement();
           return;
         }
       }
-      addMeasurePoint(native);
+      addMeasurePoint(point);
       return;
     }
 

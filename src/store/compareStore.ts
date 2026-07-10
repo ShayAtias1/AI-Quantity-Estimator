@@ -103,6 +103,8 @@ interface CompareState {
   measurePoints: Point[];
   pendingAreaKind: AreaKind | null;
   areaShape: AreaShape;
+  /** When on, each new polygon vertex snaps to a horizontal/vertical line from the previous one. */
+  orthoSnap: boolean;
 
   markupTool: MarkupTool | null;
   markupPoints: Point[];
@@ -157,6 +159,7 @@ interface CompareState {
   setMeasureTool: (t: MeasureTool | null) => void;
   setPendingAreaKind: (k: AreaKind | null) => void;
   setAreaShape: (s: AreaShape) => void;
+  setOrthoSnap: (v: boolean) => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (measurement: Measurement) => void;
@@ -210,6 +213,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   measurePoints: [],
   pendingAreaKind: null,
   areaShape: 'polygon',
+  orthoSnap: false,
 
   markupTool: null,
   markupPoints: [],
@@ -447,6 +451,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
   setPendingAreaKind: (k) => set({ pendingAreaKind: k }),
   setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
+  setOrthoSnap: (v) => set({ orthoSnap: v }),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (measurement) => {
