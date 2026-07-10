@@ -169,6 +169,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const setToolMode = useCompareStore((s) => s.setToolMode);
   const exportRegion = useCompareStore((s) => s.exportRegion);
   const setExportRegion = useCompareStore((s) => s.setExportRegion);
+  const annotationsVisible = useCompareStore((s) => s.annotationsVisible);
 
   const { containerRef, zoom, pan, screenToNative, handleWheel, fitToContainer, beginPanDrag, updatePanDrag, endPanDrag } =
     useCanvasTransform();
@@ -472,10 +473,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         const mult = 2;
         const areaTotals: Record<AreaKind, number> = { demolition: 0, construction: 0 };
         let hasAreaMeasurements = false;
-        for (const m of activeRevision?.measurements ?? []) {
-          if (m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number') {
-            areaTotals[m.areaKind] += m.areaM2;
-            hasAreaMeasurements = true;
+        if (annotationsVisible) {
+          for (const m of activeRevision?.measurements ?? []) {
+            if (m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number') {
+              areaTotals[m.areaKind] += m.areaM2;
+              hasAreaMeasurements = true;
+            }
           }
         }
         const headerH = (hasAreaMeasurements ? 110 : 70) * mult;
@@ -591,7 +594,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
       },
     }),
-    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision, exportRegion]
+    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision, exportRegion, annotationsVisible]
   );
 
   if (!comparison) return null;
@@ -716,7 +719,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             )}
 
             {/* Finished measurements */}
-            {(activeRevision?.measurements ?? []).map((m) => {
+            {annotationsVisible && (activeRevision?.measurements ?? []).map((m) => {
               const color = m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9';
               return (
                 <g key={m.id}>
@@ -757,7 +760,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             )}
 
             {/* Finished markups */}
-            {(activeRevision?.markups ?? []).map((m) => (
+            {annotationsVisible && (activeRevision?.markups ?? []).map((m) => (
               <MarkupShape key={m.id} markup={m} strokeW={strokeW} />
             ))}
           </svg>

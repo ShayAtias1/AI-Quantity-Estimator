@@ -113,6 +113,9 @@ interface CompareState {
 
   exportRegion: ExportRegion | null;
 
+  /** Manual show/hide toggle for finished markups & measurements — independent of which revision is active. */
+  annotationsVisible: boolean;
+
   setComparison: (c: Comparison | null) => void;
   setCurrentPageKey: (n: number) => void;
   setOriginalNumPages: (n: number) => void;
@@ -120,6 +123,7 @@ interface CompareState {
   setToolMode: (m: CompareToolMode) => void;
   setViewMode: (m: CompareViewMode) => void;
   setSwipePosition: (v: number) => void;
+  toggleAnnotationsVisible: () => void;
   toggleBlink: () => void;
   setExportRegion: (r: ExportRegion | null) => void;
 
@@ -215,8 +219,9 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   selectedMeasurementId: null,
 
   exportRegion: null,
+  annotationsVisible: true,
 
-  setComparison: (c) => set({ comparison: c, currentPageKey: 1, exportRegion: null }),
+  setComparison: (c) => set({ comparison: c, currentPageKey: 1, exportRegion: null, annotationsVisible: true }),
   setCurrentPageKey: (n) => set({ currentPageKey: n }),
   setOriginalNumPages: (n) => set({ originalNumPages: n }),
   setRevisedNumPages: (n) => set({ revisedNumPages: n }),
@@ -234,6 +239,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setViewMode: (m) => set({ viewMode: m }),
   setSwipePosition: (v) => set({ swipePosition: Math.min(1, Math.max(0, v)) }),
   toggleBlink: () => set((s) => ({ blinkShowingRevised: !s.blinkShowingRevised })),
+  toggleAnnotationsVisible: () => set((s) => ({ annotationsVisible: !s.annotationsVisible })),
   setExportRegion: (r) => set({ exportRegion: r }),
 
   ensurePage: (pageKey) => {

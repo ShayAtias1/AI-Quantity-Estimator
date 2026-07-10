@@ -10,6 +10,8 @@ export default function CompareTopBar({ onExport, exporting }: { onExport: () =>
   const setToolMode = useCompareStore((s) => s.setToolMode);
   const exportRegion = useCompareStore((s) => s.exportRegion);
   const setExportRegion = useCompareStore((s) => s.setExportRegion);
+  const annotationsVisible = useCompareStore((s) => s.annotationsVisible);
+  const toggleAnnotationsVisible = useCompareStore((s) => s.toggleAnnotationsVisible);
 
   if (!comparison) return null;
 
@@ -35,6 +37,13 @@ export default function CompareTopBar({ onExport, exporting }: { onExport: () =>
         placeholder="מספר דירה"
       />
       <ViewModeSwitch />
+      <button
+        className={`btn-secondary small ${!annotationsVisible ? 'active' : ''}`}
+        onClick={toggleAnnotationsVisible}
+        title="הצג/הסתר סימונים ומדידות על גבי התוכנית"
+      >
+        {annotationsVisible ? '👁 הסתר סימונים' : '🚫 הצג סימונים'}
+      </button>
       <button
         className={`btn-secondary small ${toolMode === 'export-region' ? 'active' : ''}`}
         onClick={() => setToolMode(toolMode === 'export-region' ? 'select' : 'export-region')}
