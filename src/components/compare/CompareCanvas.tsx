@@ -4,9 +4,9 @@ import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
 import { useCompareStore } from '../../store/compareStore';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
-import { IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
+import { AREA_KIND_LABELS, IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
 import type { Point } from '../../types';
-import type { ExportRegion, Markup } from '../../types/compare';
+import type { AreaKind, ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
 import { polygonAreaM2, polygonPerimeterM, distancePx, pxToMeters, round, cloudPath } from '../../lib/geometry';
 
@@ -470,7 +470,15 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       exportComposite: async () => {
         if (!comparison || !pageSize.width || !originalCanvasRef.current || !revisedCanvasRef.current) return null;
         const mult = 2;
-        const headerH = 70 * mult;
+        const areaTotals: Record<AreaKind, number> = { demolition: 0, construction: 0 };
+        let hasAreaMeasurements = false;
+        for (const m of comparison.measurements) {
+          if (m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number') {
+            areaTotals[m.areaKind] += m.areaM2;
+            hasAreaMeasurements = true;
+          }
+        }
+        const headerH = (hasAreaMeasurements ? 110 : 70) * mult;
         const fullW = pageSize.width * mult;
         const fullH = pageSize.height * mult;
 
@@ -564,6 +572,19 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.fill();
         ctx.fillStyle = '#374151';
         ctx.fillText(activeRevision?.label ?? 'מעודכן', w - 260 * mult, 50 * mult);
+
+        if (hasAreaMeasurements) {
+          const drawAreaLegend = (kind: AreaKind, y: number) => {
+            ctx.fillStyle = comparison.areaKindColors[kind];
+            ctx.beginPath();
+            ctx.arc(w - 190 * mult, y - 4 * mult, 4 * mult, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#374151';
+            ctx.fillText(`${AREA_KIND_LABELS[kind]}: ${round(areaTotals[kind], 2)} מ"ר`, w - 200 * mult, y);
+          };
+          drawAreaLegend('demolition', 70 * mult);
+          drawAreaLegend('construction', 90 * mult);
+        }
 
         ctx.drawImage(bodyCanvas, region.x * mult, region.y * mult, w, h, 0, headerH, w, h);
 
