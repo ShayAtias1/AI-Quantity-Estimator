@@ -147,6 +147,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const measureTool = useCompareStore((s) => s.measureTool);
   const measurePoints = useCompareStore((s) => s.measurePoints);
   const pendingAreaKind = useCompareStore((s) => s.pendingAreaKind);
+  const areaShape = useCompareStore((s) => s.areaShape);
   const addMeasurePoint = useCompareStore((s) => s.addMeasurePoint);
   const clearMeasurePoints = useCompareStore((s) => s.clearMeasurePoints);
   const finishMeasurement = useCompareStore((s) => s.finishMeasurement);
@@ -239,27 +240,28 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     return () => clearInterval(id);
   }, [viewMode, toggleBlink]);
 
-  const finishOpenMeasurement = () => {
-    if (!measureTool || measurePoints.length < 2 || !metersPerPixel) {
+  const finishOpenMeasurement = (pointsOverride?: Point[]) => {
+    const points = pointsOverride ?? measurePoints;
+    if (!measureTool || points.length < 2 || !metersPerPixel) {
       clearMeasurePoints();
       return;
     }
     let label = '';
     let areaM2: number | undefined;
     if (measureTool === 'distance') {
-      const m = pxToMeters(distancePx(measurePoints[0], measurePoints[1]), metersPerPixel);
+      const m = pxToMeters(distancePx(points[0], points[1]), metersPerPixel);
       label = `${round(m, 2)} מ'`;
     } else if (measureTool === 'area') {
-      areaM2 = round(polygonAreaM2(measurePoints, metersPerPixel), 2);
+      areaM2 = round(polygonAreaM2(points, metersPerPixel), 2);
       label = `${areaM2} מ"ר`;
     } else {
-      const m = polygonPerimeterM(measurePoints, true, metersPerPixel);
+      const m = polygonPerimeterM(points, true, metersPerPixel);
       label = `${round(m, 2)} מ'`;
     }
     finishMeasurement({
       id: uuid(),
       tool: measureTool,
-      points: measurePoints,
+      points,
       label,
       areaKind: measureTool === 'area' && pendingAreaKind ? pendingAreaKind : undefined,
       areaM2,
@@ -394,6 +396,20 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     if (toolMode === 'measure' && measureTool) {
       if (measureTool === 'distance') {
         addMeasurePoint(native);
+        return;
+      }
+      if (measureTool === 'area' && areaShape === 'rectangle') {
+        if (measurePoints.length === 0) {
+          addMeasurePoint(native);
+          return;
+        }
+        const a = measurePoints[0];
+        finishOpenMeasurement([
+          { x: a.x, y: a.y },
+          { x: native.x, y: a.y },
+          { x: native.x, y: native.y },
+          { x: a.x, y: native.y },
+        ]);
         return;
       }
       if (measurePoints.length >= 3) {
@@ -691,7 +707,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
                       fill={color}
                       fillOpacity={m.areaKind ? 0.28 : 0.12}
                       stroke={color}
-                      strokeWidth={strokeW}
+                      strokeWidth={m.tool === 'area' ? strokeW * 0.4 : strokeW}
                     />
                   )}
                   {m.tool !== 'area' && (

@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import type {
   AlignmentPointPair,
   AreaKind,
+  AreaShape,
   Comparison,
   CompareToolMode,
   CompareViewMode,
@@ -96,6 +97,7 @@ interface CompareState {
   measureTool: MeasureTool | null;
   measurePoints: Point[];
   pendingAreaKind: AreaKind | null;
+  areaShape: AreaShape;
 
   markupTool: MarkupTool | null;
   markupPoints: Point[];
@@ -145,6 +147,7 @@ interface CompareState {
 
   setMeasureTool: (t: MeasureTool | null) => void;
   setPendingAreaKind: (k: AreaKind | null) => void;
+  setAreaShape: (s: AreaShape) => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (measurement: Measurement) => void;
@@ -197,6 +200,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   measureTool: null,
   measurePoints: [],
   pendingAreaKind: null,
+  areaShape: 'polygon',
 
   markupTool: null,
   markupPoints: [],
@@ -425,6 +429,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
 
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
   setPendingAreaKind: (k) => set({ pendingAreaKind: k }),
+  setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (measurement) => {

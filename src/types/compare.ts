@@ -44,6 +44,9 @@ export const DEFAULT_AREA_KIND_COLORS: Record<AreaKind, string> = {
   construction: '#16a34a',
 };
 
+/** How the user draws an area measurement: click a closed polygon, or drag a rectangle's two opposite corners. */
+export type AreaShape = 'polygon' | 'rectangle';
+
 export type CompareViewMode = 'overlay' | 'swipe' | 'blink';
 
 /** Transform applied to the revised layer on top of the shared viewport pan/zoom, expressed in the original layer's native px space. */

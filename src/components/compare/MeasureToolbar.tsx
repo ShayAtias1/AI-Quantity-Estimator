@@ -1,9 +1,13 @@
 import { useCompareStore } from '../../store/compareStore';
-import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaKind, type MeasureTool } from '../../types/compare';
+import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaKind, type AreaShape, type MeasureTool } from '../../types/compare';
 
 const MEASURE_TOOLS: MeasureTool[] = ['distance', 'area', 'perimeter'];
 const MEASURE_ICONS: Record<MeasureTool, string> = { distance: '📏', area: '⬛', perimeter: '⭕' };
 const AREA_KINDS: AreaKind[] = ['demolition', 'construction'];
+const AREA_SHAPES: { shape: AreaShape; label: string; icon: string }[] = [
+  { shape: 'polygon', label: 'פוליגון', icon: '⬠' },
+  { shape: 'rectangle', label: 'מלבן', icon: '▭' },
+];
 
 export default function MeasureToolbar() {
   const comparison = useCompareStore((s) => s.comparison);
@@ -14,6 +18,8 @@ export default function MeasureToolbar() {
   const measurePoints = useCompareStore((s) => s.measurePoints);
   const pendingAreaKind = useCompareStore((s) => s.pendingAreaKind);
   const setPendingAreaKind = useCompareStore((s) => s.setPendingAreaKind);
+  const areaShape = useCompareStore((s) => s.areaShape);
+  const setAreaShape = useCompareStore((s) => s.setAreaShape);
   const startCalibration = useCompareStore((s) => s.startCalibration);
   const deleteMeasurement = useCompareStore((s) => s.deleteMeasurement);
 
@@ -56,32 +62,48 @@ export default function MeasureToolbar() {
       </div>
 
       {toolMode === 'measure' && measureTool === 'area' && (
-        <div className="area-kind-row">
-          {AREA_KINDS.map((k) => (
-            <button
-              key={k}
-              className={`area-kind-btn ${pendingAreaKind === k ? 'active' : ''}`}
-              onClick={() => setPendingAreaKind(pendingAreaKind === k ? null : k)}
-            >
-              <span className="color-dot" style={{ background: comparison.areaKindColors[k] }} />
-              {AREA_KIND_LABELS[k]}
-              <input
-                type="color"
-                value={comparison.areaKindColors[k]}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => useCompareStore.getState().setAreaKindColor(k, e.target.value)}
-                title="שנה צבע"
-              />
-            </button>
-          ))}
-        </div>
+        <>
+          <div className="work-item-add-row">
+            {AREA_SHAPES.map(({ shape, label, icon }) => (
+              <button
+                key={shape}
+                className={`tool-btn small-tool ${areaShape === shape ? 'active' : ''}`}
+                onClick={() => setAreaShape(shape)}
+              >
+                <span className="tool-icon">{icon}</span>
+                <span className="tool-label">{label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="area-kind-row">
+            {AREA_KINDS.map((k) => (
+              <button
+                key={k}
+                className={`area-kind-btn ${pendingAreaKind === k ? 'active' : ''}`}
+                onClick={() => setPendingAreaKind(pendingAreaKind === k ? null : k)}
+              >
+                <span className="color-dot" style={{ background: comparison.areaKindColors[k] }} />
+                {AREA_KIND_LABELS[k]}
+                <input
+                  type="color"
+                  value={comparison.areaKindColors[k]}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => useCompareStore.getState().setAreaKindColor(k, e.target.value)}
+                  title="שנה צבע"
+                />
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {toolMode === 'measure' && measureTool && (
         <p className="alignment-hint">
           {measureTool === 'distance'
             ? 'לחץ 2 נקודות כדי למדוד מרחק'
-            : `לחץ נקודות ולסגור ליד הנקודה הראשונה (${measurePoints.length} נקודות)`}
+            : measureTool === 'area' && areaShape === 'rectangle'
+              ? 'לחץ פינת התחלה וסיום למלבן'
+              : `לחץ נקודות ולסגור ליד הנקודה הראשונה (${measurePoints.length} נקודות)`}
         </p>
       )}
 
