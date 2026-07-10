@@ -27,7 +27,7 @@ function arrowHeadPoints(from: Point, to: Point, size: number): string {
   return `${to.x},${to.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
 }
 
-function MarkupShape({ markup, strokeW }: { markup: Markup; strokeW: number }) {
+function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: number; draggable: boolean }) {
   const [a, b] = markup.points;
   switch (markup.tool) {
     case 'arrow':
@@ -73,14 +73,33 @@ function MarkupShape({ markup, strokeW }: { markup: Markup; strokeW: number }) {
     case 'cloud':
       return <path d={cloudPath(markup.points, 14 * strokeW)} fill={markup.color} fillOpacity={0.08} stroke={markup.color} strokeWidth={strokeW * 1.3} strokeLinejoin="round" />;
     case 'text':
-      return <TextMarkupLabel point={a} text={markup.text} color={markup.color} strokeW={strokeW} />;
+      return <TextMarkupLabel id={markup.id} point={a} text={markup.text} color={markup.color} strokeW={strokeW} draggable={draggable} />;
     default:
       return null;
   }
 }
 
-/** Renders a text markup with its background box sized to the text's actual rendered bounds, not an estimate. */
-function TextMarkupLabel({ point, text, color, strokeW }: { point: Point; text?: string; color: string; strokeW: number }) {
+/**
+ * Renders a text markup with its background box sized to the text's actual rendered bounds, not an
+ * estimate. When `draggable` (select tool active), the box/text accept pointer events so it can be
+ * grabbed and moved anywhere on the plan — the actual drag is handled by the canvas's mouse handlers,
+ * which look up the markup via the `data-text-markup-id` attribute set here.
+ */
+function TextMarkupLabel({
+  id,
+  point,
+  text,
+  color,
+  strokeW,
+  draggable,
+}: {
+  id: string;
+  point: Point;
+  text?: string;
+  color: string;
+  strokeW: number;
+  draggable: boolean;
+}) {
   const textRef = useRef<SVGTextElement>(null);
   const [box, setBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
@@ -92,6 +111,7 @@ function TextMarkupLabel({ point, text, color, strokeW }: { point: Point; text?:
 
   const padX = 3 * strokeW;
   const padY = 2 * strokeW;
+  const hitProps = draggable ? { 'data-text-markup-id': id, style: { pointerEvents: 'auto' as const, cursor: 'move' } } : {};
   return (
     <g>
       {box && (
@@ -103,9 +123,10 @@ function TextMarkupLabel({ point, text, color, strokeW }: { point: Point; text?:
           fill="#fff"
           fillOpacity={0.85}
           rx={3 * strokeW}
+          {...hitProps}
         />
       )}
-      <text ref={textRef} x={point.x} y={point.y} fontSize={strokeW * 6.5} fill={color} fontWeight={600}>
+      <text ref={textRef} x={point.x} y={point.y} fontSize={strokeW * 6.5} fill={color} fontWeight={600} {...hitProps}>
         {text}
       </text>
     </g>
@@ -193,6 +214,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const addMarkupPoint = useCompareStore((s) => s.addMarkupPoint);
   const clearMarkupPoints = useCompareStore((s) => s.clearMarkupPoints);
   const finishMarkup = useCompareStore((s) => s.finishMarkup);
+  const updateMarkup = useCompareStore((s) => s.updateMarkup);
+  const updateMarkupQuiet = useCompareStore((s) => s.updateMarkupQuiet);
 
   const viewMode = useCompareStore((s) => s.viewMode);
   const swipePosition = useCompareStore((s) => s.swipePosition);
@@ -218,6 +241,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const swipeDrag = useRef(false);
   const regionDragStart = useRef<Point | null>(null);
   const [regionDraft, setRegionDraft] = useState<ExportRegion | null>(null);
+  const textDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoint: Point } | null>(null);
 
   const activeRevisionId = comparison?.activeRevisionId ?? '';
   const activeRevision = comparison?.revisions.find((r) => r.id === activeRevisionId);
@@ -343,6 +367,15 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   }, [measureTool, measurePoints, markupTool, markupPoints]);
 
   const handleMouseDown = (e: MouseEvent) => {
+    if (toolMode === 'select') {
+      const target = (e.target as Element).closest?.('[data-text-markup-id]');
+      const id = target?.getAttribute('data-text-markup-id');
+      const markup = id ? activeRevision?.markups.find((m) => m.id === id) : undefined;
+      if (markup) {
+        textDrag.current = { id: markup.id, startClientX: e.clientX, startClientY: e.clientY, startPoint: markup.points[0] };
+        return;
+      }
+    }
     if (toolMode === 'pan' || e.button === 1) {
       isPanning.current = true;
       beginPanDrag(e.clientX, e.clientY);
@@ -361,6 +394,14 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const handleMouseMove = (e: MouseEvent) => {
     if (isPanning.current) {
       updatePanDrag(e.clientX, e.clientY);
+      return;
+    }
+    if (textDrag.current) {
+      const dx = (e.clientX - textDrag.current.startClientX) / zoom;
+      const dy = (e.clientY - textDrag.current.startClientY) / zoom;
+      updateMarkupQuiet(textDrag.current.id, {
+        points: [{ x: textDrag.current.startPoint.x + dx, y: textDrag.current.startPoint.y + dy }],
+      });
       return;
     }
     if (alignDrag.current) {
@@ -391,6 +432,10 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     isPanning.current = false;
     endPanDrag();
     swipeDrag.current = false;
+    if (textDrag.current) {
+      updateMarkup(textDrag.current.id, {});
+      textDrag.current = null;
+    }
     if (alignDrag.current) {
       alignDrag.current = null;
       void persist();
@@ -796,7 +841,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
 
             {/* Finished markups */}
             {annotationsVisible && (activeRevision?.markups ?? []).map((m) => (
-              <MarkupShape key={m.id} markup={m} strokeW={strokeW} />
+              <MarkupShape key={m.id} markup={m} strokeW={strokeW} draggable={toolMode === 'select'} />
             ))}
           </svg>
         )}

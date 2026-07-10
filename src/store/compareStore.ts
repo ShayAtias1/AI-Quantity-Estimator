@@ -171,6 +171,8 @@ interface CompareState {
   clearMarkupPoints: () => void;
   finishMarkup: (markup: Markup) => void;
   updateMarkup: (id: string, patch: Partial<Markup>) => void;
+  /** Like updateMarkup but skips the autosave schedule — for continuous drag updates. */
+  updateMarkupQuiet: (id: string, patch: Partial<Markup>) => void;
   deleteMarkup: (id: string) => void;
 
   setAreaKindColor: (kind: AreaKind, color: string) => void;
@@ -489,6 +491,15 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     }));
     set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
+  },
+  updateMarkupQuiet: (id, patch) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    const revisions = updateActiveRevision(comparison, (r) => ({
+      ...r,
+      markups: r.markups.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    }));
+    set({ comparison: { ...comparison, revisions } });
   },
   deleteMarkup: (id) => {
     const { comparison } = get();
