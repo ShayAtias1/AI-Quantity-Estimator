@@ -40,12 +40,16 @@ export function useCanvasTransform(): CanvasTransform {
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
+    // Trackpads emit many events per gesture, some with deltaY === 0 (pure horizontal scroll) —
+    // treating those as "zoom out" (the old fixed-factor logic did, since 0 is not > 0) was the
+    // cause of the zoom drifting/jittering on its own. Scaling the factor by delta magnitude
+    // (instead of a fixed step per event) also keeps trackpad gestures smooth without overshoot.
+    if (e.deltaY === 0) return;
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-    const delta = -e.deltaY;
-    const factor = delta > 0 ? 1.12 : 1 / 1.12;
+    const factor = Math.exp(-e.deltaY * 0.0015);
     setZoom((prevZoom) => {
       const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZoom * factor));
       setPan((prevPan) => {

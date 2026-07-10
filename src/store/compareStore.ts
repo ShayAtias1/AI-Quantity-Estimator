@@ -174,6 +174,7 @@ interface CompareState {
   /** Like updateMarkup but skips the autosave schedule — for continuous drag updates. */
   updateMarkupQuiet: (id: string, patch: Partial<Markup>) => void;
   deleteMarkup: (id: string) => void;
+  setSelectedMarkupId: (id: string | null) => void;
 
   setAreaKindColor: (kind: AreaKind, color: string) => void;
 
@@ -227,7 +228,8 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   exportRegion: null,
   annotationsVisible: true,
 
-  setComparison: (c) => set({ comparison: c, currentPageKey: 1, exportRegion: null, annotationsVisible: true }),
+  setComparison: (c) =>
+    set({ comparison: c, currentPageKey: 1, exportRegion: null, annotationsVisible: true, selectedMarkupId: null, selectedMeasurementId: null }),
   setCurrentPageKey: (n) => set({ currentPageKey: n }),
   setOriginalNumPages: (n) => set({ originalNumPages: n }),
   setRevisedNumPages: (n) => set({ revisedNumPages: n }),
@@ -241,6 +243,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       pickingAlignmentPoints: false,
       measurePoints: [],
       markupPoints: [],
+      selectedMarkupId: null,
     }),
   setViewMode: (m) => set({ viewMode: m }),
   setSwipePosition: (v) => set({ swipePosition: Math.min(1, Math.max(0, v)) }),
@@ -505,9 +508,10 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const { comparison } = get();
     if (!comparison) return;
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: r.markups.filter((m) => m.id !== id) }));
-    set({ comparison: touch({ ...comparison, revisions }) });
+    set({ comparison: touch({ ...comparison, revisions }), selectedMarkupId: get().selectedMarkupId === id ? null : get().selectedMarkupId });
     scheduleSave(get);
   },
+  setSelectedMarkupId: (id) => set({ selectedMarkupId: id }),
 
   setAreaKindColor: (kind, color) => {
     const { comparison } = get();

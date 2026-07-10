@@ -27,14 +27,23 @@ function arrowHeadPoints(from: Point, to: Point, size: number): string {
   return `${to.x},${to.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
 }
 
+/**
+ * Renders one finished markup. When `draggable` (select tool active), its body accepts pointer
+ * events so it can be grabbed and moved — the actual drag is handled by the canvas's mouse handlers,
+ * which look up the markup via the `data-markup-id` attribute set here.
+ */
 function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: number; draggable: boolean }) {
   const [a, b] = markup.points;
+  const hitProps = draggable ? { 'data-markup-id': markup.id, style: { pointerEvents: 'auto' as const, cursor: 'move' } } : {};
   switch (markup.tool) {
     case 'arrow':
       return (
         <g>
+          {draggable && (
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={strokeW * 8} {...hitProps} />
+          )}
           <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={markup.color} strokeWidth={strokeW * 1.3} />
-          <polygon points={arrowHeadPoints(a, b, strokeW * 8)} fill={markup.color} />
+          <polygon points={arrowHeadPoints(a, b, strokeW * 8)} fill={markup.color} {...hitProps} />
         </g>
       );
     case 'rectangle':
@@ -48,6 +57,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
           fillOpacity={0.1}
           stroke={markup.color}
           strokeWidth={strokeW * 1.3}
+          {...hitProps}
         />
       );
     case 'dimension': {
@@ -59,6 +69,9 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
       const midY = (a.y + b.y) / 2;
       return (
         <g>
+          {draggable && (
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={strokeW * 8} {...hitProps} />
+          )}
           <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={markup.color} strokeWidth={strokeW} />
           <line x1={a.x - nx} y1={a.y - ny} x2={a.x + nx} y2={a.y + ny} stroke={markup.color} strokeWidth={strokeW} />
           <line x1={b.x - nx} y1={b.y - ny} x2={b.x + nx} y2={b.y + ny} stroke={markup.color} strokeWidth={strokeW} />
@@ -71,41 +84,26 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
       );
     }
     case 'cloud':
-      return <path d={cloudPath(markup.points, 14 * strokeW)} fill={markup.color} fillOpacity={0.08} stroke={markup.color} strokeWidth={strokeW * 1.3} strokeLinejoin="round" />;
+      return (
+        <path
+          d={cloudPath(markup.points, 14 * strokeW)}
+          fill={markup.color}
+          fillOpacity={0.08}
+          stroke={markup.color}
+          strokeWidth={strokeW * 1.3}
+          strokeLinejoin="round"
+          {...hitProps}
+        />
+      );
     case 'text':
-      return <TextMarkupLabel id={markup.id} point={a} text={markup.text} color={markup.color} strokeW={strokeW} draggable={draggable} />;
+      return (
+        <text x={a.x} y={a.y} fontSize={strokeW * 6.5} fill={markup.color} fontWeight={600} {...hitProps}>
+          {markup.text}
+        </text>
+      );
     default:
       return null;
   }
-}
-
-/**
- * Renders a text markup as plain text, no background box. When `draggable` (select tool active),
- * it accepts pointer events so it can be grabbed and moved anywhere on the plan — the actual drag is
- * handled by the canvas's mouse handlers, which look up the markup via the `data-text-markup-id`
- * attribute set here.
- */
-function TextMarkupLabel({
-  id,
-  point,
-  text,
-  color,
-  strokeW,
-  draggable,
-}: {
-  id: string;
-  point: Point;
-  text?: string;
-  color: string;
-  strokeW: number;
-  draggable: boolean;
-}) {
-  const hitProps = draggable ? { 'data-text-markup-id': id, style: { pointerEvents: 'auto' as const, cursor: 'move' } } : {};
-  return (
-    <text x={point.x} y={point.y} fontSize={strokeW * 6.5} fill={color} fontWeight={600} {...hitProps}>
-      {text}
-    </text>
-  );
 }
 
 function useLayerRender(
@@ -191,6 +189,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const finishMarkup = useCompareStore((s) => s.finishMarkup);
   const updateMarkup = useCompareStore((s) => s.updateMarkup);
   const updateMarkupQuiet = useCompareStore((s) => s.updateMarkupQuiet);
+  const selectedMarkupId = useCompareStore((s) => s.selectedMarkupId);
+  const setSelectedMarkupId = useCompareStore((s) => s.setSelectedMarkupId);
 
   const viewMode = useCompareStore((s) => s.viewMode);
   const swipePosition = useCompareStore((s) => s.swipePosition);
@@ -216,7 +216,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const swipeDrag = useRef(false);
   const regionDragStart = useRef<Point | null>(null);
   const [regionDraft, setRegionDraft] = useState<ExportRegion | null>(null);
-  const textDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoint: Point } | null>(null);
+  const markupDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoints: Point[] } | null>(null);
+  const handleDrag = useRef<{ id: string; index: number } | null>(null);
 
   const activeRevisionId = comparison?.activeRevisionId ?? '';
   const activeRevision = comparison?.revisions.find((r) => r.id === activeRevisionId);
@@ -343,13 +344,22 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
 
   const handleMouseDown = (e: MouseEvent) => {
     if (toolMode === 'select') {
-      const target = (e.target as Element).closest?.('[data-text-markup-id]');
-      const id = target?.getAttribute('data-text-markup-id');
-      const markup = id ? activeRevision?.markups.find((m) => m.id === id) : undefined;
-      if (markup) {
-        textDrag.current = { id: markup.id, startClientX: e.clientX, startClientY: e.clientY, startPoint: markup.points[0] };
+      const handleTarget = (e.target as Element).closest?.('[data-handle-markup-id]');
+      if (handleTarget) {
+        const id = handleTarget.getAttribute('data-handle-markup-id')!;
+        const index = Number(handleTarget.getAttribute('data-handle-index'));
+        handleDrag.current = { id, index };
         return;
       }
+      const bodyTarget = (e.target as Element).closest?.('[data-markup-id]');
+      const id = bodyTarget?.getAttribute('data-markup-id');
+      const markup = id ? activeRevision?.markups.find((m) => m.id === id) : undefined;
+      if (markup) {
+        setSelectedMarkupId(markup.id);
+        markupDrag.current = { id: markup.id, startClientX: e.clientX, startClientY: e.clientY, startPoints: markup.points };
+        return;
+      }
+      if (selectedMarkupId) setSelectedMarkupId(null);
     }
     if (toolMode === 'pan' || e.button === 1) {
       isPanning.current = true;
@@ -371,12 +381,20 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       updatePanDrag(e.clientX, e.clientY);
       return;
     }
-    if (textDrag.current) {
-      const dx = (e.clientX - textDrag.current.startClientX) / zoom;
-      const dy = (e.clientY - textDrag.current.startClientY) / zoom;
-      updateMarkupQuiet(textDrag.current.id, {
-        points: [{ x: textDrag.current.startPoint.x + dx, y: textDrag.current.startPoint.y + dy }],
-      });
+    if (handleDrag.current) {
+      const native = screenToNative(e.clientX, e.clientY);
+      const markup = activeRevision?.markups.find((m) => m.id === handleDrag.current!.id);
+      if (markup) {
+        const points = markup.points.map((p, i) => (i === handleDrag.current!.index ? native : p));
+        updateMarkupQuiet(handleDrag.current.id, { points });
+      }
+      return;
+    }
+    if (markupDrag.current) {
+      const dx = (e.clientX - markupDrag.current.startClientX) / zoom;
+      const dy = (e.clientY - markupDrag.current.startClientY) / zoom;
+      const points = markupDrag.current.startPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+      updateMarkupQuiet(markupDrag.current.id, { points });
       return;
     }
     if (alignDrag.current) {
@@ -407,9 +425,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     isPanning.current = false;
     endPanDrag();
     swipeDrag.current = false;
-    if (textDrag.current) {
-      updateMarkup(textDrag.current.id, {});
-      textDrag.current = null;
+    if (handleDrag.current) {
+      updateMarkup(handleDrag.current.id, {});
+      handleDrag.current = null;
+    }
+    if (markupDrag.current) {
+      updateMarkup(markupDrag.current.id, {});
+      markupDrag.current = null;
     }
     if (alignDrag.current) {
       alignDrag.current = null;
@@ -818,6 +840,32 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             {annotationsVisible && (activeRevision?.markups ?? []).map((m) => (
               <MarkupShape key={m.id} markup={m} strokeW={strokeW} draggable={toolMode === 'select'} />
             ))}
+
+            {/* Resize/reshape handles for the selected markup (select tool only) */}
+            {toolMode === 'select' &&
+              selectedMarkupId &&
+              (() => {
+                const selected = (activeRevision?.markups ?? []).find((m) => m.id === selectedMarkupId);
+                if (!selected) return null;
+                return (
+                  <g>
+                    {selected.points.map((p, i) => (
+                      <circle
+                        key={i}
+                        cx={p.x}
+                        cy={p.y}
+                        r={vertexR * 1.4}
+                        fill="#fff"
+                        stroke="#2563eb"
+                        strokeWidth={strokeW * 1.2}
+                        data-handle-markup-id={selected.id}
+                        data-handle-index={i}
+                        style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      />
+                    ))}
+                  </g>
+                );
+              })()}
           </svg>
         )}
 
