@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type MouseEvent } from 'react';
 import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
@@ -80,10 +80,10 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
 }
 
 /**
- * Renders a text markup with its background box sized to the text's actual rendered bounds, not an
- * estimate. When `draggable` (select tool active), the box/text accept pointer events so it can be
- * grabbed and moved anywhere on the plan — the actual drag is handled by the canvas's mouse handlers,
- * which look up the markup via the `data-text-markup-id` attribute set here.
+ * Renders a text markup as plain text, no background box. When `draggable` (select tool active),
+ * it accepts pointer events so it can be grabbed and moved anywhere on the plan — the actual drag is
+ * handled by the canvas's mouse handlers, which look up the markup via the `data-text-markup-id`
+ * attribute set here.
  */
 function TextMarkupLabel({
   id,
@@ -100,36 +100,11 @@ function TextMarkupLabel({
   strokeW: number;
   draggable: boolean;
 }) {
-  const textRef = useRef<SVGTextElement>(null);
-  const [box, setBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!textRef.current) return;
-    const bbox = textRef.current.getBBox();
-    setBox({ x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height });
-  }, [text, strokeW, point.x, point.y]);
-
-  const padX = 3 * strokeW;
-  const padY = 2 * strokeW;
   const hitProps = draggable ? { 'data-text-markup-id': id, style: { pointerEvents: 'auto' as const, cursor: 'move' } } : {};
   return (
-    <g>
-      {box && (
-        <rect
-          x={box.x - padX}
-          y={box.y - padY}
-          width={box.width + padX * 2}
-          height={box.height + padY * 2}
-          fill="#fff"
-          fillOpacity={0.85}
-          rx={3 * strokeW}
-          {...hitProps}
-        />
-      )}
-      <text ref={textRef} x={point.x} y={point.y} fontSize={strokeW * 6.5} fill={color} fontWeight={600} {...hitProps}>
-        {text}
-      </text>
-    </g>
+    <text x={point.x} y={point.y} fontSize={strokeW * 6.5} fill={color} fontWeight={600} {...hitProps}>
+      {text}
+    </text>
   );
 }
 
