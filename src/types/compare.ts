@@ -90,6 +90,9 @@ export interface Comparison {
   revisedVisible: boolean;
   originalColorTint: string;
   revisedColorTint: string;
+  /** When true, render this layer with the PDF's own colors instead of the flat tint. */
+  originalUseSourceColors: boolean;
+  revisedUseSourceColors: boolean;
   pages: Record<number, ComparisonPage>;
   markups: Markup[];
   measurements: Measurement[];

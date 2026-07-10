@@ -8,10 +8,11 @@ import PdfViewer from './components/PdfViewer';
 import CalibrationDialog from './components/CalibrationDialog';
 import RoomPanel from './components/RoomPanel';
 import QuantityTable from './components/QuantityTable';
+import MeasureToolbar from './components/MeasureToolbar';
 import CompareStartScreen from './components/compare/CompareStartScreen';
 import CompareWorkspace from './components/compare/CompareWorkspace';
 
-type SidebarTab = 'rooms' | 'quantities';
+type SidebarTab = 'rooms' | 'quantities' | 'measure';
 type HomeMode = 'takeoff' | 'compare';
 
 function Workspace() {
@@ -34,8 +35,15 @@ function Workspace() {
             <button className={tab === 'quantities' ? 'active' : ''} onClick={() => setTab('quantities')}>
               טבלת כמויות
             </button>
+            <button className={tab === 'measure' ? 'active' : ''} onClick={() => setTab('measure')}>
+              מדידה
+            </button>
           </div>
-          <div className="sidebar-content">{tab === 'rooms' ? <RoomPanel /> : <QuantityTable />}</div>
+          <div className="sidebar-content">
+            {tab === 'rooms' && <RoomPanel />}
+            {tab === 'quantities' && <QuantityTable />}
+            {tab === 'measure' && <MeasureToolbar />}
+          </div>
         </div>
       </div>
     </div>

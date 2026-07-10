@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
-import type { Calibration, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
+import type { Calibration, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
 import { saveProject as dbSaveProject } from '../db/database';
 
 const ROOM_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#c026d3', '#65a30d'];
@@ -19,6 +19,7 @@ export function createEmptyProject(name: string, pdfFileName: string): Project {
     pdfFileName,
     pages: {},
     rooms: [],
+    measurements: [],
     defaultCladdingHeightM: 2.0,
     defaultTilingWastePercent: 0,
     defaultCladdingWastePercent: 0,
@@ -48,6 +49,8 @@ interface AppState {
   selectedRoomId: string | null;
   calibrationPoints: Point[];
   drawingPoints: Point[];
+  measureTool: MeasureTool | null;
+  measurePoints: Point[];
   dirty: boolean;
 
   setProject: (p: Project | null) => void;
@@ -64,6 +67,12 @@ interface AppState {
   clearDrawingPoints: () => void;
   finishDrawing: () => void;
   finishRectangle: (p1: Point, p2: Point) => void;
+
+  setMeasureTool: (t: MeasureTool | null) => void;
+  addMeasurePoint: (p: Point) => void;
+  clearMeasurePoints: () => void;
+  finishMeasurement: (m: Measurement) => void;
+  deleteMeasurement: (id: string) => void;
 
   updateRoom: (id: string, patch: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
@@ -98,12 +107,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedRoomId: null,
   calibrationPoints: [],
   drawingPoints: [],
+  measureTool: null,
+  measurePoints: [],
   dirty: false,
 
   setProject: (p) => set({ project: p, currentPage: 1, selectedRoomId: null }),
-  setCurrentPage: (n) => set({ currentPage: n, selectedRoomId: null, drawingPoints: [], calibrationPoints: [] }),
+  setCurrentPage: (n) =>
+    set({ currentPage: n, selectedRoomId: null, drawingPoints: [], calibrationPoints: [], measurePoints: [] }),
   setNumPages: (n) => set({ numPages: n }),
-  setToolMode: (m) => set({ toolMode: m, calibrationPoints: [], drawingPoints: [] }),
+  setToolMode: (m) => set({ toolMode: m, calibrationPoints: [], drawingPoints: [], measurePoints: [] }),
   setSelectedRoomId: (id) => set({ selectedRoomId: id }),
 
   addCalibrationPoint: (p) => {
@@ -151,6 +163,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     const room = newRoom(project, currentPage, points);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, toolMode: 'select' });
+    scheduleSave(get);
+  },
+
+  setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
+  addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
+  clearMeasurePoints: () => set({ measurePoints: [] }),
+  finishMeasurement: (m) => {
+    const { project } = get();
+    if (!project) return;
+    const measurements = [...(project.measurements ?? []), m];
+    set({ project: { ...project, measurements, updatedAt: Date.now() }, measurePoints: [] });
+    scheduleSave(get);
+  },
+  deleteMeasurement: (id) => {
+    const { project } = get();
+    if (!project) return;
+    const measurements = (project.measurements ?? []).filter((m) => m.id !== id);
+    set({ project: { ...project, measurements, updatedAt: Date.now() } });
     scheduleSave(get);
   },
 

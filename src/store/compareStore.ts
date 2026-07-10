@@ -33,6 +33,8 @@ export function createEmptyComparison(name: string, apartmentNumber: string, ori
     revisedVisible: true,
     originalColorTint: '#9ca3af',
     revisedColorTint: '#ef4444',
+    originalUseSourceColors: false,
+    revisedUseSourceColors: false,
     pages: {},
     markups: [],
     measurements: [],
@@ -93,6 +95,7 @@ interface CompareState {
   setLayerOpacity: (layer: 'original' | 'revised', opacity: number) => void;
   setLayerVisible: (layer: 'original' | 'revised', visible: boolean) => void;
   setLayerTint: (layer: 'original' | 'revised', color: string) => void;
+  setLayerSourceColors: (layer: 'original' | 'revised', useSource: boolean) => void;
 
   startCalibration: (layer: 'original' | 'revised') => void;
   addCalibrationPoint: (p: Point) => void;
@@ -229,6 +232,13 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const { comparison } = get();
     if (!comparison) return;
     const patch = layer === 'original' ? { originalColorTint: color } : { revisedColorTint: color };
+    set({ comparison: touch({ ...comparison, ...patch }) });
+    scheduleSave(get);
+  },
+  setLayerSourceColors: (layer, useSource) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    const patch = layer === 'original' ? { originalUseSourceColors: useSource } : { revisedUseSourceColors: useSource };
     set({ comparison: touch({ ...comparison, ...patch }) });
     scheduleSave(get);
   },

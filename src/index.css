@@ -388,6 +388,7 @@ input:focus, textarea:focus {
 .pdf-viewport.tool-calibrate { cursor: crosshair; }
 .pdf-viewport.tool-draw { cursor: crosshair; }
 .pdf-viewport.tool-draw-rect { cursor: crosshair; }
+.pdf-viewport.tool-measure { cursor: crosshair; }
 
 .pdf-content {
   position: absolute;
@@ -704,9 +705,24 @@ input:focus, textarea:focus {
   width: 100%;
   margin-bottom: 8px;
 }
+.source-color-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.source-color-toggle input {
+  width: auto;
+}
 .tint-swatches {
   display: flex;
   gap: 6px;
+}
+.tint-swatches.disabled {
+  opacity: 0.35;
 }
 .tint-swatch {
   width: 18px;
@@ -717,6 +733,9 @@ input:focus, textarea:focus {
 }
 .tint-swatch.active {
   border-color: var(--text-h);
+}
+.tint-swatch:disabled {
+  cursor: not-allowed;
 }
 
 /* ---------- compare: alignment tools ---------- */

@@ -87,13 +87,31 @@ export interface Project {
   pdfFileName: string;
   pages: Record<number, PageData>;
   rooms: Room[];
+  measurements: Measurement[];
   defaultCladdingHeightM: number;
   defaultTilingWastePercent: number;
   defaultCladdingWastePercent: number;
   defaultPanelsWastePercent: number;
 }
 
-export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect';
+export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect' | 'measure';
+
+export type MeasureTool = 'distance' | 'area' | 'perimeter';
+
+export const MEASURE_TOOL_LABELS: Record<MeasureTool, string> = {
+  distance: 'מרחק',
+  area: 'שטח',
+  perimeter: 'היקף',
+};
+
+export interface Measurement {
+  id: string;
+  pageNumber: number;
+  tool: MeasureTool;
+  points: Point[];
+  /** Computed display value, cached at creation time (e.g. "3.24 מ'" or "12.5 מ\"ר"). */
+  label: string;
+}
 
 /** One row per room, matching the contractor-facing quantities report layout. */
 export interface RoomQuantitySummary {

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../lib/planSource';
 import { useAppStore } from '../store/appStore';
 import type { Point } from '../types';
-import { nearestPointIndex, polygonAreaPx } from '../lib/geometry';
+import { MEASURE_TOOL_LABELS } from '../types';
+import { distancePx, nearestPointIndex, polygonAreaM2, polygonAreaPx, polygonPerimeterM, pxToMeters, round } from '../lib/geometry';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
 
@@ -37,6 +39,11 @@ export default function PdfViewer() {
   const moveRoomPoint = useAppStore((s) => s.moveRoomPoint);
   const deleteRoomPoint = useAppStore((s) => s.deleteRoomPoint);
   const persist = useAppStore((s) => s.persist);
+  const measureTool = useAppStore((s) => s.measureTool);
+  const measurePoints = useAppStore((s) => s.measurePoints);
+  const addMeasurePoint = useAppStore((s) => s.addMeasurePoint);
+  const clearMeasurePoints = useAppStore((s) => s.clearMeasurePoints);
+  const finishMeasurement = useAppStore((s) => s.finishMeasurement);
 
   const { containerRef, zoom, pan, screenToNative, handleWheel, fitToContainer, beginPanDrag, updatePanDrag, endPanDrag } =
     useCanvasTransform();
@@ -92,19 +99,43 @@ export default function PdfViewer() {
   }, [pageSize]);
 
   const room = project?.rooms.find((r) => r.id === selectedRoomId) ?? null;
+  const metersPerPixel = project?.pages[currentPage]?.calibration?.metersPerPixel ?? 0;
 
   useEffect(() => {
     if (drawingPoints.length === 0) setHoverPoint(null);
   }, [drawingPoints.length]);
+
+  const finishOpenMeasurement = () => {
+    if (!measureTool || measurePoints.length < 2 || !metersPerPixel) {
+      clearMeasurePoints();
+      return;
+    }
+    let label = '';
+    if (measureTool === 'distance') {
+      const m = pxToMeters(distancePx(measurePoints[0], measurePoints[1]), metersPerPixel);
+      label = `${round(m, 2)} מ'`;
+    } else if (measureTool === 'area') {
+      const m2 = polygonAreaM2(measurePoints, metersPerPixel);
+      label = `${round(m2, 2)} מ"ר`;
+    } else {
+      const m = polygonPerimeterM(measurePoints, true, metersPerPixel);
+      label = `${round(m, 2)} מ'`;
+    }
+    finishMeasurement({ id: uuid(), pageNumber: currentPage, tool: measureTool, points: measurePoints, label });
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') spaceHeld.current = true;
       if (e.key === 'Escape') {
         clearDrawingPoints();
+        clearMeasurePoints();
       }
       if (e.key === 'Enter' && drawingPoints.length >= 3) {
         finishDrawing();
+      }
+      if (e.key === 'Enter' && measureTool && measureTool !== 'distance' && measurePoints.length >= 3) {
+        finishOpenMeasurement();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -116,7 +147,16 @@ export default function PdfViewer() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [clearDrawingPoints, drawingPoints.length, finishDrawing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearDrawingPoints, drawingPoints.length, finishDrawing, measureTool, measurePoints]);
+
+  // Auto-finish distance measurement once 2 points are placed.
+  useEffect(() => {
+    if (measureTool === 'distance' && measurePoints.length === 2) {
+      finishOpenMeasurement();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measurePoints, measureTool]);
 
   const handleMouseDown = (e: MouseEvent) => {
     const isPanGesture = toolMode === 'pan' || e.button === 1 || spaceHeld.current;
@@ -199,6 +239,23 @@ export default function PdfViewer() {
         finishRectangle(drawingPoints[0], native);
         setHoverPoint(null);
       }
+      return;
+    }
+
+    if (toolMode === 'measure' && measureTool) {
+      if (measureTool === 'distance') {
+        addMeasurePoint(native);
+        return;
+      }
+      if (measurePoints.length >= 3) {
+        const first = measurePoints[0];
+        const distScreen = Math.hypot(native.x - first.x, native.y - first.y) * zoom;
+        if (distScreen < 10) {
+          finishOpenMeasurement();
+          return;
+        }
+      }
+      addMeasurePoint(native);
       return;
     }
 
@@ -319,6 +376,44 @@ export default function PdfViewer() {
                 ))}
               </g>
             )}
+
+            {/* Measurement in progress */}
+            {measurePoints.length > 0 && (
+              <g>
+                <polyline
+                  points={measurePoints.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="#0ea5e9"
+                  strokeWidth={strokeW}
+                  strokeDasharray={`${4 / zoom} ${4 / zoom}`}
+                />
+                {measurePoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={vertexR} fill="#0ea5e9" />
+                ))}
+              </g>
+            )}
+
+            {/* Finished measurements on this page */}
+            {(project.measurements ?? [])
+              .filter((m) => m.pageNumber === currentPage)
+              .map((m) => (
+                <g key={m.id}>
+                  {m.tool === 'distance' ? (
+                    <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke="#0ea5e9" strokeWidth={strokeW} />
+                  ) : (
+                    <polygon
+                      points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                      fill="#0ea5e9"
+                      fillOpacity={0.12}
+                      stroke="#0ea5e9"
+                      strokeWidth={strokeW}
+                    />
+                  )}
+                  <text x={m.points[0].x} y={m.points[0].y - 8 / zoom} fontSize={12 / zoom} fill="#0ea5e9" fontWeight={600}>
+                    {MEASURE_TOOL_LABELS[m.tool]}: {m.label}
+                  </text>
+                </g>
+              ))}
           </svg>
         )}
       </div>

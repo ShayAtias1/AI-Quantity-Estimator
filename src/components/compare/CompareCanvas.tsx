@@ -84,6 +84,7 @@ function useLayerRender(
   layer: 'original' | 'revised',
   pageNumber: number,
   tint: string,
+  useSourceColors: boolean,
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   onSize: (size: { width: number; height: number }) => void,
   onNumPages: (n: number) => void
@@ -115,10 +116,10 @@ function useLayerRender(
     onSize(size);
     canvas.style.width = `${size.width}px`;
     canvas.style.height = `${size.height}px`;
-    const handle = source.renderTinted(canvas, RENDER_SCALE, tint);
+    const handle = useSourceColors ? source.render(canvas, RENDER_SCALE) : source.renderTinted(canvas, RENDER_SCALE, tint);
     return () => handle.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, tint]);
+  }, [source, tint, useSourceColors]);
 }
 
 export interface CompareCanvasHandle {
@@ -185,8 +186,26 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const pivot: Point = { x: revisedPageSize.width / 2, y: revisedPageSize.height / 2 };
   const metersPerPixel = page?.originalCalibration?.metersPerPixel ?? page?.revisedCalibration?.metersPerPixel ?? 0;
 
-  useLayerRender(comparison?.id, 'original', originalPageNumber, comparison?.originalColorTint ?? '#9ca3af', originalCanvasRef, setPageSize, setOriginalNumPages);
-  useLayerRender(comparison?.id, 'revised', revisedPageNumber, comparison?.revisedColorTint ?? '#ef4444', revisedCanvasRef, setRevisedPageSize, setRevisedNumPages);
+  useLayerRender(
+    comparison?.id,
+    'original',
+    originalPageNumber,
+    comparison?.originalColorTint ?? '#9ca3af',
+    comparison?.originalUseSourceColors ?? false,
+    originalCanvasRef,
+    setPageSize,
+    setOriginalNumPages
+  );
+  useLayerRender(
+    comparison?.id,
+    'revised',
+    revisedPageNumber,
+    comparison?.revisedColorTint ?? '#ef4444',
+    comparison?.revisedUseSourceColors ?? false,
+    revisedCanvasRef,
+    setRevisedPageSize,
+    setRevisedNumPages
+  );
 
   useEffect(() => {
     if (!pageSize.width) return;

@@ -7,17 +7,21 @@ function LayerRow({
   visible,
   opacity,
   tint,
+  useSourceColors,
   onToggleVisible,
   onOpacityChange,
   onTintChange,
+  onToggleSourceColors,
 }: {
   title: string;
   visible: boolean;
   opacity: number;
   tint: string;
+  useSourceColors: boolean;
   onToggleVisible: () => void;
   onOpacityChange: (v: number) => void;
   onTintChange: (c: string) => void;
+  onToggleSourceColors: (v: boolean) => void;
 }) {
   return (
     <div className="layer-row">
@@ -26,7 +30,7 @@ function LayerRow({
           {visible ? '👁' : '🚫'}
         </button>
         <span className="layer-title">{title}</span>
-        <span className="color-dot" style={{ background: tint }} />
+        {!useSourceColors && <span className="color-dot" style={{ background: tint }} />}
       </div>
       <input
         type="range"
@@ -37,13 +41,18 @@ function LayerRow({
         onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
         disabled={!visible}
       />
-      <div className="tint-swatches">
+      <label className="source-color-toggle">
+        <input type="checkbox" checked={useSourceColors} onChange={(e) => onToggleSourceColors(e.target.checked)} />
+        הצג בצבע המקורי של התוכנית
+      </label>
+      <div className={`tint-swatches ${useSourceColors ? 'disabled' : ''}`}>
         {TINT_PRESETS.map((c) => (
           <button
             key={c}
-            className={`tint-swatch ${c === tint ? 'active' : ''}`}
+            className={`tint-swatch ${c === tint && !useSourceColors ? 'active' : ''}`}
             style={{ background: c }}
             onClick={() => onTintChange(c)}
+            disabled={useSourceColors}
             title={c}
           />
         ))}
@@ -57,6 +66,7 @@ export default function LayerPanel() {
   const setLayerOpacity = useCompareStore((s) => s.setLayerOpacity);
   const setLayerVisible = useCompareStore((s) => s.setLayerVisible);
   const setLayerTint = useCompareStore((s) => s.setLayerTint);
+  const setLayerSourceColors = useCompareStore((s) => s.setLayerSourceColors);
 
   if (!comparison) return null;
 
@@ -68,18 +78,22 @@ export default function LayerPanel() {
         visible={comparison.originalVisible}
         opacity={comparison.originalOpacity}
         tint={comparison.originalColorTint}
+        useSourceColors={comparison.originalUseSourceColors}
         onToggleVisible={() => setLayerVisible('original', !comparison.originalVisible)}
         onOpacityChange={(v) => setLayerOpacity('original', v)}
         onTintChange={(c) => setLayerTint('original', c)}
+        onToggleSourceColors={(v) => setLayerSourceColors('original', v)}
       />
       <LayerRow
         title="תוכנית מעודכנת"
         visible={comparison.revisedVisible}
         opacity={comparison.revisedOpacity}
         tint={comparison.revisedColorTint}
+        useSourceColors={comparison.revisedUseSourceColors}
         onToggleVisible={() => setLayerVisible('revised', !comparison.revisedVisible)}
         onOpacityChange={(v) => setLayerOpacity('revised', v)}
         onTintChange={(c) => setLayerTint('revised', c)}
+        onToggleSourceColors={(v) => setLayerSourceColors('revised', v)}
       />
     </div>
   );
