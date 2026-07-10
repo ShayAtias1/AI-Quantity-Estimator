@@ -174,6 +174,7 @@ interface CompareState {
   /** Like updateMarkup but skips the autosave schedule — for continuous drag updates. */
   updateMarkupQuiet: (id: string, patch: Partial<Markup>) => void;
   deleteMarkup: (id: string) => void;
+  duplicateMarkup: (id: string) => void;
   setSelectedMarkupId: (id: string | null) => void;
 
   setAreaKindColor: (kind: AreaKind, color: string) => void;
@@ -509,6 +510,23 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     if (!comparison) return;
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: r.markups.filter((m) => m.id !== id) }));
     set({ comparison: touch({ ...comparison, revisions }), selectedMarkupId: get().selectedMarkupId === id ? null : get().selectedMarkupId });
+    scheduleSave(get);
+  },
+  duplicateMarkup: (id) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    const active = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
+    const original = active?.markups.find((m) => m.id === id);
+    if (!original) return;
+    const offset = 20;
+    const copy: Markup = {
+      ...original,
+      id: uuid(),
+      points: original.points.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+      createdAt: Date.now(),
+    };
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: [...r.markups, copy] }));
+    set({ comparison: touch({ ...comparison, revisions }), selectedMarkupId: copy.id });
     scheduleSave(get);
   },
   setSelectedMarkupId: (id) => set({ selectedMarkupId: id }),

@@ -881,6 +881,17 @@ input:focus, textarea:focus {
   padding: 6px 10px;
   font-size: 12.5px;
 }
+.markup-toolbar .measurement-list li {
+  cursor: pointer;
+}
+.markup-toolbar .measurement-list li.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.list-item-actions {
+  display: flex;
+  gap: 4px;
+}
 
 /* ---------- compare: area kind selection & summary ---------- */
 .area-kind-row {

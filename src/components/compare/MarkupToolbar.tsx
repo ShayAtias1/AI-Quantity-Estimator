@@ -21,6 +21,9 @@ export default function MarkupToolbar() {
   const markupColor = useCompareStore((s) => s.markupColor);
   const setMarkupColor = useCompareStore((s) => s.setMarkupColor);
   const deleteMarkup = useCompareStore((s) => s.deleteMarkup);
+  const duplicateMarkup = useCompareStore((s) => s.duplicateMarkup);
+  const selectedMarkupId = useCompareStore((s) => s.selectedMarkupId);
+  const setSelectedMarkupId = useCompareStore((s) => s.setSelectedMarkupId);
 
   if (!comparison) return null;
   const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
@@ -66,14 +69,23 @@ export default function MarkupToolbar() {
       {markups.length > 0 && (
         <ul className="measurement-list">
           {markups.map((m) => (
-            <li key={m.id}>
+            <li
+              key={m.id}
+              className={m.id === selectedMarkupId ? 'selected' : ''}
+              onClick={() => setSelectedMarkupId(m.id === selectedMarkupId ? null : m.id)}
+            >
               <span>
                 <span className="color-dot" style={{ background: m.color }} /> {MARKUP_TOOL_LABELS[m.tool]}
                 {m.text ? `: ${m.text}` : ''}
               </span>
-              <button className="icon-btn danger" onClick={() => deleteMarkup(m.id)}>
-                ✕
-              </button>
+              <span className="list-item-actions">
+                <button className="icon-btn" title="שכפל" onClick={(e) => { e.stopPropagation(); duplicateMarkup(m.id); }}>
+                  ⧉
+                </button>
+                <button className="icon-btn danger" title="מחק" onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }}>
+                  ✕
+                </button>
+              </span>
             </li>
           ))}
         </ul>

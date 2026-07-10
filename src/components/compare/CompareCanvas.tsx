@@ -191,6 +191,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const updateMarkupQuiet = useCompareStore((s) => s.updateMarkupQuiet);
   const selectedMarkupId = useCompareStore((s) => s.selectedMarkupId);
   const setSelectedMarkupId = useCompareStore((s) => s.setSelectedMarkupId);
+  const duplicateMarkup = useCompareStore((s) => s.duplicateMarkup);
 
   const viewMode = useCompareStore((s) => s.viewMode);
   const swipePosition = useCompareStore((s) => s.swipePosition);
@@ -336,11 +337,15 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         if (measureTool && measureTool !== 'distance' && measurePoints.length >= 3) finishOpenMeasurement();
         if (markupTool === 'cloud' && markupPoints.length >= 3) finishOpenMarkup();
       }
+      if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey) && selectedMarkupId) {
+        e.preventDefault();
+        duplicateMarkup(selectedMarkupId);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureTool, measurePoints, markupTool, markupPoints]);
+  }, [measureTool, measurePoints, markupTool, markupPoints, selectedMarkupId]);
 
   const handleMouseDown = (e: MouseEvent) => {
     if (toolMode === 'select') {
