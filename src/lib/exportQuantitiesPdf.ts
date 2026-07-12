@@ -99,7 +99,7 @@ async function renderFramedPlanPage(
       const centroid = polygonCentroid(r.points);
       const labelX = centroid.x * mult;
       const labelY = centroid.y * mult + headerH;
-      ctx.font = `bold ${13 * mult}px ${FONT}`;
+      ctx.font = `bold ${10.5 * mult}px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3 * mult;

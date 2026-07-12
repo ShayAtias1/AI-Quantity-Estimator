@@ -338,7 +338,7 @@ export default function PdfViewer() {
                       (() => {
                         const c = polygonCentroid(r.points);
                         return (
-                          <text x={c.x} y={c.y} fontSize={13 / zoom} fill={r.color} fontWeight={600} textAnchor="middle" dominantBaseline="middle">
+                          <text x={c.x} y={c.y} fontSize={10.5 / zoom} fill={r.color} fontWeight={600} textAnchor="middle" dominantBaseline="middle">
                             {r.name}
                           </text>
                         );
