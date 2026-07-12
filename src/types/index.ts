@@ -104,6 +104,9 @@ export const MEASURE_TOOL_LABELS: Record<MeasureTool, string> = {
   perimeter: 'היקף',
 };
 
+/** How the user draws an area measurement: click a closed polygon, or drag a rectangle's two opposite corners. */
+export type AreaShape = 'polygon' | 'rectangle';
+
 export interface Measurement {
   id: string;
   pageNumber: number;

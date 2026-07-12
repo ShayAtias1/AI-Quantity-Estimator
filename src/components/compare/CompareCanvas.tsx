@@ -8,16 +8,9 @@ import { AREA_KIND_LABELS, IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../..
 import type { Point } from '../../types';
 import type { AreaKind, ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
-import { polygonAreaM2, polygonPerimeterM, distancePx, pxToMeters, round, cloudPath } from '../../lib/geometry';
+import { polygonAreaM2, polygonPerimeterM, distancePx, pxToMeters, round, cloudPath, snapOrtho } from '../../lib/geometry';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
-
-/** Snaps `candidate` so the segment from `from` is purely horizontal or vertical, whichever it's closer to. */
-function snapOrtho(from: Point, candidate: Point): Point {
-  const dx = candidate.x - from.x;
-  const dy = candidate.y - from.y;
-  return Math.abs(dx) >= Math.abs(dy) ? { x: candidate.x, y: from.y } : { x: from.x, y: candidate.y };
-}
 
 function arrowHeadPoints(from: Point, to: Point, size: number): string {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);

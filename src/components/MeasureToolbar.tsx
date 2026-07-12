@@ -1,8 +1,12 @@
 import { useAppStore } from '../store/appStore';
-import { MEASURE_TOOL_LABELS, type MeasureTool } from '../types';
+import { MEASURE_TOOL_LABELS, type AreaShape, type MeasureTool } from '../types';
 
 const MEASURE_TOOLS: MeasureTool[] = ['distance', 'area', 'perimeter'];
 const MEASURE_ICONS: Record<MeasureTool, string> = { distance: '📏', area: '⬛', perimeter: '⭕' };
+const AREA_SHAPES: { shape: AreaShape; label: string; icon: string }[] = [
+  { shape: 'polygon', label: 'פוליגון', icon: '⬠' },
+  { shape: 'rectangle', label: 'מלבן', icon: '▭' },
+];
 
 export default function MeasureToolbar() {
   const project = useAppStore((s) => s.project);
@@ -11,6 +15,10 @@ export default function MeasureToolbar() {
   const measureTool = useAppStore((s) => s.measureTool);
   const setMeasureTool = useAppStore((s) => s.setMeasureTool);
   const measurePoints = useAppStore((s) => s.measurePoints);
+  const areaShape = useAppStore((s) => s.areaShape);
+  const setAreaShape = useAppStore((s) => s.setAreaShape);
+  const orthoSnap = useAppStore((s) => s.orthoSnap);
+  const setOrthoSnap = useAppStore((s) => s.setOrthoSnap);
   const deleteMeasurement = useAppStore((s) => s.deleteMeasurement);
 
   if (!project) return null;
@@ -41,11 +49,37 @@ export default function MeasureToolbar() {
           </button>
         ))}
       </div>
+
+      {toolMode === 'measure' && measureTool === 'area' && (
+        <div className="work-item-add-row">
+          {AREA_SHAPES.map(({ shape, label, icon }) => (
+            <button
+              key={shape}
+              className={`tool-btn small-tool ${areaShape === shape ? 'active' : ''}`}
+              onClick={() => setAreaShape(shape)}
+            >
+              <span className="tool-icon">{icon}</span>
+              <span className="tool-label">{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {toolMode === 'measure' &&
+        (measureTool === 'distance' || measureTool === 'perimeter' || (measureTool === 'area' && areaShape === 'polygon')) && (
+          <label className="source-color-toggle">
+            <input type="checkbox" checked={orthoSnap} onChange={(e) => setOrthoSnap(e.target.checked)} />
+            קווים ישרים בלבד (90°)
+          </label>
+        )}
+
       {toolMode === 'measure' && measureTool && (
         <p className="alignment-hint">
           {measureTool === 'distance'
             ? 'לחץ 2 נקודות כדי למדוד מרחק'
-            : `לחץ נקודות ולסגור ליד הנקודה הראשונה (${measurePoints.length} נקודות)`}
+            : measureTool === 'area' && areaShape === 'rectangle'
+              ? 'לחץ פינת התחלה וסיום למלבן'
+              : `לחץ נקודות ולסגור ליד הנקודה הראשונה (${measurePoints.length} נקודות)`}
         </p>
       )}
 

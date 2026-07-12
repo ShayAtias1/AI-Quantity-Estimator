@@ -29,6 +29,13 @@ export function distancePx(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
+/** Snaps `candidate` so the segment from `from` is purely horizontal or vertical, whichever it's closer to. */
+export function snapOrtho(from: Point, candidate: Point): Point {
+  const dx = candidate.x - from.x;
+  const dy = candidate.y - from.y;
+  return Math.abs(dx) >= Math.abs(dy) ? { x: candidate.x, y: from.y } : { x: from.x, y: candidate.y };
+}
+
 export function pxToMeters(px: number, metersPerPixel: number): number {
   return px * metersPerPixel;
 }

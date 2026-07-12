@@ -4,7 +4,7 @@ import { loadPdfPlanSource, type PdfPlanSource } from '../lib/planSource';
 import { useAppStore } from '../store/appStore';
 import type { Point } from '../types';
 import { MEASURE_TOOL_LABELS } from '../types';
-import { distancePx, nearestPointIndex, polygonAreaM2, polygonAreaPx, polygonPerimeterM, pxToMeters, round } from '../lib/geometry';
+import { distancePx, nearestPointIndex, polygonAreaM2, polygonAreaPx, polygonPerimeterM, pxToMeters, round, snapOrtho } from '../lib/geometry';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
 
@@ -41,6 +41,8 @@ export default function PdfViewer() {
   const persist = useAppStore((s) => s.persist);
   const measureTool = useAppStore((s) => s.measureTool);
   const measurePoints = useAppStore((s) => s.measurePoints);
+  const areaShape = useAppStore((s) => s.areaShape);
+  const orthoSnap = useAppStore((s) => s.orthoSnap);
   const addMeasurePoint = useAppStore((s) => s.addMeasurePoint);
   const clearMeasurePoints = useAppStore((s) => s.clearMeasurePoints);
   const finishMeasurement = useAppStore((s) => s.finishMeasurement);
@@ -105,23 +107,24 @@ export default function PdfViewer() {
     if (drawingPoints.length === 0) setHoverPoint(null);
   }, [drawingPoints.length]);
 
-  const finishOpenMeasurement = () => {
-    if (!measureTool || measurePoints.length < 2 || !metersPerPixel) {
+  const finishOpenMeasurement = (pointsOverride?: Point[]) => {
+    const points = pointsOverride ?? measurePoints;
+    if (!measureTool || points.length < 2 || !metersPerPixel) {
       clearMeasurePoints();
       return;
     }
     let label = '';
     if (measureTool === 'distance') {
-      const m = pxToMeters(distancePx(measurePoints[0], measurePoints[1]), metersPerPixel);
+      const m = pxToMeters(distancePx(points[0], points[1]), metersPerPixel);
       label = `${round(m, 2)} מ'`;
     } else if (measureTool === 'area') {
-      const m2 = polygonAreaM2(measurePoints, metersPerPixel);
+      const m2 = polygonAreaM2(points, metersPerPixel);
       label = `${round(m2, 2)} מ"ר`;
     } else {
-      const m = polygonPerimeterM(measurePoints, true, metersPerPixel);
+      const m = polygonPerimeterM(points, true, metersPerPixel);
       label = `${round(m, 2)} מ'`;
     }
-    finishMeasurement({ id: uuid(), pageNumber: currentPage, tool: measureTool, points: measurePoints, label });
+    finishMeasurement({ id: uuid(), pageNumber: currentPage, tool: measureTool, points, label });
   };
 
   useEffect(() => {
@@ -244,18 +247,34 @@ export default function PdfViewer() {
 
     if (toolMode === 'measure' && measureTool) {
       if (measureTool === 'distance') {
-        addMeasurePoint(native);
+        const point = orthoSnap && measurePoints.length > 0 ? snapOrtho(measurePoints[0], native) : native;
+        addMeasurePoint(point);
         return;
       }
+      if (measureTool === 'area' && areaShape === 'rectangle') {
+        if (measurePoints.length === 0) {
+          addMeasurePoint(native);
+          return;
+        }
+        const a = measurePoints[0];
+        finishOpenMeasurement([
+          { x: a.x, y: a.y },
+          { x: native.x, y: a.y },
+          { x: native.x, y: native.y },
+          { x: a.x, y: native.y },
+        ]);
+        return;
+      }
+      const point = orthoSnap && measurePoints.length > 0 ? snapOrtho(measurePoints[measurePoints.length - 1], native) : native;
       if (measurePoints.length >= 3) {
         const first = measurePoints[0];
-        const distScreen = Math.hypot(native.x - first.x, native.y - first.y) * zoom;
+        const distScreen = Math.hypot(point.x - first.x, point.y - first.y) * zoom;
         if (distScreen < 10) {
           finishOpenMeasurement();
           return;
         }
       }
-      addMeasurePoint(native);
+      addMeasurePoint(point);
       return;
     }
 

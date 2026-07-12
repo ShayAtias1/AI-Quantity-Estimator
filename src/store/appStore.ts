@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
-import type { Calibration, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
+import type { AreaShape, Calibration, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
 import { saveProject as dbSaveProject } from '../db/database';
 
 const ROOM_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#c026d3', '#65a30d'];
@@ -51,6 +51,9 @@ interface AppState {
   drawingPoints: Point[];
   measureTool: MeasureTool | null;
   measurePoints: Point[];
+  areaShape: AreaShape;
+  /** When on, each new polygon vertex (or the second point of a distance measurement) snaps to a horizontal/vertical line from the previous one. */
+  orthoSnap: boolean;
   dirty: boolean;
 
   setProject: (p: Project | null) => void;
@@ -69,6 +72,8 @@ interface AppState {
   finishRectangle: (p1: Point, p2: Point) => void;
 
   setMeasureTool: (t: MeasureTool | null) => void;
+  setAreaShape: (s: AreaShape) => void;
+  setOrthoSnap: (v: boolean) => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (m: Measurement) => void;
@@ -109,6 +114,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   drawingPoints: [],
   measureTool: null,
   measurePoints: [],
+  areaShape: 'polygon',
+  orthoSnap: false,
   dirty: false,
 
   setProject: (p) => set({ project: p, currentPage: 1, selectedRoomId: null }),
@@ -167,6 +174,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
+  setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
+  setOrthoSnap: (v) => set({ orthoSnap: v }),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (m) => {
