@@ -9,6 +9,7 @@ const DASH = '—';
 
 export default function QuantityTable() {
   const project = useAppStore((s) => s.project);
+  const annotationsVisible = useAppStore((s) => s.annotationsVisible);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
@@ -29,7 +30,7 @@ export default function QuantityTable() {
   const handleExportPdf = async () => {
     setExportingPdf(true);
     try {
-      await exportQuantitiesToPdf(project, summaries, totals);
+      await exportQuantitiesToPdf(project, summaries, totals, annotationsVisible);
     } finally {
       setExportingPdf(false);
     }

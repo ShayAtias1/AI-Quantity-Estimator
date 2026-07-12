@@ -55,7 +55,7 @@ interface AppState {
   /** When on, each new polygon vertex (or the second point of a distance measurement) snaps to a horizontal/vertical line from the previous one. */
   orthoSnap: boolean;
   /** Manual show/hide toggle for the room area markings drawn over the plan. */
-  roomsVisible: boolean;
+  annotationsVisible: boolean;
   dirty: boolean;
 
   setProject: (p: Project | null) => void;
@@ -76,7 +76,7 @@ interface AppState {
   setMeasureTool: (t: MeasureTool | null) => void;
   setAreaShape: (s: AreaShape) => void;
   setOrthoSnap: (v: boolean) => void;
-  toggleRoomsVisible: () => void;
+  toggleAnnotationsVisible: () => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (m: Measurement) => void;
@@ -119,7 +119,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   measurePoints: [],
   areaShape: 'polygon',
   orthoSnap: false,
-  roomsVisible: true,
+  annotationsVisible: true,
   dirty: false,
 
   setProject: (p) => set({ project: p, currentPage: 1, selectedRoomId: null }),
@@ -180,7 +180,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
   setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
   setOrthoSnap: (v) => set({ orthoSnap: v }),
-  toggleRoomsVisible: () => set((s) => ({ roomsVisible: !s.roomsVisible })),
+  toggleAnnotationsVisible: () => set((s) => ({ annotationsVisible: !s.annotationsVisible })),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (m) => {

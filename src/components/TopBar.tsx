@@ -9,8 +9,8 @@ export default function TopBar() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const updateProjectMeta = useAppStore((s) => s.updateProjectMeta);
   const persist = useAppStore((s) => s.persist);
-  const roomsVisible = useAppStore((s) => s.roomsVisible);
-  const toggleRoomsVisible = useAppStore((s) => s.toggleRoomsVisible);
+  const annotationsVisible = useAppStore((s) => s.annotationsVisible);
+  const toggleAnnotationsVisible = useAppStore((s) => s.toggleAnnotationsVisible);
   const [showSettings, setShowSettings] = useState(false);
 
   if (!project) return null;
@@ -44,11 +44,11 @@ export default function TopBar() {
       </div>
 
       <button
-        className={`btn-secondary small ${!roomsVisible ? 'active' : ''}`}
-        onClick={toggleRoomsVisible}
+        className={`btn-secondary small ${!annotationsVisible ? 'active' : ''}`}
+        onClick={toggleAnnotationsVisible}
         title="הצג/הסתר סימוני שטחים על גבי התוכנית"
       >
-        {roomsVisible ? '👁 הסתר סימונים' : '🚫 הצג סימונים'}
+        {annotationsVisible ? '👁 הסתר סימונים' : '🚫 הצג סימונים'}
       </button>
 
       <div className="settings-anchor">

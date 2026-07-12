@@ -5,6 +5,7 @@ import { REPORT_CATEGORY_LABELS } from '../types';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import { groupSummariesByApartment } from './quantities';
+import { polygonCentroid } from './geometry';
 
 const DASH = '—';
 const FONT = "'Segoe UI', sans-serif";
@@ -40,7 +41,12 @@ const DATA_HEADERS = [
 const DATA_WEIGHTS = [8, 20, 15, 14, 14, 12, 11, 11, 11, 11, 14, 14, 13, 13, 22];
 
 /** Renders one PDF-source page (the plan itself) with its rooms overlaid, as a standalone framed image. */
-async function renderFramedPlanPage(project: Project, pageNumber: number, mult: number): Promise<{ dataUrl: string; width: number; height: number } | null> {
+async function renderFramedPlanPage(
+  project: Project,
+  pageNumber: number,
+  mult: number,
+  showMarkings: boolean
+): Promise<{ dataUrl: string; width: number; height: number } | null> {
   let source;
   try {
     ({ source } = await loadPdfPlanSource(project.id, () => loadPdfBlob(project.id), pageNumber));
@@ -71,33 +77,38 @@ async function renderFramedPlanPage(project: Project, pageNumber: number, mult: 
 
   ctx.drawImage(planCanvas, 0, headerH);
 
-  const rooms = project.rooms.filter((r) => r.pageNumber === pageNumber && r.points.length >= 3);
-  for (const r of rooms) {
-    ctx.beginPath();
-    r.points.forEach((p, i) => {
-      const x = p.x * mult;
-      const y = p.y * mult + headerH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.closePath();
-    ctx.fillStyle = r.color;
-    ctx.globalAlpha = 0.22;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = r.color;
-    ctx.lineWidth = 2 * mult;
-    ctx.stroke();
+  if (showMarkings) {
+    const rooms = project.rooms.filter((r) => r.pageNumber === pageNumber && r.points.length >= 3);
+    for (const r of rooms) {
+      ctx.beginPath();
+      r.points.forEach((p, i) => {
+        const x = p.x * mult;
+        const y = p.y * mult + headerH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = r.color;
+      ctx.globalAlpha = 0.22;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 2 * mult;
+      ctx.stroke();
 
-    const labelX = r.points[0].x * mult;
-    const labelY = r.points[0].y * mult + headerH - 8 * mult;
-    ctx.font = `bold ${13 * mult}px ${FONT}`;
-    ctx.textAlign = 'right';
-    ctx.lineWidth = 3 * mult;
-    ctx.strokeStyle = '#ffffff';
-    ctx.strokeText(r.name, labelX, labelY);
-    ctx.fillStyle = r.color;
-    ctx.fillText(r.name, labelX, labelY);
+      const centroid = polygonCentroid(r.points);
+      const labelX = centroid.x * mult;
+      const labelY = centroid.y * mult + headerH;
+      ctx.font = `bold ${13 * mult}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3 * mult;
+      ctx.strokeStyle = '#ffffff';
+      ctx.strokeText(r.name, labelX, labelY);
+      ctx.fillStyle = r.color;
+      ctx.fillText(r.name, labelX, labelY);
+      ctx.textBaseline = 'alphabetic';
+    }
   }
 
   return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
@@ -249,13 +260,18 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
   return pages;
 }
 
-export async function exportQuantitiesToPdf(project: Project, summaries: RoomQuantitySummary[], totals: ReportCategoryTotal[]) {
+export async function exportQuantitiesToPdf(
+  project: Project,
+  summaries: RoomQuantitySummary[],
+  totals: ReportCategoryTotal[],
+  showRoomMarkings: boolean = true
+) {
   const pdfDoc = await PDFDocument.create();
   const mult = 2;
 
   const pageNumbersWithRooms = Array.from(new Set(project.rooms.map((r) => r.pageNumber))).sort((a, b) => a - b);
   for (const pageNumber of pageNumbersWithRooms) {
-    const framed = await renderFramedPlanPage(project, pageNumber, mult);
+    const framed = await renderFramedPlanPage(project, pageNumber, mult, showRoomMarkings);
     if (!framed) continue;
     const pngBytes = await fetch(framed.dataUrl).then((r) => r.arrayBuffer());
     const pngImage = await pdfDoc.embedPng(pngBytes);

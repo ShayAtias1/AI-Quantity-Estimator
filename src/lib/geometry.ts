@@ -25,6 +25,31 @@ export function polygonPerimeterPx(points: Point[], closed: boolean): number {
   return sum;
 }
 
+/** Area-weighted centroid of a polygon (falls back to the vertex average for degenerate/near-zero-area shapes). */
+export function polygonCentroid(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const vertexAverage = () => ({
+    x: points.reduce((s, p) => s + p.x, 0) / points.length,
+    y: points.reduce((s, p) => s + p.y, 0) / points.length,
+  });
+  if (points.length < 3) return vertexAverage();
+
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const cross = a.x * b.y - b.x * a.y;
+    area += cross;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+  }
+  area *= 0.5;
+  if (Math.abs(area) < 1e-9) return vertexAverage();
+  return { x: cx / (6 * area), y: cy / (6 * area) };
+}
+
 export function distancePx(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }

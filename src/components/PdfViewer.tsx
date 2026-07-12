@@ -4,7 +4,7 @@ import { loadPdfPlanSource, type PdfPlanSource } from '../lib/planSource';
 import { useAppStore } from '../store/appStore';
 import type { Point } from '../types';
 import { MEASURE_TOOL_LABELS } from '../types';
-import { distancePx, nearestPointIndex, polygonAreaM2, polygonAreaPx, polygonPerimeterM, pxToMeters, round, snapOrtho } from '../lib/geometry';
+import { distancePx, nearestPointIndex, polygonAreaM2, polygonAreaPx, polygonCentroid, polygonPerimeterM, pxToMeters, round, snapOrtho } from '../lib/geometry';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
 
@@ -27,7 +27,7 @@ export default function PdfViewer() {
   const currentPage = useAppStore((s) => s.currentPage);
   const setNumPages = useAppStore((s) => s.setNumPages);
   const toolMode = useAppStore((s) => s.toolMode);
-  const roomsVisible = useAppStore((s) => s.roomsVisible);
+  const annotationsVisible = useAppStore((s) => s.annotationsVisible);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
   const setSelectedRoomId = useAppStore((s) => s.setSelectedRoomId);
   const calibrationPoints = useAppStore((s) => s.calibrationPoints);
@@ -315,7 +315,7 @@ export default function PdfViewer() {
             height={pageSize.height}
             viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}
           >
-            {roomsVisible &&
+            {annotationsVisible &&
               project.rooms
                 .filter((r) => r.pageNumber === currentPage)
                 .map((r) => {
@@ -334,11 +334,15 @@ export default function PdfViewer() {
                       r.points.map((p, i) => (
                         <circle key={i} cx={p.x} cy={p.y} r={vertexR} fill="#fff" stroke={r.color} strokeWidth={strokeW} />
                       ))}
-                    {isSelected && (
-                      <text x={r.points[0]?.x ?? 0} y={(r.points[0]?.y ?? 0) - 8 / zoom} fontSize={13 / zoom} fill={r.color} fontWeight={600}>
-                        {r.name}
-                      </text>
-                    )}
+                    {isSelected &&
+                      (() => {
+                        const c = polygonCentroid(r.points);
+                        return (
+                          <text x={c.x} y={c.y} fontSize={13 / zoom} fill={r.color} fontWeight={600} textAnchor="middle" dominantBaseline="middle">
+                            {r.name}
+                          </text>
+                        );
+                      })()}
                   </g>
                 );
               })}
@@ -415,9 +419,10 @@ export default function PdfViewer() {
             )}
 
             {/* Finished measurements on this page */}
-            {(project.measurements ?? [])
-              .filter((m) => m.pageNumber === currentPage)
-              .map((m) => (
+            {annotationsVisible &&
+              (project.measurements ?? [])
+                .filter((m) => m.pageNumber === currentPage)
+                .map((m) => (
                 <g key={m.id}>
                   {m.tool === 'distance' ? (
                     <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke="#0ea5e9" strokeWidth={strokeW} />
