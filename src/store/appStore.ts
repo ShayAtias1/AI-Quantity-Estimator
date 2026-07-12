@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
 import type { AreaShape, Calibration, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
 import { saveProject as dbSaveProject } from '../db/database';
+import { createHistoryTracker } from '../lib/undoHistory';
+
+const historyTracker = createHistoryTracker<Project>();
 
 const ROOM_COLORS = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#c026d3', '#65a30d'];
 
@@ -57,6 +60,12 @@ interface AppState {
   /** Manual show/hide toggle for the room area markings drawn over the plan. */
   annotationsVisible: boolean;
   dirty: boolean;
+
+  /** Undo/redo stacks of past/future project snapshots. Not persisted — reset whenever the project changes. */
+  history: Project[];
+  future: Project[];
+  undo: () => void;
+  redo: () => void;
 
   setProject: (p: Project | null) => void;
   setCurrentPage: (n: number) => void;
@@ -121,8 +130,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   orthoSnap: false,
   annotationsVisible: true,
   dirty: false,
+  history: [],
+  future: [],
 
-  setProject: (p) => set({ project: p, currentPage: 1, selectedRoomId: null }),
+  setProject: (p) => {
+    historyTracker.discard();
+    set({ project: p, currentPage: 1, selectedRoomId: null, history: [], future: [] });
+  },
+  undo: () => {
+    historyTracker.flush(get, set);
+    const { project, history, future } = get();
+    if (!project || history.length === 0) return;
+    const previous = history[history.length - 1];
+    set({ project: previous, history: history.slice(0, -1), future: [project, ...future], selectedRoomId: null });
+    scheduleSave(get);
+  },
+  redo: () => {
+    const { project, history, future } = get();
+    if (!project || future.length === 0) return;
+    const next = future[0];
+    set({ project: next, history: [...history, project], future: future.slice(1), selectedRoomId: null });
+    scheduleSave(get);
+  },
   setCurrentPage: (n) =>
     set({ currentPage: n, selectedRoomId: null, drawingPoints: [], calibrationPoints: [], measurePoints: [] }),
   setNumPages: (n) => set({ numPages: n }),
@@ -149,6 +178,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ...project.pages,
       [currentPage]: { pageNumber: currentPage, calibration },
     };
+    historyTracker.push(get, set, project);
     const updated = { ...project, pages, updatedAt: Date.now() };
     set({ project: updated, calibrationPoints: [], toolMode: 'select' });
     scheduleSave(get);
@@ -162,6 +192,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ drawingPoints: [] });
       return;
     }
+    historyTracker.push(get, set, project);
     const room = newRoom(project, currentPage, drawingPoints);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, toolMode: 'select' });
@@ -170,6 +201,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   finishRectangle: (p1, p2) => {
     const { project, currentPage } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const points: Point[] = [p1, { x: p2.x, y: p1.y }, p2, { x: p1.x, y: p2.y }];
     const room = newRoom(project, currentPage, points);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
@@ -186,6 +218,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   finishMeasurement: (m) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const measurements = [...(project.measurements ?? []), m];
     set({ project: { ...project, measurements, updatedAt: Date.now() }, measurePoints: [] });
     scheduleSave(get);
@@ -193,6 +226,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteMeasurement: (id) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const measurements = (project.measurements ?? []).filter((m) => m.id !== id);
     set({ project: { ...project, measurements, updatedAt: Date.now() } });
     scheduleSave(get);
@@ -201,6 +235,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateRoom: (id, patch) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
     const rooms = project.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r));
     set({ project: { ...project, rooms, updatedAt: Date.now() } });
     scheduleSave(get);
@@ -208,6 +243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteRoom: (id) => {
     const { project, selectedRoomId } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const rooms = project.rooms.filter((r) => r.id !== id);
     set({
       project: { ...project, rooms, updatedAt: Date.now() },
@@ -218,6 +254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   addWorkItem: (roomId, type) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const rooms = project.rooms.map((r) => {
       if (r.id !== roomId) return r;
       const item: WorkItem = {
@@ -234,6 +271,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateWorkItem: (roomId, itemId, patch) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
     const rooms = project.rooms.map((r) => {
       if (r.id !== roomId) return r;
       const workItems = r.workItems.map((wi) => (wi.id === itemId ? { ...wi, ...patch } : wi));
@@ -245,6 +283,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeWorkItem: (roomId, itemId) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const rooms = project.rooms.map((r) => {
       if (r.id !== roomId) return r;
       return { ...r, workItems: r.workItems.filter((wi) => wi.id !== itemId) };
@@ -255,6 +294,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   moveRoomPoint: (roomId, pointIndex, p) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
     const rooms = project.rooms.map((r) => {
       if (r.id !== roomId) return r;
       const points = r.points.map((pt, i) => (i === pointIndex ? p : pt));
@@ -265,6 +305,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteRoomPoint: (roomId, pointIndex) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.push(get, set, project);
     const rooms = project.rooms.map((r) => {
       if (r.id !== roomId) return r;
       if (r.points.length <= 3) return r;
@@ -277,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateProjectMeta: (patch) => {
     const { project } = get();
     if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
     set({ project: { ...project, ...patch, updatedAt: Date.now() } });
     scheduleSave(get);
   },

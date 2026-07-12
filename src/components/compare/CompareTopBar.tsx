@@ -12,6 +12,10 @@ export default function CompareTopBar({ onExport, exporting }: { onExport: () =>
   const setExportRegion = useCompareStore((s) => s.setExportRegion);
   const annotationsVisible = useCompareStore((s) => s.annotationsVisible);
   const toggleAnnotationsVisible = useCompareStore((s) => s.toggleAnnotationsVisible);
+  const canUndo = useCompareStore((s) => s.history.length > 0);
+  const canRedo = useCompareStore((s) => s.future.length > 0);
+  const undo = useCompareStore((s) => s.undo);
+  const redo = useCompareStore((s) => s.redo);
 
   if (!comparison) return null;
 
@@ -37,6 +41,14 @@ export default function CompareTopBar({ onExport, exporting }: { onExport: () =>
         placeholder="מספר דירה"
       />
       <ViewModeSwitch />
+      <div className="undo-redo-group">
+        <button className="btn-secondary small" onClick={undo} disabled={!canUndo} title="בטל פעולה (Ctrl+Z)">
+          ↶
+        </button>
+        <button className="btn-secondary small" onClick={redo} disabled={!canRedo} title="בצע שוב (Ctrl+Shift+Z)">
+          ↷
+        </button>
+      </div>
       <button
         className={`btn-secondary small ${!annotationsVisible ? 'active' : ''}`}
         onClick={toggleAnnotationsVisible}

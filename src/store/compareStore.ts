@@ -20,6 +20,9 @@ import type {
 import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Calibration, Point } from '../types';
 import { saveComparison as dbSaveComparison } from '../db/database';
+import { createHistoryTracker } from '../lib/undoHistory';
+
+const historyTracker = createHistoryTracker<Comparison>();
 
 const REVISION_COLOR_PALETTE = ['#ef4444', '#2563eb', '#9333ea', '#f59e0b', '#16a34a', '#0891b2'];
 
@@ -117,6 +120,12 @@ interface CompareState {
 
   /** Manual show/hide toggle for finished markups & measurements — independent of which revision is active. */
   annotationsVisible: boolean;
+
+  /** Undo/redo stacks of past/future comparison snapshots. Not persisted — reset whenever the comparison changes. */
+  history: Comparison[];
+  future: Comparison[];
+  undo: () => void;
+  redo: () => void;
 
   setComparison: (c: Comparison | null) => void;
   setCurrentPageKey: (n: number) => void;
@@ -228,9 +237,49 @@ export const useCompareStore = create<CompareState>((set, get) => ({
 
   exportRegion: null,
   annotationsVisible: true,
+  history: [],
+  future: [],
 
-  setComparison: (c) =>
-    set({ comparison: c, currentPageKey: 1, exportRegion: null, annotationsVisible: true, selectedMarkupId: null, selectedMeasurementId: null }),
+  setComparison: (c) => {
+    historyTracker.discard();
+    set({
+      comparison: c,
+      currentPageKey: 1,
+      exportRegion: null,
+      annotationsVisible: true,
+      selectedMarkupId: null,
+      selectedMeasurementId: null,
+      history: [],
+      future: [],
+    });
+  },
+  undo: () => {
+    historyTracker.flush(get, set);
+    const { comparison, history, future } = get();
+    if (!comparison || history.length === 0) return;
+    const previous = history[history.length - 1];
+    set({
+      comparison: previous,
+      history: history.slice(0, -1),
+      future: [comparison, ...future],
+      selectedMarkupId: null,
+      selectedMeasurementId: null,
+    });
+    scheduleSave(get);
+  },
+  redo: () => {
+    const { comparison, history, future } = get();
+    if (!comparison || future.length === 0) return;
+    const next = future[0];
+    set({
+      comparison: next,
+      history: [...history, comparison],
+      future: future.slice(1),
+      selectedMarkupId: null,
+      selectedMeasurementId: null,
+    });
+    scheduleSave(get);
+  },
   setCurrentPageKey: (n) => set({ currentPageKey: n }),
   setOriginalNumPages: (n) => set({ originalNumPages: n }),
   setRevisedNumPages: (n) => set({ revisedNumPages: n }),
@@ -276,6 +325,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   updatePageQuiet: (pageKey: number, patch: Partial<ComparisonPage>) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.pushDebounced(get, set, comparison);
     const current = comparison.pages[pageKey] ?? emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: { ...current, ...patch } };
     set({ comparison: { ...comparison, pages } });
@@ -304,6 +354,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setLayerOpacity: (layer, opacity) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.pushDebounced(get, set, comparison);
     if (layer === 'original') {
       set({ comparison: touch({ ...comparison, originalOpacity: opacity }) });
     } else {
@@ -315,6 +366,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setLayerVisible: (layer, visible) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     if (layer === 'original') {
       set({ comparison: touch({ ...comparison, originalVisible: visible }) });
     } else {
@@ -326,6 +378,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setLayerTint: (layer, color) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     if (layer === 'original') {
       set({ comparison: touch({ ...comparison, originalColorTint: color }) });
     } else {
@@ -337,6 +390,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setLayerSourceColors: (layer, useSource) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     if (layer === 'original') {
       set({ comparison: touch({ ...comparison, originalUseSourceColors: useSource }) });
     } else {
@@ -349,6 +403,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   addRevision: (fileName) => {
     const { comparison } = get();
     if (!comparison) return null;
+    historyTracker.push(get, set, comparison);
     const id = uuid();
     const revision: RevisionLayer = {
       id,
@@ -370,6 +425,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   removeRevision: (id) => {
     const { comparison } = get();
     if (!comparison || comparison.revisions.length <= 1) return;
+    historyTracker.push(get, set, comparison);
     const revisions = comparison.revisions.filter((r) => r.id !== id);
     const pages = Object.fromEntries(
       Object.entries(comparison.pages).map(([key, p]) => {
@@ -386,6 +442,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   renameRevision: (id, label) => {
     const { comparison } = get();
     if (!comparison || !label.trim()) return;
+    historyTracker.push(get, set, comparison);
     const revisions = comparison.revisions.map((r) => (r.id === id ? { ...r, label: label.trim() } : r));
     set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
@@ -415,11 +472,12 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   },
   clearCalibration: () => set({ calibrationPoints: [], calibrationLayer: null }),
   applyCalibration: (realDistanceMeters) => {
-    const { calibrationPoints, calibrationLayer, currentPageKey } = get();
-    if (calibrationPoints.length !== 2 || !calibrationLayer || realDistanceMeters <= 0) return;
+    const { comparison, calibrationPoints, calibrationLayer, currentPageKey } = get();
+    if (!comparison || calibrationPoints.length !== 2 || !calibrationLayer || realDistanceMeters <= 0) return;
     const [a, b] = calibrationPoints;
     const pixelDistance = Math.hypot(b.x - a.x, b.y - a.y);
     if (pixelDistance === 0) return;
+    historyTracker.push(get, set, comparison);
     const calibration: Calibration = { pixelDistance, realDistanceMeters, metersPerPixel: realDistanceMeters / pixelDistance };
     if (calibrationLayer === 'original') {
       get().updatePage(currentPageKey, { originalCalibration: calibration });
@@ -430,6 +488,8 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   },
 
   setAlignmentTransform: (pageKey, transform) => {
+    const { comparison } = get();
+    if (comparison) historyTracker.pushDebounced(get, set, comparison);
     get().updateActiveRevisionPage(pageKey, { alignment: transform });
   },
   beginAlignmentPointPick: () =>
@@ -446,11 +506,15 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const donePicking = pairs.length === 2;
     set({ alignmentPairs: pairs, alignmentPendingOriginal: null, pickingAlignmentPoints: !donePicking });
     if (donePicking) {
+      const { comparison } = get();
+      if (comparison) historyTracker.push(get, set, comparison);
       get().updateActiveRevisionPage(currentPageKey, { alignmentPoints: pairs });
     }
   },
   clearAlignmentPicking: () => set({ alignmentPairs: [], alignmentPendingOriginal: null }),
   clearAlignmentPoints: (pageKey) => {
+    const { comparison } = get();
+    if (comparison) historyTracker.push(get, set, comparison);
     get().updateActiveRevisionPage(pageKey, { alignmentPoints: [], alignment: IDENTITY_TRANSFORM });
   },
 
@@ -463,6 +527,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   finishMeasurement: (measurement) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: [...r.measurements, measurement] }));
     set({ comparison: touch({ ...comparison, revisions }), measurePoints: [] });
     scheduleSave(get);
@@ -470,6 +535,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   deleteMeasurement: (id) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: r.measurements.filter((m) => m.id !== id) }));
     set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
@@ -482,6 +548,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   finishMarkup: (markup) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: [...r.markups, markup] }));
     set({ comparison: touch({ ...comparison, revisions }), markupPoints: [] });
     scheduleSave(get);
@@ -499,6 +566,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   updateMarkupQuiet: (id, patch) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.pushDebounced(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({
       ...r,
       markups: r.markups.map((m) => (m.id === id ? { ...m, ...patch } : m)),
@@ -508,6 +576,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   deleteMarkup: (id) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: r.markups.filter((m) => m.id !== id) }));
     set({ comparison: touch({ ...comparison, revisions }), selectedMarkupId: get().selectedMarkupId === id ? null : get().selectedMarkupId });
     scheduleSave(get);
@@ -518,6 +587,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const active = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
     const original = active?.markups.find((m) => m.id === id);
     if (!original) return;
+    historyTracker.push(get, set, comparison);
     const offset = 20;
     const copy: Markup = {
       ...original,
@@ -534,6 +604,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setAreaKindColor: (kind, color) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.pushDebounced(get, set, comparison);
     set({ comparison: touch({ ...comparison, areaKindColors: { ...comparison.areaKindColors, [kind]: color } }) });
     scheduleSave(get);
   },
@@ -541,6 +612,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   updateComparisonMeta: (patch) => {
     const { comparison } = get();
     if (!comparison) return;
+    historyTracker.pushDebounced(get, set, comparison);
     set({ comparison: touch({ ...comparison, ...patch }) });
     scheduleSave(get);
   },

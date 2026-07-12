@@ -11,6 +11,10 @@ export default function TopBar() {
   const persist = useAppStore((s) => s.persist);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
   const toggleAnnotationsVisible = useAppStore((s) => s.toggleAnnotationsVisible);
+  const canUndo = useAppStore((s) => s.history.length > 0);
+  const canRedo = useAppStore((s) => s.future.length > 0);
+  const undo = useAppStore((s) => s.undo);
+  const redo = useAppStore((s) => s.redo);
   const [showSettings, setShowSettings] = useState(false);
 
   if (!project) return null;
@@ -40,6 +44,15 @@ export default function TopBar() {
         </span>
         <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)}>
           ‹
+        </button>
+      </div>
+
+      <div className="undo-redo-group">
+        <button className="btn-secondary small" onClick={undo} disabled={!canUndo} title="בטל פעולה (Ctrl+Z)">
+          ↶
+        </button>
+        <button className="btn-secondary small" onClick={redo} disabled={!canRedo} title="בצע שוב (Ctrl+Shift+Z)">
+          ↷
         </button>
       </div>
 

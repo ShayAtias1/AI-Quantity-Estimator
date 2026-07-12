@@ -185,6 +185,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const selectedMarkupId = useCompareStore((s) => s.selectedMarkupId);
   const setSelectedMarkupId = useCompareStore((s) => s.setSelectedMarkupId);
   const duplicateMarkup = useCompareStore((s) => s.duplicateMarkup);
+  const undo = useCompareStore((s) => s.undo);
+  const redo = useCompareStore((s) => s.redo);
 
   const viewMode = useCompareStore((s) => s.viewMode);
   const swipePosition = useCompareStore((s) => s.swipePosition);
@@ -334,11 +336,18 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         e.preventDefault();
         duplicateMarkup(selectedMarkupId);
       }
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditingField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (!isEditingField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measureTool, measurePoints, markupTool, markupPoints, selectedMarkupId]);
+  }, [measureTool, measurePoints, markupTool, markupPoints, selectedMarkupId, undo, redo]);
 
   const handleMouseDown = (e: MouseEvent) => {
     if (toolMode === 'select') {

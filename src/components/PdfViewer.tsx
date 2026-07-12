@@ -28,6 +28,8 @@ export default function PdfViewer() {
   const setNumPages = useAppStore((s) => s.setNumPages);
   const toolMode = useAppStore((s) => s.toolMode);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
+  const undo = useAppStore((s) => s.undo);
+  const redo = useAppStore((s) => s.redo);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
   const setSelectedRoomId = useAppStore((s) => s.setSelectedRoomId);
   const calibrationPoints = useAppStore((s) => s.calibrationPoints);
@@ -141,6 +143,13 @@ export default function PdfViewer() {
       if (e.key === 'Enter' && measureTool && measureTool !== 'distance' && measurePoints.length >= 3) {
         finishOpenMeasurement();
       }
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditingField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (!isEditingField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') spaceHeld.current = false;
@@ -152,7 +161,7 @@ export default function PdfViewer() {
       window.removeEventListener('keyup', onKeyUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearDrawingPoints, drawingPoints.length, finishDrawing, measureTool, measurePoints]);
+  }, [clearDrawingPoints, drawingPoints.length, finishDrawing, measureTool, measurePoints, undo, redo]);
 
   // Auto-finish distance measurement once 2 points are placed.
   useEffect(() => {
