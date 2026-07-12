@@ -613,6 +613,10 @@ input:focus, textarea:focus {
   justify-content: space-between;
   margin-bottom: 12px;
 }
+.quantity-table-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
 
 .qty-table-scroll {
   overflow-x: auto;

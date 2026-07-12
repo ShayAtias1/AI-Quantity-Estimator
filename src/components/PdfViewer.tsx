@@ -27,6 +27,7 @@ export default function PdfViewer() {
   const currentPage = useAppStore((s) => s.currentPage);
   const setNumPages = useAppStore((s) => s.setNumPages);
   const toolMode = useAppStore((s) => s.toolMode);
+  const roomsVisible = useAppStore((s) => s.roomsVisible);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
   const setSelectedRoomId = useAppStore((s) => s.setSelectedRoomId);
   const calibrationPoints = useAppStore((s) => s.calibrationPoints);
@@ -314,9 +315,10 @@ export default function PdfViewer() {
             height={pageSize.height}
             viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}
           >
-            {project.rooms
-              .filter((r) => r.pageNumber === currentPage)
-              .map((r) => {
+            {roomsVisible &&
+              project.rooms
+                .filter((r) => r.pageNumber === currentPage)
+                .map((r) => {
                 const isSelected = r.id === selectedRoomId;
                 const pts = r.points.map((p) => `${p.x},${p.y}`).join(' ');
                 return (

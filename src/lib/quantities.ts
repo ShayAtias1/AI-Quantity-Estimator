@@ -103,6 +103,21 @@ export function buildRoomSummaries(project: Project): RoomQuantitySummary[] {
   });
 }
 
+/** Groups room summaries by apartment number, preserving first-seen order (matches the Excel export's blocks). */
+export function groupSummariesByApartment(summaries: RoomQuantitySummary[]): { apartment: string; rooms: RoomQuantitySummary[] }[] {
+  const groups = new Map<string, RoomQuantitySummary[]>();
+  const order: string[] = [];
+  for (const s of summaries) {
+    const key = s.apartmentNumber || '';
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)!.push(s);
+  }
+  return order.map((key) => ({ apartment: key, rooms: groups.get(key)! }));
+}
+
 /** Totals across all rooms for the 4 report categories. */
 export function buildReportCategoryTotals(project: Project, summaries: RoomQuantitySummary[]): ReportCategoryTotal[] {
   const totals: Record<ReportCategory, { quantityM2: number; orderM2: number }> = {

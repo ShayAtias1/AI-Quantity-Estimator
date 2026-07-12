@@ -3,24 +3,35 @@ import { useAppStore } from '../store/appStore';
 import { buildReportCategoryTotals, buildRoomSummaries } from '../lib/quantities';
 import { REPORT_CATEGORY_LABELS } from '../types';
 import { exportQuantitiesToExcel } from '../lib/exportExcel';
+import { exportQuantitiesToPdf } from '../lib/exportQuantitiesPdf';
 
 const DASH = '—';
 
 export default function QuantityTable() {
   const project = useAppStore((s) => s.project);
-  const [exporting, setExporting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const summaries = useMemo(() => (project ? buildRoomSummaries(project) : []), [project]);
   const totals = useMemo(() => (project ? buildReportCategoryTotals(project, summaries) : []), [project, summaries]);
 
   if (!project) return null;
 
-  const handleExport = async () => {
-    setExporting(true);
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
     try {
       await exportQuantitiesToExcel(project, summaries, totals);
     } finally {
-      setExporting(false);
+      setExportingExcel(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true);
+    try {
+      await exportQuantitiesToPdf(project, summaries, totals);
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -28,9 +39,14 @@ export default function QuantityTable() {
     <div className="quantity-table-wrap">
       <div className="quantity-table-toolbar">
         <h4>טבלת כמויות</h4>
-        <button className="btn-primary" onClick={handleExport} disabled={summaries.length === 0 || exporting}>
-          {exporting ? 'מייצא…' : '⬇ ייצוא לאקסל'}
-        </button>
+        <div className="quantity-table-toolbar-actions">
+          <button className="btn-secondary" onClick={handleExportPdf} disabled={summaries.length === 0 || exportingPdf}>
+            {exportingPdf ? 'מייצא…' : '⬇ ייצוא ל-PDF'}
+          </button>
+          <button className="btn-primary" onClick={handleExportExcel} disabled={summaries.length === 0 || exportingExcel}>
+            {exportingExcel ? 'מייצא…' : '⬇ ייצוא לאקסל'}
+          </button>
+        </div>
       </div>
 
       {summaries.length === 0 ? (
