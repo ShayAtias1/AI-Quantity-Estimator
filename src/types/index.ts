@@ -62,6 +62,10 @@ export interface Room {
   notes: string;
   workItems: WorkItem[];
   color: string;
+  /** Set when the room came from auto-detection: the matched room-type profile key (see roomDetection). */
+  detectedType?: string;
+  /** Auto-detection confidence: 'high' when a name was recognized, 'low' when it needs manual review. */
+  detectionConfidence?: 'high' | 'low';
 }
 
 export interface Calibration {

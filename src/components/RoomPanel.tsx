@@ -3,6 +3,7 @@ import type { TilingCategory, WorkType } from '../types';
 import { TILING_CATEGORY_LABELS, WORK_TYPE_LABELS, WORK_TYPE_UNITS } from '../types';
 import { itemQuantityM2, roomMetrics } from '../lib/quantities';
 import { round } from '../lib/geometry';
+import AutoDetectPanel from './AutoDetectPanel';
 
 const WORK_TYPES: WorkType[] = ['tiling', 'cladding', 'panels'];
 
@@ -27,6 +28,7 @@ export default function RoomPanel() {
 
   return (
     <div className="room-panel">
+      <AutoDetectPanel />
       <div className="room-list">
         <h4>אזורים שסומנו ({project.rooms.length})</h4>
         {project.rooms.length === 0 && <p className="muted">בחר בכלי "סימון" וסמן חדר על התוכנית.</p>}
@@ -35,6 +37,11 @@ export default function RoomPanel() {
             <li key={r.id} className={r.id === selectedRoomId ? 'active' : ''} onClick={() => selectRoom(r.id, r.pageNumber)}>
               <span className="color-dot" style={{ background: r.color }} />
               <span className="room-list-name">{r.name || 'חדר ללא שם'}</span>
+              {r.detectionConfidence === 'low' && (
+                <span className="room-review-flag" title="זוהה אוטומטית — מומלץ לבדוק">
+                  ⚠
+                </span>
+              )}
               <span className="room-list-apt">{r.apartmentNumber ? `דירה ${r.apartmentNumber}` : ''}</span>
               <span className="room-list-page">עמוד {r.pageNumber}</span>
               <button

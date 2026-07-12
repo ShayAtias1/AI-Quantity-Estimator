@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
 import type { AreaShape, Calibration, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
-import { saveProject as dbSaveProject } from '../db/database';
+import { saveProject as dbSaveProject, loadPdfBlob } from '../db/database';
 import { createHistoryTracker } from '../lib/undoHistory';
+import { loadPdfPlanSource } from '../lib/planSource';
+import { runRoomDetection, getRoomProfile, type DetectionSummary } from '../lib/roomDetection';
 
 const historyTracker = createHistoryTracker<Project>();
 
@@ -66,6 +68,15 @@ interface AppState {
   future: Project[];
   undo: () => void;
   redo: () => void;
+
+  /** Auto room-detection progress state (not persisted). */
+  detecting: boolean;
+  detectionProgress: number; // 0..1
+  detectionLabel: string;
+  detectionSummary: DetectionSummary | null;
+  detectRooms: () => Promise<void>;
+  autoCalculateQuantities: () => number;
+  clearDetectionSummary: () => void;
 
   setProject: (p: Project | null) => void;
   setCurrentPage: (n: number) => void;
@@ -132,10 +143,85 @@ export const useAppStore = create<AppState>((set, get) => ({
   dirty: false,
   history: [],
   future: [],
+  detecting: false,
+  detectionProgress: 0,
+  detectionLabel: '',
+  detectionSummary: null,
 
   setProject: (p) => {
     historyTracker.discard();
-    set({ project: p, currentPage: 1, selectedRoomId: null, history: [], future: [] });
+    set({
+      project: p,
+      currentPage: 1,
+      selectedRoomId: null,
+      history: [],
+      future: [],
+      detectionSummary: null,
+      detecting: false,
+      detectionProgress: 0,
+    });
+  },
+  clearDetectionSummary: () => set({ detectionSummary: null }),
+  detectRooms: async () => {
+    const { project, currentPage, detecting } = get();
+    if (!project || detecting) return;
+    set({ detecting: true, detectionProgress: 0, detectionLabel: 'מתחיל…', detectionSummary: null });
+    try {
+      const { source } = await loadPdfPlanSource(project.id, () => loadPdfBlob(project.id), currentPage);
+      const { rooms: detected, summary } = await runRoomDetection(source, {
+        onProgress: (f, label) => set({ detectionProgress: f, detectionLabel: label }),
+      });
+
+      const current = get().project;
+      if (!current) return;
+      historyTracker.push(get, set, current);
+      let colorSeed = current.rooms.length;
+      const newRooms: Room[] = detected.map((d) => ({
+        id: uuid(),
+        pageNumber: currentPage,
+        points: d.polygon,
+        closed: true,
+        name: d.name,
+        apartmentNumber: '',
+        notes: '',
+        workItems: [],
+        color: nextColor(colorSeed++),
+        detectedType: d.roomTypeKey ?? undefined,
+        detectionConfidence: d.confidence,
+      }));
+      set({
+        project: { ...current, rooms: [...current.rooms, ...newRooms], updatedAt: Date.now() },
+        detectionSummary: summary,
+      });
+      scheduleSave(get);
+    } catch (err) {
+      set({ detectionLabel: err instanceof Error ? err.message : 'שגיאה בזיהוי' });
+    } finally {
+      set({ detecting: false });
+    }
+  },
+  autoCalculateQuantities: () => {
+    const { project, currentPage } = get();
+    if (!project) return 0;
+    // Only fill in rooms on this page that were detected and have no work items yet, so re-running
+    // (or running after manual edits) never duplicates or overwrites the user's own choices.
+    const targets = project.rooms.filter((r) => r.pageNumber === currentPage && r.detectedType && r.workItems.length === 0);
+    if (targets.length === 0) return 0;
+    historyTracker.push(get, set, project);
+    const targetIds = new Set(targets.map((r) => r.id));
+    const rooms = project.rooms.map((r) => {
+      if (!targetIds.has(r.id)) return r;
+      const profile = getRoomProfile(r.detectedType);
+      if (!profile) return r;
+      const workItems: WorkItem[] = [];
+      workItems.push({ id: uuid(), type: 'tiling', tilingCategory: profile.tiling });
+      if (profile.cladding) workItems.push({ id: uuid(), type: 'cladding', heightM: project.defaultCladdingHeightM });
+      if (profile.panels) workItems.push({ id: uuid(), type: 'panels' });
+      return { ...r, workItems };
+    });
+    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    scheduleSave(get);
+    return targets.length;
   },
   undo: () => {
     historyTracker.flush(get, set);

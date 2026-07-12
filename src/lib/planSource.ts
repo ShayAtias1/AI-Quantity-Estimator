@@ -1,9 +1,17 @@
 import type { PDFPageProxy } from 'pdfjs-dist';
+import { pdfjsLib } from './pdfjsSetup';
 import { getPdfDocumentByKey } from './pdfCache';
 
 export interface PlanRenderHandle {
   promise: Promise<void>;
   cancel: () => void;
+}
+
+/** A piece of text extracted from the plan, positioned in native (scale=1, top-left origin) px coords. */
+export interface PlanTextItem {
+  str: string;
+  x: number;
+  y: number;
 }
 
 /**
@@ -17,6 +25,8 @@ export interface PlanPageSource {
   render(canvas: HTMLCanvasElement, scale: number): PlanRenderHandle;
   /** Render the page as a solid-color silhouette (transparent background, ink recolored). */
   renderTinted(canvas: HTMLCanvasElement, scale: number, color: string): PlanRenderHandle;
+  /** Extract positioned text (native scale=1 coords) — used e.g. by room detection to name rooms. Empty for sources without a text layer. */
+  getTextItems(): Promise<PlanTextItem[]>;
 }
 
 export class PdfPlanSource implements PlanPageSource {
@@ -42,6 +52,22 @@ export class PdfPlanSource implements PlanPageSource {
       promise: task.promise.then(() => undefined).catch(() => undefined),
       cancel: () => task.cancel(),
     };
+  }
+
+  async getTextItems(): Promise<PlanTextItem[]> {
+    const viewport = this.page.getViewport({ scale: 1 });
+    const content = await this.page.getTextContent();
+    const items: PlanTextItem[] = [];
+    for (const raw of content.items) {
+      // TextMarkedContent entries have no `transform`/`str`; skip them.
+      if (!('str' in raw) || !('transform' in raw)) continue;
+      const str = raw.str.trim();
+      if (!str) continue;
+      // Compose the item's own transform with the viewport transform to get top-left-origin px coords.
+      const m = pdfjsLib.Util.transform(viewport.transform, raw.transform);
+      items.push({ str, x: m[4], y: m[5] });
+    }
+    return items;
   }
 
   renderTinted(canvas: HTMLCanvasElement, scale: number, color: string): PlanRenderHandle {
