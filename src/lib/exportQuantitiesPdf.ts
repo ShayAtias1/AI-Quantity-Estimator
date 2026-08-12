@@ -1,11 +1,15 @@
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
 import type { Project, ReportCategoryTotal, RoomQuantitySummary } from '../types';
-import { REPORT_CATEGORY_LABELS } from '../types';
+import { DEFAULT_AREA_KIND_COLORS, REPORT_CATEGORY_LABELS } from '../types';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import { groupSummariesByApartment } from './quantities';
 import { polygonCentroid } from './geometry';
+import { drawMarkupOnCanvas } from './drawMarkup';
+import { drawMeasurementOnCanvas } from './drawMeasurement';
+import { numberAreaMeasurements } from './areaMeasurements';
+import { buildAreaMeasurementTablePages } from './areaMeasurementTable';
 
 const DASH = '—';
 const FONT = "'Segoe UI', sans-serif";
@@ -45,7 +49,9 @@ async function renderFramedPlanPage(
   project: Project,
   pageNumber: number,
   mult: number,
-  showMarkings: boolean
+  showMarkings: boolean,
+  showMeasurements: boolean,
+  areaNumbers: Map<string, number>
 ): Promise<{ dataUrl: string; width: number; height: number } | null> {
   let source;
   try {
@@ -108,6 +114,30 @@ async function renderFramedPlanPage(
       ctx.fillStyle = r.color;
       ctx.fillText(r.name, labelX, labelY);
       ctx.textBaseline = 'alphabetic';
+    }
+
+  }
+
+  if (showMeasurements) {
+    const areaKindColors = project.areaKindColors ?? DEFAULT_AREA_KIND_COLORS;
+    const measurements = (project.measurements ?? []).filter((m) => m.pageNumber === pageNumber);
+    if (measurements.length > 0) {
+      ctx.save();
+      ctx.translate(0, headerH);
+      for (const m of measurements) {
+        drawMeasurementOnCanvas(ctx, m, mult, 0, 0, m.areaKind ? areaKindColors[m.areaKind] : undefined, areaNumbers.get(m.id));
+      }
+      ctx.restore();
+    }
+  }
+
+  if (showMarkings) {
+    const markups = (project.markups ?? []).filter((m) => m.pageNumber === pageNumber);
+    if (markups.length > 0) {
+      ctx.save();
+      ctx.translate(0, headerH);
+      for (const m of markups) drawMarkupOnCanvas(ctx, m, mult, 0, 0);
+      ctx.restore();
     }
   }
 
@@ -260,26 +290,57 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
   return pages;
 }
 
+/** Page numbers with any exportable content (rooms, markups, or measurements), sorted ascending. */
+export function getExportablePageNumbers(project: Project): number[] {
+  return Array.from(
+    new Set([
+      ...project.rooms.map((r) => r.pageNumber),
+      ...(project.markups ?? []).map((m) => m.pageNumber),
+      ...(project.measurements ?? []).map((m) => m.pageNumber),
+    ])
+  ).sort((a, b) => a - b);
+}
+
 export async function exportQuantitiesToPdf(
   project: Project,
   summaries: RoomQuantitySummary[],
   totals: ReportCategoryTotal[],
-  showRoomMarkings: boolean = true
+  showRoomMarkings: boolean = true,
+  pageNumbers?: number[],
+  showMeasurements: boolean = true
 ) {
   const pdfDoc = await PDFDocument.create();
   const mult = 2;
 
-  const pageNumbersWithRooms = Array.from(new Set(project.rooms.map((r) => r.pageNumber))).sort((a, b) => a - b);
-  for (const pageNumber of pageNumbersWithRooms) {
-    const framed = await renderFramedPlanPage(project, pageNumber, mult, showRoomMarkings);
-    if (!framed) continue;
-    const pngBytes = await fetch(framed.dataUrl).then((r) => r.arrayBuffer());
-    const pngImage = await pdfDoc.embedPng(pngBytes);
-    const page = pdfDoc.addPage([framed.width, framed.height]);
-    page.drawImage(pngImage, { x: 0, y: 0, width: framed.width, height: framed.height });
+  const allAreaMeasurements = (project.measurements ?? []).filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number');
+
+  const pageNumbersWithContent = getExportablePageNumbers(project).filter((p) => !pageNumbers || pageNumbers.includes(p));
+  // Each page gets its own area/wall breakdown table, numbered independently, right after that page's plan image —
+  // rather than one combined table for the whole multi-page project.
+  for (const pageNumber of pageNumbersWithContent) {
+    const pageAreaMeasurements = allAreaMeasurements.filter((m) => m.pageNumber === pageNumber);
+    const pageAreaNumbers = numberAreaMeasurements(pageAreaMeasurements);
+
+    const framed = await renderFramedPlanPage(project, pageNumber, mult, showRoomMarkings, showMeasurements, pageAreaNumbers);
+    if (framed) {
+      const pngBytes = await fetch(framed.dataUrl).then((r) => r.arrayBuffer());
+      const pngImage = await pdfDoc.embedPng(pngBytes);
+      const page = pdfDoc.addPage([framed.width, framed.height]);
+      page.drawImage(pngImage, { x: 0, y: 0, width: framed.width, height: framed.height });
+    }
+
+    if (showMeasurements && pageAreaMeasurements.length > 0) {
+      const areaTablePages = buildAreaMeasurementTablePages(`${project.name} — עמוד ${pageNumber}`, pageAreaMeasurements);
+      for (const tp of areaTablePages) {
+        const pngBytes = await fetch(tp.dataUrl).then((r) => r.arrayBuffer());
+        const pngImage = await pdfDoc.embedPng(pngBytes);
+        const page = pdfDoc.addPage([tp.width, tp.height]);
+        page.drawImage(pngImage, { x: 0, y: 0, width: tp.width, height: tp.height });
+      }
+    }
   }
 
-  const tablePages = buildQuantityTablePages(project, summaries, totals);
+  const tablePages = summaries.length > 0 ? buildQuantityTablePages(project, summaries, totals) : [];
   for (const tp of tablePages) {
     const pngBytes = await fetch(tp.dataUrl).then((r) => r.arrayBuffer());
     const pngImage = await pdfDoc.embedPng(pngBytes);

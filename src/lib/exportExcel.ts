@@ -1,6 +1,8 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import type { Project, ReportCategoryTotal, RoomQuantitySummary } from '../types';
+import type { AreaKind, Measurement, Project, ReportCategoryTotal, RoomQuantitySummary } from '../types';
+import { AREA_KIND_LABELS } from '../types';
+import { numberAreaMeasurements } from './areaMeasurements';
 
 const DASH = '—';
 
@@ -60,6 +62,68 @@ function sumField(rooms: RoomQuantitySummary[], pick: (s: RoomQuantitySummary) =
   return round2(rooms.reduce((acc, s) => acc + (pick(s) ?? 0), 0));
 }
 
+const AREA_HEADERS = ['#', 'עמוד', 'סוג', 'אופן חישוב', "אורך (מ')", "גובה (מ')", 'שטח (מ"ר)'];
+const AREA_WIDTHS = [6, 8, 14, 18, 14, 14, 14];
+
+/** Adds a "הריסה ובנייה" sheet listing every kind-tagged area/wall measurement (independent of room data) plus per-kind and grand totals. */
+function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measurement[]) {
+  const sheet = workbook.addWorksheet('הריסה ובנייה', { views: [{ rightToLeft: true }] });
+  AREA_WIDTHS.forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+
+  const headerRow = sheet.addRow(AREA_HEADERS);
+  headerRow.eachCell({ includeEmpty: true }, (c) => {
+    setFill(c, C_HEADER);
+    c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+
+  const numbers = numberAreaMeasurements(measurements);
+  const kinds: AreaKind[] = ['demolition', 'construction'];
+  let grandTotal = 0;
+  for (const kind of kinds) {
+    const rows = measurements.filter((m) => m.areaKind === kind);
+    if (rows.length === 0) continue;
+    let subtotal = 0;
+    rows.forEach((m, i) => {
+      const isWall = m.calcMode === 'wall';
+      subtotal += m.areaM2 ?? 0;
+      const row = sheet.addRow([
+        numbers.get(m.id) ?? '',
+        m.pageNumber,
+        AREA_KIND_LABELS[kind],
+        isWall ? 'קיר (אורך × גובה)' : 'שטח בפועל',
+        isWall ? round2(m.wallLengthM ?? 0) : DASH,
+        isWall ? round2(m.wallHeightM ?? 0) : DASH,
+        round2(m.areaM2 ?? 0),
+      ]);
+      const argb = i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B;
+      row.eachCell({ includeEmpty: true }, (c) => {
+        setFill(c, argb);
+        c.alignment = { horizontal: 'center' };
+      });
+      row.getCell(5).numFmt = NUM_FMT;
+      row.getCell(6).numFmt = NUM_FMT;
+      row.getCell(7).numFmt = NUM_FMT;
+    });
+    grandTotal += subtotal;
+    const totalRow = sheet.addRow([`סה"כ ${AREA_KIND_LABELS[kind]}`, '', '', '', '', '', round2(subtotal)]);
+    totalRow.getCell(7).numFmt = NUM_FMT;
+    totalRow.eachCell({ includeEmpty: true }, (c) => {
+      setFill(c, C_TOTAL);
+      c.font = { bold: true };
+      c.alignment = { horizontal: 'center' };
+    });
+  }
+
+  const grandRow = sheet.addRow(['סה"כ כללי', '', '', '', '', '', round2(grandTotal)]);
+  grandRow.getCell(7).numFmt = NUM_FMT;
+  grandRow.eachCell({ includeEmpty: true }, (c) => {
+    setFill(c, C_GRAND);
+    c.font = { bold: true };
+    c.alignment = { horizontal: 'center' };
+  });
+}
+
 interface ApartmentTotals {
   apartment: string;
   regRow: number;
@@ -81,12 +145,14 @@ interface ApartmentTotals {
 export async function exportQuantitiesToExcel(
   project: Project,
   summaries: RoomQuantitySummary[],
-  _totals: ReportCategoryTotal[]
+  _totals: ReportCategoryTotal[],
+  areaMeasurements: Measurement[] = []
 ) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'BetterCalc';
   workbook.created = new Date();
 
+  if (summaries.length > 0) {
   // Created first so the tab order is [סיכום כולל, כתב כמויות]; populated after the data sheet.
   const summarySheet = workbook.addWorksheet('סיכום כולל', { views: [{ rightToLeft: true }] });
   const dataSheet = workbook.addWorksheet('כתב כמויות', { views: [{ rightToLeft: true }] });
@@ -282,6 +348,11 @@ export async function exportQuantitiesToExcel(
       setFill(c, C_GRAND);
       c.font = { bold: true };
     });
+  }
+  }
+
+  if (areaMeasurements.length > 0) {
+    addAreaMeasurementSheet(workbook, areaMeasurements);
   }
 
   const buffer = await workbook.xlsx.writeBuffer();

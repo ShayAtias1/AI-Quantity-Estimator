@@ -25,6 +25,18 @@ export function polygonPerimeterPx(points: Point[], closed: boolean): number {
   return sum;
 }
 
+/** Length in px of the longest edge of a closed polygon (wraps last->first) — used for a wall's plan-view outline, where the long edge is the wall's run and the short edge is just its thickness. */
+export function longestEdgePx(points: Point[]): number {
+  if (points.length < 2) return 0;
+  let best = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    best = Math.max(best, distancePx(a, b));
+  }
+  return best;
+}
+
 /** Area-weighted centroid of a polygon (falls back to the vertex average for degenerate/near-zero-area shapes). */
 export function polygonCentroid(points: Point[]): Point {
   if (points.length === 0) return { x: 0, y: 0 };
@@ -93,6 +105,36 @@ export function nearestPointIndex(points: Point[], target: Point, maxDist: numbe
     }
   });
   return best;
+}
+
+/**
+ * Endpoints of a short oblique tick mark (AutoCAD/architectural dimension style) centered at `at`,
+ * angled 45° to the direction from `at` toward `towards`.
+ */
+export function tickMarkEndpoints(at: Point, towards: Point, lengthPx: number): [Point, Point] {
+  const dx = towards.x - at.x;
+  const dy = towards.y - at.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const cos45 = Math.SQRT1_2;
+  const sin45 = Math.SQRT1_2;
+  const tx = ux * cos45 - uy * sin45;
+  const ty = ux * sin45 + uy * cos45;
+  const half = lengthPx / 2;
+  return [
+    { x: at.x - tx * half, y: at.y - ty * half },
+    { x: at.x + tx * half, y: at.y + ty * half },
+  ];
+}
+
+/** SVG `points` string for a triangular arrowhead at `to`, pointing away from `from`. */
+export function arrowHeadPoints(from: Point, to: Point, size: number): string {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const spread = Math.PI / 7;
+  const p1 = { x: to.x - size * Math.cos(angle - spread), y: to.y - size * Math.sin(angle - spread) };
+  const p2 = { x: to.x - size * Math.cos(angle + spread), y: to.y - size * Math.sin(angle + spread) };
+  return `${to.x},${to.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
 }
 
 /** Build an SVG path `d` string for a "revision cloud" — a closed polygon outlined with outward-bulging arcs. */

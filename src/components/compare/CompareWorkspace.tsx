@@ -16,6 +16,7 @@ export default function CompareWorkspace() {
   const toolMode = useCompareStore((s) => s.toolMode);
   const setToolMode = useCompareStore((s) => s.setToolMode);
   const comparison = useCompareStore((s) => s.comparison);
+  const measurementsVisible = useCompareStore((s) => s.measurementsVisible);
   const [tab, setTab] = useState<SidebarTab>('layers');
   const canvasRef = useRef<CompareCanvasHandle>(null);
   const [exporting, setExporting] = useState(false);
@@ -26,7 +27,11 @@ export default function CompareWorkspace() {
     try {
       const composite = await canvasRef.current.exportComposite();
       if (!composite) return;
-      await exportCompositeAsPdf(composite.dataUrl, composite.width, composite.height, comparison.name);
+      const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
+      const areaMeasurements = measurementsVisible
+        ? (activeRevision?.measurements ?? []).filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number')
+        : [];
+      await exportCompositeAsPdf(composite.dataUrl, composite.width, composite.height, comparison.name, areaMeasurements);
     } finally {
       setExporting(false);
     }

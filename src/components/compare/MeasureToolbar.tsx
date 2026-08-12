@@ -1,5 +1,6 @@
 import { useCompareStore } from '../../store/compareStore';
-import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaKind, type AreaShape, type MeasureTool } from '../../types/compare';
+import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaCalcMode, type AreaKind, type AreaShape, type MeasureTool } from '../../types/compare';
+import { round } from '../../lib/geometry';
 
 const MEASURE_TOOLS: MeasureTool[] = ['distance', 'area', 'perimeter'];
 const MEASURE_ICONS: Record<MeasureTool, string> = { distance: '📏', area: '⬛', perimeter: '⭕' };
@@ -7,6 +8,10 @@ const AREA_KINDS: AreaKind[] = ['demolition', 'construction'];
 const AREA_SHAPES: { shape: AreaShape; label: string; icon: string }[] = [
   { shape: 'polygon', label: 'פוליגון', icon: '⬠' },
   { shape: 'rectangle', label: 'מלבן', icon: '▭' },
+];
+const AREA_CALC_MODES: { mode: AreaCalcMode; label: string; icon: string }[] = [
+  { mode: 'footprint', label: 'שטח בפועל', icon: '⬛' },
+  { mode: 'wall', label: 'קיר: אורך × גובה', icon: '📐' },
 ];
 
 export default function MeasureToolbar() {
@@ -20,10 +25,14 @@ export default function MeasureToolbar() {
   const setPendingAreaKind = useCompareStore((s) => s.setPendingAreaKind);
   const areaShape = useCompareStore((s) => s.areaShape);
   const setAreaShape = useCompareStore((s) => s.setAreaShape);
+  const areaCalcMode = useCompareStore((s) => s.areaCalcMode);
+  const setAreaCalcMode = useCompareStore((s) => s.setAreaCalcMode);
   const orthoSnap = useCompareStore((s) => s.orthoSnap);
   const setOrthoSnap = useCompareStore((s) => s.setOrthoSnap);
   const startCalibration = useCompareStore((s) => s.startCalibration);
   const deleteMeasurement = useCompareStore((s) => s.deleteMeasurement);
+  const updateMeasurement = useCompareStore((s) => s.updateMeasurement);
+  const updateComparisonMeta = useCompareStore((s) => s.updateComparisonMeta);
 
   if (!comparison) return null;
   const page = comparison.pages[currentPageKey];
@@ -68,6 +77,18 @@ export default function MeasureToolbar() {
       {toolMode === 'measure' && measureTool === 'area' && (
         <>
           <div className="work-item-add-row">
+            {AREA_CALC_MODES.map(({ mode, label, icon }) => (
+              <button
+                key={mode}
+                className={`tool-btn small-tool ${areaCalcMode === mode ? 'active' : ''}`}
+                onClick={() => setAreaCalcMode(mode)}
+              >
+                <span className="tool-icon">{icon}</span>
+                <span className="tool-label">{label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="work-item-add-row">
             {AREA_SHAPES.map(({ shape, label, icon }) => (
               <button
                 key={shape}
@@ -79,6 +100,18 @@ export default function MeasureToolbar() {
               </button>
             ))}
           </div>
+          {areaCalcMode === 'wall' && (
+            <div className="form-row">
+              <label>גובה קיר ברירת מחדל (מ')</label>
+              <input
+                type="number"
+                step="0.05"
+                min="0.1"
+                value={comparison.wallHeightDefaultM}
+                onChange={(e) => updateComparisonMeta({ wallHeightDefaultM: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+          )}
           <div className="area-kind-row">
             {AREA_KINDS.map((k) => (
               <button
@@ -120,17 +153,39 @@ export default function MeasureToolbar() {
 
       {measurements.length > 0 && (
         <ul className="measurement-list">
-          {measurements.map((m) => (
-            <li key={m.id}>
-              <span>
-                <span className="color-dot" style={{ background: m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9' }} />{' '}
-                {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: <strong>{m.label}</strong>
-              </span>
-              <button className="icon-btn danger" onClick={() => deleteMeasurement(m.id)}>
-                ✕
-              </button>
-            </li>
-          ))}
+          {measurements.map((m) => {
+            const isWall = m.tool === 'area' && m.calcMode === 'wall';
+            return (
+              <li key={m.id}>
+                <span>
+                  <span className="color-dot" style={{ background: m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9' }} />{' '}
+                  {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: <strong>{m.label}</strong>
+                  {isWall && (
+                    <>
+                      {' '}(אורך {round(m.wallLengthM ?? 0, 2)} מ' × גובה{' '}
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0.1"
+                        style={{ width: 56 }}
+                        value={m.wallHeightM ?? comparison.wallHeightDefaultM}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const h = parseFloat(e.target.value) || 0;
+                          const area = round((m.wallLengthM ?? 0) * h, 2);
+                          updateMeasurement(m.id, { wallHeightM: h, areaM2: area, label: `${area} מ"ר` });
+                        }}
+                      />
+                      {' '}מ')
+                    </>
+                  )}
+                </span>
+                <button className="icon-btn danger" onClick={() => deleteMeasurement(m.id)}>
+                  ✕
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

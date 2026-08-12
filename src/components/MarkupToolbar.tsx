@@ -1,5 +1,5 @@
-import { useCompareStore } from '../../store/compareStore';
-import { MARKUP_TOOL_LABELS, type MarkupTool } from '../../types/compare';
+import { useAppStore } from '../store/appStore';
+import { MARKUP_TOOL_LABELS, type MarkupTool } from '../types';
 
 const MARKUP_TOOLS: MarkupTool[] = ['cloud', 'arrow', 'rectangle', 'text', 'dimension'];
 const MARKUP_ICONS: Record<MarkupTool, string> = {
@@ -13,26 +13,26 @@ const MARKUP_ICONS: Record<MarkupTool, string> = {
 const MARKUP_COLORS = ['#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea', '#0f172a'];
 
 export default function MarkupToolbar() {
-  const comparison = useCompareStore((s) => s.comparison);
-  const toolMode = useCompareStore((s) => s.toolMode);
-  const markupTool = useCompareStore((s) => s.markupTool);
-  const setMarkupTool = useCompareStore((s) => s.setMarkupTool);
-  const markupPoints = useCompareStore((s) => s.markupPoints);
-  const markupColor = useCompareStore((s) => s.markupColor);
-  const setMarkupColor = useCompareStore((s) => s.setMarkupColor);
-  const deleteMarkup = useCompareStore((s) => s.deleteMarkup);
-  const duplicateMarkup = useCompareStore((s) => s.duplicateMarkup);
-  const selectedMarkupId = useCompareStore((s) => s.selectedMarkupId);
-  const setSelectedMarkupId = useCompareStore((s) => s.setSelectedMarkupId);
-  const markupFontScale = useCompareStore((s) => s.markupFontScale);
-  const setMarkupFontScale = useCompareStore((s) => s.setMarkupFontScale);
-  const updateMarkup = useCompareStore((s) => s.updateMarkup);
+  const project = useAppStore((s) => s.project);
+  const currentPage = useAppStore((s) => s.currentPage);
+  const toolMode = useAppStore((s) => s.toolMode);
+  const markupTool = useAppStore((s) => s.markupTool);
+  const setMarkupTool = useAppStore((s) => s.setMarkupTool);
+  const markupPoints = useAppStore((s) => s.markupPoints);
+  const markupColor = useAppStore((s) => s.markupColor);
+  const setMarkupColor = useAppStore((s) => s.setMarkupColor);
+  const deleteMarkup = useAppStore((s) => s.deleteMarkup);
+  const duplicateMarkup = useAppStore((s) => s.duplicateMarkup);
+  const selectedMarkupId = useAppStore((s) => s.selectedMarkupId);
+  const setSelectedMarkupId = useAppStore((s) => s.setSelectedMarkupId);
+  const markupFontScale = useAppStore((s) => s.markupFontScale);
+  const setMarkupFontScale = useAppStore((s) => s.setMarkupFontScale);
+  const updateMarkup = useAppStore((s) => s.updateMarkup);
 
-  if (!comparison) return null;
-  const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
-  const markups = activeRevision?.markups ?? [];
+  if (!project) return null;
+  const pageMarkups = (project.markups ?? []).filter((m) => m.pageNumber === currentPage);
 
-  const sizeTargetMarkup = markups.find((m) => m.id === selectedMarkupId && (m.tool === 'text' || m.tool === 'dimension'));
+  const sizeTargetMarkup = pageMarkups.find((m) => m.id === selectedMarkupId && (m.tool === 'text' || m.tool === 'dimension'));
   const activeFontScale = sizeTargetMarkup ? sizeTargetMarkup.fontScale ?? 1 : markupFontScale;
   const applyFontScale = (v: number) => {
     if (sizeTargetMarkup) updateMarkup(sizeTargetMarkup.id, { fontScale: v });
@@ -41,7 +41,7 @@ export default function MarkupToolbar() {
 
   return (
     <div className="markup-toolbar">
-      <h4>סימוני שינויים</h4>
+      <h4>סימונים</h4>
 
       <div className="tint-swatches">
         {MARKUP_COLORS.map((c) => (
@@ -95,9 +95,11 @@ export default function MarkupToolbar() {
       )}
       {toolMode === 'markup' && markupTool === 'text' && <p className="alignment-hint">לחץ במקום להוספת הערה</p>}
 
-      {markups.length > 0 && (
+      {pageMarkups.length === 0 ? (
+        <p className="muted">אין עדיין סימונים בעמוד זה.</p>
+      ) : (
         <ul className="measurement-list">
-          {markups.map((m) => (
+          {pageMarkups.map((m) => (
             <li
               key={m.id}
               className={m.id === selectedMarkupId ? 'selected' : ''}

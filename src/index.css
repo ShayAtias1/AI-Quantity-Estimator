@@ -238,6 +238,24 @@ input:focus, textarea:focus {
   margin-bottom: 12px;
 }
 
+.page-checkbox-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.page-checkbox-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
 /* ---------- workspace layout ---------- */
 .workspace {
   flex: 1;
@@ -249,11 +267,55 @@ input:focus, textarea:focus {
 .top-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   padding: 10px 16px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  /* Keep every control on a single row. No overflow/scrolling here — the dropdown menus are
+     absolutely positioned children and would get clipped (and spawn a stray scrollbar) by it. */
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.top-bar > button,
+.top-bar .undo-redo-group {
+  flex: none;
+}
+/* Thin visual break between the document controls and the view/export menus. */
+.top-bar-sep {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--border);
+}
+.top-bar button,
+.top-bar .page-nav span {
+  white-space: nowrap;
+}
+.top-bar .project-name-input {
+  flex: 0 1 auto;
+  min-width: 90px;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.app-brand-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-h);
+}
+.app-brand-divider {
+  color: var(--border);
+}
+.app-brand-mode {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .project-name-input {
@@ -275,6 +337,7 @@ input:focus, textarea:focus {
   margin-inline-start: auto;
   color: var(--muted);
   font-size: 13px;
+  flex: none;
 }
 .page-nav button {
   background: var(--bg);
@@ -283,6 +346,7 @@ input:focus, textarea:focus {
   width: 28px;
   height: 28px;
   color: var(--text-h);
+  flex: none;
 }
 .page-nav button:disabled {
   opacity: 0.4;
@@ -301,23 +365,81 @@ input:focus, textarea:focus {
   opacity: 0.35;
 }
 
-.settings-anchor {
+/* ---------- top-bar dropdown menus ---------- */
+.top-bar-menu-anchor {
   position: relative;
+  flex: none;
 }
-.settings-popover {
+.top-bar-menu-btn .menu-caret {
+  font-size: 9px;
+  opacity: 0.55;
+  margin-inline-start: 2px;
+}
+.top-bar-menu-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.top-bar-menu {
   position: absolute;
-  top: 36px;
+  top: 34px;
   left: 0;
+  min-width: 240px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px;
-  width: 220px;
+  padding: 6px;
   box-shadow: var(--shadow);
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 2px;
+}
+.top-bar-menu .form-row {
+  padding: 4px 8px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 8px;
+  text-align: start;
+  color: var(--text-h);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.menu-item:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.menu-item.active {
+  color: var(--accent);
+}
+.menu-check {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  color: var(--accent);
+  font-size: 12px;
+}
+.menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
+.menu-hint {
+  margin: 2px 8px 4px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: normal;
 }
 
 .workspace-body {
@@ -450,6 +572,13 @@ input:focus, textarea:focus {
   z-index: 10;
 }
 
+.reset-view-btn {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 20;
+}
+
 /* ---------- sidebar ---------- */
 .sidebar {
   width: 340px;
@@ -465,12 +594,16 @@ input:focus, textarea:focus {
   display: flex;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  /* Tab labels stay on one line; the strip scrolls sideways rather than wrapping them. */
+  overflow-x: auto;
 }
 .sidebar-tabs button {
-  flex: 1;
+  flex: 1 0 auto;
   background: transparent;
   border: none;
-  padding: 12px;
+  padding: 12px 8px;
+  font-size: 12.5px;
+  white-space: nowrap;
   color: var(--muted);
   font-weight: 500;
   border-bottom: 2px solid transparent;
@@ -724,15 +857,29 @@ input:focus, textarea:focus {
 }
 
 /* ---------- quantity table ---------- */
+/* The sidebar is narrow, so the export buttons get their own row under the title instead of
+   sharing it — and they wrap onto separate rows before they'd ever run off the panel. */
 .quantity-table-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   margin-bottom: 12px;
+}
+.quantity-table-toolbar h3, .quantity-table-toolbar h4 {
+  white-space: nowrap;
+  margin: 0;
 }
 .quantity-table-toolbar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+.quantity-table-toolbar-actions button {
+  white-space: nowrap;
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 .qty-table-scroll {
@@ -1086,6 +1233,17 @@ input:focus, textarea:focus {
   font-weight: 600;
   color: var(--text-h);
 }
+.area-summary-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.area-summary-page-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 4px;
+}
 
 /* ---------- compare: markup toolbar ---------- */
 .markup-toolbar {
@@ -1098,12 +1256,31 @@ input:focus, textarea:focus {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
+.markup-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.markup-size-row label {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.markup-size-row input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent, #2563eb);
+}
+.markup-size-row .icon-btn {
+  flex: none;
+}
 
 /* ---------- compare: view mode switch ---------- */
 .view-mode-switch {
   display: flex;
   gap: 6px;
   margin-inline-start: auto;
+  flex: none;
 }
 .view-mode-switch button {
   background: var(--bg);

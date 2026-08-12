@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
 import type {
   AlignmentPointPair,
+  AreaCalcMode,
   AreaKind,
   AreaShape,
   Comparison,
@@ -60,6 +61,7 @@ export function createEmptyComparison(
     revisions,
     activeRevisionId: revisions[0]?.id ?? '',
     areaKindColors: { ...DEFAULT_AREA_KIND_COLORS },
+    wallHeightDefaultM: 2.5,
   };
 }
 
@@ -106,6 +108,7 @@ interface CompareState {
   measurePoints: Point[];
   pendingAreaKind: AreaKind | null;
   areaShape: AreaShape;
+  areaCalcMode: AreaCalcMode;
   /** When on, each new polygon vertex snaps to a horizontal/vertical line from the previous one. */
   orthoSnap: boolean;
 
@@ -118,8 +121,10 @@ interface CompareState {
 
   exportRegion: ExportRegion | null;
 
-  /** Manual show/hide toggle for finished markups & measurements — independent of which revision is active. */
+  /** Manual show/hide toggle for finished markups — independent of which revision is active. */
   annotationsVisible: boolean;
+  /** Manual show/hide toggle for finished measurements — independent of the markups toggle. */
+  measurementsVisible: boolean;
 
   /** Undo/redo stacks of past/future comparison snapshots. Not persisted — reset whenever the comparison changes. */
   history: Comparison[];
@@ -135,6 +140,7 @@ interface CompareState {
   setViewMode: (m: CompareViewMode) => void;
   setSwipePosition: (v: number) => void;
   toggleAnnotationsVisible: () => void;
+  toggleMeasurementsVisible: () => void;
   toggleBlink: () => void;
   setExportRegion: (r: ExportRegion | null) => void;
 
@@ -168,14 +174,19 @@ interface CompareState {
   setMeasureTool: (t: MeasureTool | null) => void;
   setPendingAreaKind: (k: AreaKind | null) => void;
   setAreaShape: (s: AreaShape) => void;
+  setAreaCalcMode: (m: AreaCalcMode) => void;
   setOrthoSnap: (v: boolean) => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (measurement: Measurement) => void;
+  updateMeasurement: (id: string, patch: Partial<Measurement>) => void;
   deleteMeasurement: (id: string) => void;
 
   setMarkupTool: (t: MarkupTool | null) => void;
   setMarkupColor: (c: string) => void;
+  /** Label size multiplier applied to newly created text notes / dimension labels. */
+  markupFontScale: number;
+  setMarkupFontScale: (v: number) => void;
   addMarkupPoint: (p: Point) => void;
   clearMarkupPoints: () => void;
   finishMarkup: (markup: Markup) => void;
@@ -188,7 +199,7 @@ interface CompareState {
 
   setAreaKindColor: (kind: AreaKind, color: string) => void;
 
-  updateComparisonMeta: (patch: Partial<Pick<Comparison, 'name' | 'apartmentNumber' | 'notes'>>) => void;
+  updateComparisonMeta: (patch: Partial<Pick<Comparison, 'name' | 'apartmentNumber' | 'notes' | 'wallHeightDefaultM'>>) => void;
 
   persist: () => Promise<void>;
 }
@@ -226,17 +237,20 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   measurePoints: [],
   pendingAreaKind: null,
   areaShape: 'polygon',
+  areaCalcMode: 'footprint',
   orthoSnap: false,
 
   markupTool: null,
   markupPoints: [],
   markupColor: '#ef4444',
+  markupFontScale: 1,
 
   selectedMarkupId: null,
   selectedMeasurementId: null,
 
   exportRegion: null,
   annotationsVisible: true,
+  measurementsVisible: true,
   history: [],
   future: [],
 
@@ -247,6 +261,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       currentPageKey: 1,
       exportRegion: null,
       annotationsVisible: true,
+      measurementsVisible: true,
       selectedMarkupId: null,
       selectedMeasurementId: null,
       history: [],
@@ -299,6 +314,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setSwipePosition: (v) => set({ swipePosition: Math.min(1, Math.max(0, v)) }),
   toggleBlink: () => set((s) => ({ blinkShowingRevised: !s.blinkShowingRevised })),
   toggleAnnotationsVisible: () => set((s) => ({ annotationsVisible: !s.annotationsVisible })),
+  toggleMeasurementsVisible: () => set((s) => ({ measurementsVisible: !s.measurementsVisible })),
   setExportRegion: (r) => set({ exportRegion: r }),
 
   ensurePage: (pageKey) => {
@@ -424,7 +440,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   },
   removeRevision: (id) => {
     const { comparison } = get();
-    if (!comparison || comparison.revisions.length <= 1) return;
+    if (!comparison) return;
     historyTracker.push(get, set, comparison);
     const revisions = comparison.revisions.filter((r) => r.id !== id);
     const pages = Object.fromEntries(
@@ -435,7 +451,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
         return [key, { ...p, revisions: nextRevisions }];
       })
     );
-    const activeRevisionId = comparison.activeRevisionId === id ? revisions[0].id : comparison.activeRevisionId;
+    const activeRevisionId = comparison.activeRevisionId === id ? revisions[0]?.id ?? '' : comparison.activeRevisionId;
     set({ comparison: touch({ ...comparison, revisions, pages, activeRevisionId }) });
     scheduleSave(get);
   },
@@ -521,6 +537,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
   setPendingAreaKind: (k) => set({ pendingAreaKind: k }),
   setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
+  setAreaCalcMode: (m) => set({ areaCalcMode: m, measurePoints: [] }),
   setOrthoSnap: (v) => set({ orthoSnap: v }),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
@@ -530,6 +547,17 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: [...r.measurements, measurement] }));
     set({ comparison: touch({ ...comparison, revisions }), measurePoints: [] });
+    scheduleSave(get);
+  },
+  updateMeasurement: (id, patch) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    historyTracker.pushDebounced(get, set, comparison);
+    const revisions = updateActiveRevision(comparison, (r) => ({
+      ...r,
+      measurements: r.measurements.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+    }));
+    set({ comparison: touch({ ...comparison, revisions }) });
     scheduleSave(get);
   },
   deleteMeasurement: (id) => {
@@ -543,6 +571,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
 
   setMarkupTool: (t) => set({ toolMode: t ? 'markup' : 'select', markupTool: t, markupPoints: [] }),
   setMarkupColor: (c) => set({ markupColor: c }),
+  setMarkupFontScale: (v) => set({ markupFontScale: v }),
   addMarkupPoint: (p) => set({ markupPoints: [...get().markupPoints, p] }),
   clearMarkupPoints: () => set({ markupPoints: [] }),
   finishMarkup: (markup) => {

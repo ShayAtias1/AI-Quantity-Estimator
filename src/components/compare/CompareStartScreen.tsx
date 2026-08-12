@@ -58,7 +58,7 @@ export default function CompareStartScreen() {
   };
 
   const confirmCreate = async () => {
-    if (!originalFile || revisedFiles.length === 0) return;
+    if (!originalFile) return;
     const comparison = createEmptyComparison(
       name || 'השוואת תוכניות',
       apartmentNumber,
@@ -137,7 +137,7 @@ export default function CompareStartScreen() {
               />
             </div>
             <div className="form-row">
-              <label>תוכניות מעודכנות (Revised) — ניתן לבחור כמה תוכניות</label>
+              <label>תוכניות מעודכנות (Revised) — אופציונלי, ניתן להוסיף גם מאוחר יותר</label>
               <button className="btn-secondary" onClick={() => revisedInputRef.current?.click()}>
                 + הוסף קובץ PDF
               </button>
@@ -176,7 +176,7 @@ export default function CompareStartScreen() {
               >
                 ביטול
               </button>
-              <button className="btn-primary" onClick={confirmCreate} disabled={!originalFile || revisedFiles.length === 0}>
+              <button className="btn-primary" onClick={confirmCreate} disabled={!originalFile}>
                 צור השוואה
               </button>
             </div>

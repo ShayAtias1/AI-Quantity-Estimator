@@ -47,6 +47,14 @@ export const DEFAULT_AREA_KIND_COLORS: Record<AreaKind, string> = {
 /** How the user draws an area measurement: click a closed polygon, or drag a rectangle's two opposite corners. */
 export type AreaShape = 'polygon' | 'rectangle';
 
+/**
+ * How an area measurement's square-meter value is derived: 'footprint' is the drawn shape's own
+ * area (the default); 'wall' is for a wall being demolished/built, where the plan only shows the
+ * wall's run in 2D — the user traces its centerline (an open polyline) and the tool multiplies the
+ * traced length by a wall height (which can't be read off a 2D plan) to get the actual surface area.
+ */
+export type AreaCalcMode = 'footprint' | 'wall';
+
 export type CompareViewMode = 'overlay' | 'swipe' | 'blink';
 
 /** Transform applied to the revised layer on top of the shared viewport pan/zoom, expressed in the original layer's native px space. */
@@ -70,6 +78,8 @@ export interface Markup {
   /** Interpretation depends on tool: 2 points for arrow/rectangle/dimension, polyline for cloud, 1 point for text. */
   points: Point[];
   text?: string;
+  /** Label size multiplier for text notes and dimension labels (1 = default). Absent means 1. */
+  fontScale?: number;
   color: string;
   createdAt: number;
 }
@@ -84,6 +94,12 @@ export interface Measurement {
   areaKind?: AreaKind;
   /** For tool === 'area': raw computed square-meter value, kept alongside `label` so summaries don't need to re-parse it. */
   areaM2?: number;
+  /** For tool === 'area': how areaM2 was derived. Defaults to 'footprint' when absent (measurements created before this field existed). */
+  calcMode?: AreaCalcMode;
+  /** For calcMode === 'wall': the traced centerline length in meters (areaM2 = wallLengthM * wallHeightM). */
+  wallLengthM?: number;
+  /** For calcMode === 'wall': the wall height used for this specific measurement — starts from the comparison's default, editable per-measurement. */
+  wallHeightM?: number;
 }
 
 /** Placeholder for future automatic change detection (out of scope for now). */
@@ -143,5 +159,7 @@ export interface Comparison {
   activeRevisionId: string;
   /** Customizable per comparison; defaults to DEFAULT_AREA_KIND_COLORS. */
   areaKindColors: Record<AreaKind, string>;
+  /** Default wall height (meters) used to seed new 'wall' calc-mode area measurements; editable per-measurement afterward. Global to the comparison, fixed (not per-revision) for now. */
+  wallHeightDefaultM: number;
   autoDetectedChanges?: DetectedChange[];
 }

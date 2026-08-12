@@ -1,10 +1,25 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../lib/planSource';
 import { useAppStore } from '../store/appStore';
-import type { Point } from '../types';
-import { MEASURE_TOOL_LABELS } from '../types';
-import { distancePx, nearestPointIndex, polygonAreaM2, polygonAreaPx, polygonCentroid, polygonPerimeterM, pxToMeters, round, snapOrtho } from '../lib/geometry';
+import type { ExportRegion, Markup, Point } from '../types';
+import { DEFAULT_AREA_KIND_COLORS } from '../types';
+import {
+  arrowHeadPoints,
+  cloudPath,
+  distancePx,
+  longestEdgePx,
+  nearestPointIndex,
+  polygonAreaM2,
+  polygonAreaPx,
+  polygonCentroid,
+  polygonPerimeterM,
+  pxToMeters,
+  round,
+  snapOrtho,
+  tickMarkEndpoints,
+} from '../lib/geometry';
+import { numberAreaMeasurements } from '../lib/areaMeasurements';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
 
@@ -22,12 +37,94 @@ function pointInPolygon(pt: Point, poly: Point[]): boolean {
   return inside;
 }
 
+/**
+ * Renders one finished markup. When `draggable` (select tool active), its body accepts pointer
+ * events so it can be grabbed and moved — the actual drag is handled by the canvas's mouse handlers,
+ * which look up the markup via the `data-markup-id` attribute set here.
+ */
+function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: number; draggable: boolean }) {
+  const [a, b] = markup.points;
+  const hitProps = draggable ? { 'data-markup-id': markup.id, style: { pointerEvents: 'auto' as const, cursor: 'move' } } : {};
+  const fontScale = markup.fontScale ?? 1;
+  switch (markup.tool) {
+    case 'arrow':
+      return (
+        <g>
+          {draggable && (
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={strokeW * 8} {...hitProps} />
+          )}
+          <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={markup.color} strokeWidth={strokeW * 1.3} />
+          <polygon points={arrowHeadPoints(a, b, strokeW * 8)} fill={markup.color} {...hitProps} />
+        </g>
+      );
+    case 'rectangle':
+      return (
+        <rect
+          x={Math.min(a.x, b.x)}
+          y={Math.min(a.y, b.y)}
+          width={Math.abs(b.x - a.x)}
+          height={Math.abs(b.y - a.y)}
+          fill={markup.color}
+          fillOpacity={0.1}
+          stroke={markup.color}
+          strokeWidth={strokeW * 1.3}
+          {...hitProps}
+        />
+      );
+    case 'dimension': {
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      const tickLen = strokeW * 6;
+      const nx = Math.cos(angle + Math.PI / 2) * tickLen;
+      const ny = Math.sin(angle + Math.PI / 2) * tickLen;
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      return (
+        <g>
+          {draggable && (
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={strokeW * 8} {...hitProps} />
+          )}
+          <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={markup.color} strokeWidth={strokeW} />
+          <line x1={a.x - nx} y1={a.y - ny} x2={a.x + nx} y2={a.y + ny} stroke={markup.color} strokeWidth={strokeW} />
+          <line x1={b.x - nx} y1={b.y - ny} x2={b.x + nx} y2={b.y + ny} stroke={markup.color} strokeWidth={strokeW} />
+          {markup.text && (
+            <text x={midX} y={midY - tickLen - strokeW * 1.5} fontSize={strokeW * 6 * fontScale} fill={markup.color} fontWeight={600} textAnchor="middle">
+              {markup.text}
+            </text>
+          )}
+        </g>
+      );
+    }
+    case 'cloud':
+      return (
+        <path
+          d={cloudPath(markup.points, 14 * strokeW)}
+          fill={markup.color}
+          fillOpacity={0.08}
+          stroke={markup.color}
+          strokeWidth={strokeW * 1.3}
+          strokeLinejoin="round"
+          {...hitProps}
+        />
+      );
+    case 'text':
+      return (
+        <text x={a.x} y={a.y} fontSize={strokeW * 6.5 * fontScale} fill={markup.color} fontWeight={600} {...hitProps}>
+          {markup.text}
+        </text>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function PdfViewer() {
   const project = useAppStore((s) => s.project);
   const currentPage = useAppStore((s) => s.currentPage);
   const setNumPages = useAppStore((s) => s.setNumPages);
   const toolMode = useAppStore((s) => s.toolMode);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
+  const measurementsVisible = useAppStore((s) => s.measurementsVisible);
+  const markupFontScale = useAppStore((s) => s.markupFontScale);
   const undo = useAppStore((s) => s.undo);
   const redo = useAppStore((s) => s.redo);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
@@ -45,10 +142,26 @@ export default function PdfViewer() {
   const measureTool = useAppStore((s) => s.measureTool);
   const measurePoints = useAppStore((s) => s.measurePoints);
   const areaShape = useAppStore((s) => s.areaShape);
+  const areaCalcMode = useAppStore((s) => s.areaCalcMode);
+  const pendingAreaKind = useAppStore((s) => s.pendingAreaKind);
   const orthoSnap = useAppStore((s) => s.orthoSnap);
   const addMeasurePoint = useAppStore((s) => s.addMeasurePoint);
   const clearMeasurePoints = useAppStore((s) => s.clearMeasurePoints);
   const finishMeasurement = useAppStore((s) => s.finishMeasurement);
+  const exportRegions = useAppStore((s) => s.exportRegions);
+  const setExportRegion = useAppStore((s) => s.setExportRegion);
+  const setToolMode = useAppStore((s) => s.setToolMode);
+  const markupTool = useAppStore((s) => s.markupTool);
+  const markupPoints = useAppStore((s) => s.markupPoints);
+  const markupColor = useAppStore((s) => s.markupColor);
+  const addMarkupPoint = useAppStore((s) => s.addMarkupPoint);
+  const clearMarkupPoints = useAppStore((s) => s.clearMarkupPoints);
+  const finishMarkup = useAppStore((s) => s.finishMarkup);
+  const updateMarkup = useAppStore((s) => s.updateMarkup);
+  const updateMarkupQuiet = useAppStore((s) => s.updateMarkupQuiet);
+  const selectedMarkupId = useAppStore((s) => s.selectedMarkupId);
+  const setSelectedMarkupId = useAppStore((s) => s.setSelectedMarkupId);
+  const duplicateMarkup = useAppStore((s) => s.duplicateMarkup);
 
   const { containerRef, zoom, pan, screenToNative, handleWheel, fitToContainer, beginPanDrag, updatePanDrag, endPanDrag } =
     useCanvasTransform();
@@ -62,6 +175,10 @@ export default function PdfViewer() {
   const spaceHeld = useRef(false);
   const isPanning = useRef(false);
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
+  const regionDragStart = useRef<Point | null>(null);
+  const [regionDraft, setRegionDraft] = useState<ExportRegion | null>(null);
+  const markupDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoints: Point[] } | null>(null);
+  const handleDrag = useRef<{ id: string; index: number } | null>(null);
 
   // Load PDF page
   useEffect(() => {
@@ -80,7 +197,11 @@ export default function PdfViewer() {
     return () => {
       cancelled = true;
     };
-  }, [project, currentPage, setNumPages]);
+    // Depend on project.id (not the whole project object, which gets a new reference on every
+    // edit — rooms, measurements, markups) so this doesn't reload the page and reset the zoom/pan
+    // on every unrelated change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, currentPage, setNumPages]);
 
   // Render page to canvas whenever the plan source changes
   useEffect(() => {
@@ -105,6 +226,11 @@ export default function PdfViewer() {
 
   const room = project?.rooms.find((r) => r.id === selectedRoomId) ?? null;
   const metersPerPixel = project?.pages[currentPage]?.calibration?.metersPerPixel ?? 0;
+  // Numbered per page (not project-wide) so the on-canvas wall number always matches its row in that page's own exported table.
+  const areaNumbers = useMemo(
+    () => numberAreaMeasurements((project?.measurements ?? []).filter((m) => m.pageNumber === currentPage)),
+    [project, currentPage]
+  );
 
   useEffect(() => {
     if (drawingPoints.length === 0) setHoverPoint(null);
@@ -117,17 +243,67 @@ export default function PdfViewer() {
       return;
     }
     let label = '';
+    let areaM2: number | undefined;
+    let wallLengthM: number | undefined;
+    let wallHeightM: number | undefined;
     if (measureTool === 'distance') {
       const m = pxToMeters(distancePx(points[0], points[1]), metersPerPixel);
       label = `${round(m, 2)} מ'`;
+    } else if (measureTool === 'area' && areaCalcMode === 'wall') {
+      wallLengthM = round(pxToMeters(longestEdgePx(points), metersPerPixel), 2);
+      wallHeightM = project?.wallHeightDefaultM ?? 2.5;
+      areaM2 = round(wallLengthM * wallHeightM, 2);
+      label = `${areaM2} מ"ר`;
     } else if (measureTool === 'area') {
-      const m2 = polygonAreaM2(points, metersPerPixel);
-      label = `${round(m2, 2)} מ"ר`;
+      areaM2 = round(polygonAreaM2(points, metersPerPixel), 2);
+      label = `${areaM2} מ"ר`;
     } else {
       const m = polygonPerimeterM(points, true, metersPerPixel);
       label = `${round(m, 2)} מ'`;
     }
-    finishMeasurement({ id: uuid(), pageNumber: currentPage, tool: measureTool, points, label });
+    finishMeasurement({
+      id: uuid(),
+      pageNumber: currentPage,
+      tool: measureTool,
+      points,
+      label,
+      areaKind: measureTool === 'area' && pendingAreaKind ? pendingAreaKind : undefined,
+      areaM2,
+      calcMode: measureTool === 'area' ? areaCalcMode : undefined,
+      wallLengthM,
+      wallHeightM,
+    });
+  };
+
+  const finishOpenMarkup = () => {
+    if (!markupTool) return;
+    if (markupTool === 'cloud') {
+      if (markupPoints.length < 3) {
+        clearMarkupPoints();
+        return;
+      }
+      finishMarkup({ id: uuid(), pageNumber: currentPage, tool: 'cloud', points: markupPoints, color: markupColor, createdAt: Date.now() });
+      return;
+    }
+    if (markupPoints.length < 2) {
+      clearMarkupPoints();
+      return;
+    }
+    let text: string | undefined;
+    if (markupTool === 'dimension' && metersPerPixel) {
+      const m = pxToMeters(distancePx(markupPoints[0], markupPoints[1]), metersPerPixel);
+      text = `${round(m, 2)} מ'`;
+    }
+    finishMarkup({
+      id: uuid(),
+      pageNumber: currentPage,
+      tool: markupTool,
+      points: markupPoints,
+      color: markupColor,
+      text,
+      fontScale: markupFontScale,
+      createdAt: Date.now(),
+    });
   };
 
   useEffect(() => {
@@ -136,12 +312,20 @@ export default function PdfViewer() {
       if (e.key === 'Escape') {
         clearDrawingPoints();
         clearMeasurePoints();
+        clearMarkupPoints();
       }
       if (e.key === 'Enter' && drawingPoints.length >= 3) {
         finishDrawing();
       }
       if (e.key === 'Enter' && measureTool && measureTool !== 'distance' && measurePoints.length >= 3) {
         finishOpenMeasurement();
+      }
+      if (e.key === 'Enter' && markupTool === 'cloud' && markupPoints.length >= 3) {
+        finishOpenMarkup();
+      }
+      if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey) && selectedMarkupId) {
+        e.preventDefault();
+        duplicateMarkup(selectedMarkupId);
       }
       const tag = (e.target as HTMLElement)?.tagName;
       const isEditingField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -161,7 +345,7 @@ export default function PdfViewer() {
       window.removeEventListener('keyup', onKeyUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearDrawingPoints, drawingPoints.length, finishDrawing, measureTool, measurePoints, undo, redo]);
+  }, [clearDrawingPoints, drawingPoints.length, finishDrawing, measureTool, measurePoints, markupTool, markupPoints, selectedMarkupId, undo, redo]);
 
   // Auto-finish distance measurement once 2 points are placed.
   useEffect(() => {
@@ -170,6 +354,14 @@ export default function PdfViewer() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurePoints, measureTool]);
+
+  // Auto-finish 2-point markup tools (arrow/rectangle/dimension) once both points are placed.
+  useEffect(() => {
+    if (markupTool && markupTool !== 'cloud' && markupTool !== 'text' && markupPoints.length === 2) {
+      finishOpenMarkup();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markupPoints, markupTool]);
 
   const handleMouseDown = (e: MouseEvent) => {
     const isPanGesture = toolMode === 'pan' || e.button === 1 || spaceHeld.current;
@@ -186,6 +378,29 @@ export default function PdfViewer() {
         return;
       }
     }
+    if (toolMode === 'select') {
+      const handleTarget = (e.target as Element).closest?.('[data-handle-markup-id]');
+      if (handleTarget) {
+        const id = handleTarget.getAttribute('data-handle-markup-id')!;
+        const index = Number(handleTarget.getAttribute('data-handle-index'));
+        handleDrag.current = { id, index };
+        return;
+      }
+      const bodyTarget = (e.target as Element).closest?.('[data-markup-id]');
+      const id = bodyTarget?.getAttribute('data-markup-id');
+      const markup = id ? (project?.markups ?? []).find((m) => m.id === id) : undefined;
+      if (markup) {
+        setSelectedMarkupId(markup.id);
+        markupDrag.current = { id: markup.id, startClientX: e.clientX, startClientY: e.clientY, startPoints: markup.points };
+        return;
+      }
+      if (selectedMarkupId) setSelectedMarkupId(null);
+    }
+    if (toolMode === 'export-region') {
+      const native = screenToNative(e.clientX, e.clientY);
+      regionDragStart.current = native;
+      setRegionDraft({ x: native.x, y: native.y, width: 0, height: 0 });
+    }
   };
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -195,6 +410,33 @@ export default function PdfViewer() {
     if (vertexDrag.current && room) {
       const native = screenToNative(e.clientX, e.clientY);
       moveRoomPoint(room.id, vertexDrag.current.pointIndex, native);
+      return;
+    }
+    if (handleDrag.current) {
+      const native = screenToNative(e.clientX, e.clientY);
+      const markup = (project?.markups ?? []).find((m) => m.id === handleDrag.current!.id);
+      if (markup) {
+        const points = markup.points.map((p, i) => (i === handleDrag.current!.index ? native : p));
+        updateMarkupQuiet(handleDrag.current.id, { points });
+      }
+      return;
+    }
+    if (markupDrag.current) {
+      const dx = (e.clientX - markupDrag.current.startClientX) / zoom;
+      const dy = (e.clientY - markupDrag.current.startClientY) / zoom;
+      const points = markupDrag.current.startPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+      updateMarkupQuiet(markupDrag.current.id, { points });
+      return;
+    }
+    if (regionDragStart.current) {
+      const native = screenToNative(e.clientX, e.clientY);
+      const start = regionDragStart.current;
+      setRegionDraft({
+        x: Math.min(start.x, native.x),
+        y: Math.min(start.y, native.y),
+        width: Math.abs(native.x - start.x),
+        height: Math.abs(native.y - start.y),
+      });
       return;
     }
     if (toolMode === 'draw-rect' && drawingPoints.length === 1) {
@@ -210,6 +452,22 @@ export default function PdfViewer() {
     if (vertexDrag.current) {
       vertexDrag.current = null;
       void persist();
+    }
+    if (handleDrag.current) {
+      updateMarkup(handleDrag.current.id, {});
+      handleDrag.current = null;
+    }
+    if (markupDrag.current) {
+      updateMarkup(markupDrag.current.id, {});
+      markupDrag.current = null;
+    }
+    if (regionDragStart.current) {
+      regionDragStart.current = null;
+      if (regionDraft && regionDraft.width > 4 / zoom && regionDraft.height > 4 / zoom) {
+        setExportRegion(currentPage, regionDraft);
+      }
+      setRegionDraft(null);
+      setToolMode('select');
     }
   };
 
@@ -285,6 +543,39 @@ export default function PdfViewer() {
         }
       }
       addMeasurePoint(point);
+      return;
+    }
+
+    if (toolMode === 'markup' && markupTool) {
+      if (markupTool === 'text') {
+        const text = window.prompt('טקסט הערה:');
+        if (text && text.trim()) {
+          finishMarkup({
+            id: uuid(),
+            pageNumber: currentPage,
+            tool: 'text',
+            points: [native],
+            color: markupColor,
+            text: text.trim(),
+            fontScale: markupFontScale,
+            createdAt: Date.now(),
+          });
+        }
+        return;
+      }
+      if (markupTool === 'cloud') {
+        if (markupPoints.length >= 3) {
+          const first = markupPoints[0];
+          const distScreen = Math.hypot(native.x - first.x, native.y - first.y) * zoom;
+          if (distScreen < 10) {
+            finishOpenMarkup();
+            return;
+          }
+        }
+        addMarkupPoint(native);
+        return;
+      }
+      addMarkupPoint(native);
       return;
     }
 
@@ -427,31 +718,194 @@ export default function PdfViewer() {
               </g>
             )}
 
-            {/* Finished measurements on this page */}
-            {annotationsVisible &&
+            {/* Finished measurements on this page — AutoCAD-style: distance line has its value rotated to follow the line and sits above it; perimeter/area vertices get a small dot. */}
+            {measurementsVisible &&
               (project.measurements ?? [])
                 .filter((m) => m.pageNumber === currentPage)
-                .map((m) => (
-                <g key={m.id}>
-                  {m.tool === 'distance' ? (
-                    <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke="#0ea5e9" strokeWidth={strokeW} />
-                  ) : (
-                    <polygon
-                      points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
-                      fill="#0ea5e9"
-                      fillOpacity={0.12}
-                      stroke="#0ea5e9"
-                      strokeWidth={strokeW}
-                    />
-                  )}
-                  <text x={m.points[0].x} y={m.points[0].y - 8 / zoom} fontSize={12 / zoom} fill="#0ea5e9" fontWeight={600}>
-                    {MEASURE_TOOL_LABELS[m.tool]}: {m.label}
-                  </text>
-                </g>
-              ))}
+                .map((m) => {
+                  const color = m.areaKind ? (project.areaKindColors ?? DEFAULT_AREA_KIND_COLORS)[m.areaKind] : '#0ea5e9';
+                  const vertexDotR = 3 / zoom;
+                  const tickLen = 14 / zoom;
+                  const isDistance = m.tool === 'distance';
+                  const isWall = m.tool === 'area' && m.calcMode === 'wall';
+                  let labelX: number;
+                  let labelY: number;
+                  let angleDeg = 0;
+                  if (isDistance) {
+                    const midX = (m.points[0].x + m.points[1].x) / 2;
+                    const midY = (m.points[0].y + m.points[1].y) / 2;
+                    const segDx = m.points[1].x - m.points[0].x;
+                    const segDy = m.points[1].y - m.points[0].y;
+                    const segLen = Math.hypot(segDx, segDy) || 1;
+                    let perpX = -segDy / segLen;
+                    let perpY = segDx / segLen;
+                    if (perpY > 0) {
+                      perpX = -perpX;
+                      perpY = -perpY;
+                    }
+                    const offset = 12 / zoom;
+                    labelX = midX + perpX * offset;
+                    labelY = midY + perpY * offset;
+                    angleDeg = (Math.atan2(segDy, segDx) * 180) / Math.PI;
+                    if (angleDeg > 90) angleDeg -= 180;
+                    if (angleDeg < -90) angleDeg += 180;
+                  } else {
+                    const c = polygonCentroid(m.points);
+                    labelX = c.x;
+                    labelY = c.y;
+                  }
+                  return (
+                    <g key={m.id}>
+                      {isDistance ? (
+                        <>
+                          <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke={color} strokeWidth={strokeW} />
+                          {(() => {
+                            const [a1, b1] = tickMarkEndpoints(m.points[0], m.points[1], tickLen);
+                            const [a2, b2] = tickMarkEndpoints(m.points[1], m.points[0], tickLen);
+                            return (
+                              <>
+                                <line x1={a1.x} y1={a1.y} x2={b1.x} y2={b1.y} stroke={color} strokeWidth={strokeW} />
+                                <line x1={a2.x} y1={a2.y} x2={b2.x} y2={b2.y} stroke={color} strokeWidth={strokeW} />
+                              </>
+                            );
+                          })()}
+                        </>
+                      ) : (
+                        <>
+                          <polygon
+                            points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                            fill={color}
+                            fillOpacity={m.areaKind ? 0.28 : 0.12}
+                            stroke={color}
+                            strokeWidth={strokeW}
+                          />
+                          {m.tool !== 'area' &&
+                            m.points.map((p, i) => (
+                              <circle key={i} cx={p.x} cy={p.y} r={vertexDotR} fill={color} />
+                            ))}
+                        </>
+                      )}
+                      {(m.tool !== 'area' || !m.areaKind || isWall) && (
+                        <>
+                          {isWall && <circle cx={labelX} cy={labelY} r={9 / zoom} fill="#ffffff" fillOpacity={0.9} />}
+                          <text
+                            x={labelX}
+                            y={labelY}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize={12 / zoom}
+                            fill={color}
+                            fontWeight={600}
+                            transform={isDistance ? `rotate(${angleDeg} ${labelX} ${labelY})` : undefined}
+                          >
+                            {isWall ? (areaNumbers.get(m.id) ?? '') : m.label}
+                          </text>
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
+
+            {/* Markup in progress (cloud multi-point) */}
+            {markupPoints.length > 0 && (
+              <g>
+                <polyline
+                  points={markupPoints.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke={markupColor}
+                  strokeWidth={strokeW}
+                  strokeDasharray={`${4 / zoom} ${4 / zoom}`}
+                />
+                {markupPoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={vertexR} fill={markupColor} />
+                ))}
+              </g>
+            )}
+
+            {/* Finished markups on this page */}
+            {annotationsVisible &&
+              (project.markups ?? [])
+                .filter((m) => m.pageNumber === currentPage)
+                .map((m) => <MarkupShape key={m.id} markup={m} strokeW={strokeW} draggable={toolMode === 'select'} />)}
+
+            {/* Resize/reshape handles for the selected markup (select tool only) */}
+            {toolMode === 'select' &&
+              selectedMarkupId &&
+              (() => {
+                const selected = (project.markups ?? []).find((m) => m.id === selectedMarkupId && m.pageNumber === currentPage);
+                if (!selected) return null;
+                return (
+                  <g>
+                    {selected.points.map((p, i) => (
+                      <circle
+                        key={i}
+                        cx={p.x}
+                        cy={p.y}
+                        r={vertexR * 1.4}
+                        fill="#fff"
+                        stroke="#2563eb"
+                        strokeWidth={strokeW * 1.2}
+                        data-handle-markup-id={selected.id}
+                        data-handle-index={i}
+                        style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      />
+                    ))}
+                  </g>
+                );
+              })()}
+          </svg>
+        )}
+
+        {/* Export region selection — kept in a separate svg so it's never rasterized into the exported PDF preview. */}
+        {pageSize.width > 0 && (exportRegions[currentPage] || regionDraft) && (
+          <svg className="overlay-svg region-select-svg" width={pageSize.width} height={pageSize.height} viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}>
+            {exportRegions[currentPage] && !regionDraft && (
+              <rect
+                x={exportRegions[currentPage].x}
+                y={exportRegions[currentPage].y}
+                width={exportRegions[currentPage].width}
+                height={exportRegions[currentPage].height}
+                fill="none"
+                stroke="#0f172a"
+                strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+                strokeWidth={strokeW}
+              />
+            )}
+            {regionDraft && (
+              <rect
+                x={regionDraft.x}
+                y={regionDraft.y}
+                width={regionDraft.width}
+                height={regionDraft.height}
+                fill="#0f172a"
+                fillOpacity={0.08}
+                stroke="#0f172a"
+                strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+                strokeWidth={strokeW}
+              />
+            )}
           </svg>
         )}
       </div>
+
+      {toolMode === 'export-region' && !regionDraft && (
+        <div className="export-region-hint">גרור על התוכנית כדי לבחור את האזור לייצוא ב-PDF</div>
+      )}
+
+      {pageSize.width > 0 && (
+        <button
+          className="btn-secondary small reset-view-btn"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            fitToContainer(pageSize.width, pageSize.height);
+          }}
+          title="איפוס תצוגה לזום המקורי"
+        >
+          ⤢ איפוס תצוגה
+        </button>
+      )}
     </div>
   );
 }

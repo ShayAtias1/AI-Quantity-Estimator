@@ -92,13 +92,49 @@ export interface Project {
   pages: Record<number, PageData>;
   rooms: Room[];
   measurements: Measurement[];
+  markups: Markup[];
   defaultCladdingHeightM: number;
   defaultTilingWastePercent: number;
   defaultCladdingWastePercent: number;
   defaultPanelsWastePercent: number;
+  /** Customizable per project; defaults to DEFAULT_AREA_KIND_COLORS. */
+  areaKindColors: Record<AreaKind, string>;
+  /** Default wall height (meters) used to seed new 'wall' calc-mode area measurements; editable per-measurement afterward. */
+  wallHeightDefaultM: number;
 }
 
-export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect' | 'measure';
+export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect' | 'measure' | 'export-region' | 'markup';
+
+export type MarkupTool = 'cloud' | 'arrow' | 'rectangle' | 'text' | 'dimension';
+
+export const MARKUP_TOOL_LABELS: Record<MarkupTool, string> = {
+  cloud: 'ענן סימון',
+  arrow: 'חץ',
+  rectangle: 'מלבן סימון',
+  text: 'הערת טקסט',
+  dimension: 'קו מידה',
+};
+
+export interface Markup {
+  id: string;
+  pageNumber: number;
+  tool: MarkupTool;
+  /** Interpretation depends on tool: 2 points for arrow/rectangle/dimension, polyline for cloud, 1 point for text. */
+  points: Point[];
+  text?: string;
+  /** Label size multiplier for text notes and dimension labels (1 = default). Absent means 1. */
+  fontScale?: number;
+  color: string;
+  createdAt: number;
+}
+
+/** A page-native-coordinate rectangle marking the area of the plan to include in a PDF export, instead of the full page. */
+export interface ExportRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export type MeasureTool = 'distance' | 'area' | 'perimeter';
 
@@ -111,6 +147,27 @@ export const MEASURE_TOOL_LABELS: Record<MeasureTool, string> = {
 /** How the user draws an area measurement: click a closed polygon, or drag a rectangle's two opposite corners. */
 export type AreaShape = 'polygon' | 'rectangle';
 
+/** Area-measurement classification, used to tally demolition vs. new-construction quantities. */
+export type AreaKind = 'demolition' | 'construction';
+
+export const AREA_KIND_LABELS: Record<AreaKind, string> = {
+  demolition: 'הריסה',
+  construction: 'בנייה חדשה',
+};
+
+export const DEFAULT_AREA_KIND_COLORS: Record<AreaKind, string> = {
+  demolition: '#eab308',
+  construction: '#16a34a',
+};
+
+/**
+ * How an area measurement's square-meter value is derived: 'footprint' is the drawn shape's own
+ * area (the default); 'wall' is for a wall being demolished/built, where the plan only shows the
+ * wall's run in 2D — the tool takes the longest edge of the drawn shape (the wall's length, not its
+ * plan-view thickness) and multiplies it by a wall height (which can't be read off a 2D plan).
+ */
+export type AreaCalcMode = 'footprint' | 'wall';
+
 export interface Measurement {
   id: string;
   pageNumber: number;
@@ -118,6 +175,16 @@ export interface Measurement {
   points: Point[];
   /** Computed display value, cached at creation time (e.g. "3.24 מ'" or "12.5 מ\"ר"). */
   label: string;
+  /** For tool === 'area': classifies the marked area for the demolition/construction summary. */
+  areaKind?: AreaKind;
+  /** For tool === 'area': raw computed square-meter value, kept alongside `label` so summaries don't need to re-parse it. */
+  areaM2?: number;
+  /** For tool === 'area': how areaM2 was derived. Defaults to 'footprint' when absent (measurements created before this field existed). */
+  calcMode?: AreaCalcMode;
+  /** For calcMode === 'wall': the longest-edge length in meters (areaM2 = wallLengthM * wallHeightM). */
+  wallLengthM?: number;
+  /** For calcMode === 'wall': the wall height used for this specific measurement — starts from the project's default, editable per-measurement. */
+  wallHeightM?: number;
 }
 
 /** One row per room, matching the contractor-facing quantities report layout. */

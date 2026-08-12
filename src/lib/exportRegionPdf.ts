@@ -1,0 +1,163 @@
+import { PDFDocument } from 'pdf-lib';
+import { saveAs } from 'file-saver';
+import type { ExportRegion, Project } from '../types';
+import { DEFAULT_AREA_KIND_COLORS } from '../types';
+import { loadPdfPlanSource } from './planSource';
+import { loadPdfBlob } from '../db/database';
+import { polygonCentroid } from './geometry';
+import { drawMarkupOnCanvas } from './drawMarkup';
+import { drawMeasurementOnCanvas } from './drawMeasurement';
+import { numberAreaMeasurements } from './areaMeasurements';
+
+const FONT = "'Segoe UI', sans-serif";
+
+/**
+ * Renders one plan page — optionally cropped to `region` — with its room markings and measurements
+ * (each subject to its own visibility flag) onto a fresh canvas. `region` is in native page
+ * coordinates; pass null for the whole page.
+ */
+async function renderRegionCanvas(
+  project: Project,
+  pageNumber: number,
+  region: ExportRegion | null,
+  showMarkings: boolean,
+  showMeasurements: boolean
+): Promise<HTMLCanvasElement | null> {
+  const mult = 2;
+  const { source } = await loadPdfPlanSource(project.id, () => loadPdfBlob(project.id), pageNumber);
+  const planCanvas = document.createElement('canvas');
+  const handle = source.render(planCanvas, mult);
+  await handle.promise;
+
+  const nativeW = planCanvas.width / mult;
+  const nativeH = planCanvas.height / mult;
+  const rx = region ? Math.max(0, Math.min(region.x, nativeW)) : 0;
+  const ry = region ? Math.max(0, Math.min(region.y, nativeH)) : 0;
+  const rw = region ? Math.max(0, Math.min(region.width, nativeW - rx)) : nativeW;
+  const rh = region ? Math.max(0, Math.min(region.height, nativeH - ry)) : nativeH;
+  if (rw <= 0 || rh <= 0) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = rw * mult;
+  canvas.height = rh * mult;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.drawImage(planCanvas, rx * mult, ry * mult, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+
+  if (showMarkings) {
+    const rooms = project.rooms.filter((r) => r.pageNumber === pageNumber && r.points.length >= 3);
+    for (const r of rooms) {
+      ctx.beginPath();
+      r.points.forEach((p, i) => {
+        const x = (p.x - rx) * mult;
+        const y = (p.y - ry) * mult;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = r.color;
+      ctx.globalAlpha = 0.22;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 2 * mult;
+      ctx.stroke();
+
+      const centroid = polygonCentroid(r.points);
+      const labelX = (centroid.x - rx) * mult;
+      const labelY = (centroid.y - ry) * mult;
+      ctx.font = `bold ${10.5 * mult}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3 * mult;
+      ctx.strokeStyle = '#ffffff';
+      ctx.strokeText(r.name, labelX, labelY);
+      ctx.fillStyle = r.color;
+      ctx.fillText(r.name, labelX, labelY);
+      ctx.textBaseline = 'alphabetic';
+    }
+  }
+
+  if (showMeasurements) {
+    const areaKindColors = project.areaKindColors ?? DEFAULT_AREA_KIND_COLORS;
+    const measurements = (project.measurements ?? []).filter((m) => m.pageNumber === pageNumber);
+    const areaNumbers = numberAreaMeasurements(measurements);
+    for (const m of measurements) {
+      drawMeasurementOnCanvas(ctx, m, mult, rx, ry, m.areaKind ? areaKindColors[m.areaKind] : undefined, areaNumbers.get(m.id));
+    }
+  }
+
+  if (showMarkings) {
+    const markups = (project.markups ?? []).filter((m) => m.pageNumber === pageNumber);
+    for (const m of markups) drawMarkupOnCanvas(ctx, m, mult, rx, ry);
+  }
+
+  return canvas;
+}
+
+async function addCanvasPage(pdfDoc: PDFDocument, canvas: HTMLCanvasElement) {
+  const pngBytes = await fetch(canvas.toDataURL('image/png')).then((r) => r.arrayBuffer());
+  const pngImage = await pdfDoc.embedPng(pngBytes);
+  const page = pdfDoc.addPage([canvas.width, canvas.height]);
+  page.drawImage(pngImage, { x: 0, y: 0, width: canvas.width, height: canvas.height });
+}
+
+async function savePdf(pdfDoc: PDFDocument, fileName: string) {
+  const bytes = await pdfDoc.save();
+  const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {
+    type: 'application/pdf',
+  });
+  saveAs(blob, fileName);
+}
+
+/**
+ * Exports a single plan page as a standalone PDF — the plan image with its markings/measurements
+ * (if visible), nothing else: no title block, no quantities table. Pass the page's export region
+ * to crop to it, or null to export the whole page.
+ */
+export async function exportPlanPageToPdf(
+  project: Project,
+  pageNumber: number,
+  region: ExportRegion | null,
+  showMarkings: boolean,
+  showMeasurements: boolean
+) {
+  const canvas = await renderRegionCanvas(project, pageNumber, region, showMarkings, showMeasurements);
+  if (!canvas) return;
+  const pdfDoc = await PDFDocument.create();
+  await addCanvasPage(pdfDoc, canvas);
+  const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
+  await savePdf(pdfDoc, region ? `אזור-${safeName}.pdf` : `עמוד-${pageNumber}-${safeName}.pdf`);
+}
+
+/**
+ * Exports every plan page in one go as a single multi-page PDF — each page cropped to its own
+ * export region when one was selected, and shown in full otherwise, so the user doesn't have to
+ * pick a region and export page by page.
+ */
+export async function exportAllPlanPagesToPdf(
+  project: Project,
+  numPages: number,
+  exportRegions: Record<number, ExportRegion>,
+  showMarkings: boolean,
+  showMeasurements: boolean
+) {
+  const pdfDoc = await PDFDocument.create();
+  let added = 0;
+  for (let pageNumber = 1; pageNumber <= numPages; pageNumber += 1) {
+    const canvas = await renderRegionCanvas(
+      project,
+      pageNumber,
+      exportRegions[pageNumber] ?? null,
+      showMarkings,
+      showMeasurements
+    );
+    if (!canvas) continue;
+    await addCanvasPage(pdfDoc, canvas);
+    added += 1;
+  }
+  if (added === 0) return;
+  const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
+  await savePdf(pdfDoc, `תוכניות-${safeName}.pdf`);
+}

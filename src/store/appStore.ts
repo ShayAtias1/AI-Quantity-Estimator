@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
-import type { AreaShape, Calibration, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
+import type { AreaCalcMode, AreaKind, AreaShape, Calibration, ExportRegion, Markup, MarkupTool, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
+import { DEFAULT_AREA_KIND_COLORS } from '../types';
 import { saveProject as dbSaveProject, loadPdfBlob } from '../db/database';
 import { createHistoryTracker } from '../lib/undoHistory';
 import { loadPdfPlanSource } from '../lib/planSource';
@@ -25,10 +26,13 @@ export function createEmptyProject(name: string, pdfFileName: string): Project {
     pages: {},
     rooms: [],
     measurements: [],
+    markups: [],
     defaultCladdingHeightM: 2.0,
     defaultTilingWastePercent: 0,
     defaultCladdingWastePercent: 0,
     defaultPanelsWastePercent: 0,
+    areaKindColors: { ...DEFAULT_AREA_KIND_COLORS },
+    wallHeightDefaultM: 2.5,
   };
 }
 
@@ -57,11 +61,19 @@ interface AppState {
   measureTool: MeasureTool | null;
   measurePoints: Point[];
   areaShape: AreaShape;
+  areaCalcMode: AreaCalcMode;
+  pendingAreaKind: AreaKind | null;
   /** When on, each new polygon vertex (or the second point of a distance measurement) snaps to a horizontal/vertical line from the previous one. */
   orthoSnap: boolean;
   /** Manual show/hide toggle for the room area markings drawn over the plan. */
   annotationsVisible: boolean;
+  /** Manual show/hide toggle for the measurements drawn over the plan — independent of the markings toggle. */
+  measurementsVisible: boolean;
   dirty: boolean;
+
+  /** Chosen PDF-export crop region per page (native page coordinates). Not persisted — a per-session export setting. */
+  exportRegions: Record<number, ExportRegion>;
+  setExportRegion: (pageNumber: number, region: ExportRegion | null) => void;
 
   /** Undo/redo stacks of past/future project snapshots. Not persisted — reset whenever the project changes. */
   history: Project[];
@@ -95,12 +107,36 @@ interface AppState {
 
   setMeasureTool: (t: MeasureTool | null) => void;
   setAreaShape: (s: AreaShape) => void;
+  setAreaCalcMode: (m: AreaCalcMode) => void;
+  setPendingAreaKind: (k: AreaKind | null) => void;
+  setAreaKindColor: (kind: AreaKind, color: string) => void;
   setOrthoSnap: (v: boolean) => void;
   toggleAnnotationsVisible: () => void;
+  toggleMeasurementsVisible: () => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
   finishMeasurement: (m: Measurement) => void;
+  updateMeasurement: (id: string, patch: Partial<Measurement>) => void;
   deleteMeasurement: (id: string) => void;
+
+  markupTool: MarkupTool | null;
+  markupPoints: Point[];
+  markupColor: string;
+  selectedMarkupId: string | null;
+  setMarkupTool: (t: MarkupTool | null) => void;
+  setMarkupColor: (c: string) => void;
+  /** Label size multiplier applied to newly created text notes / dimension labels. */
+  markupFontScale: number;
+  setMarkupFontScale: (v: number) => void;
+  addMarkupPoint: (p: Point) => void;
+  clearMarkupPoints: () => void;
+  finishMarkup: (m: Markup) => void;
+  updateMarkup: (id: string, patch: Partial<Markup>) => void;
+  /** Like updateMarkup but skips the undo snapshot and autosave schedule — for continuous drag updates. */
+  updateMarkupQuiet: (id: string, patch: Partial<Markup>) => void;
+  deleteMarkup: (id: string) => void;
+  duplicateMarkup: (id: string) => void;
+  setSelectedMarkupId: (id: string | null) => void;
 
   updateRoom: (id: string, patch: Partial<Room>) => void;
   deleteRoom: (id: string) => void;
@@ -112,7 +148,15 @@ interface AppState {
 
   updateProjectMeta: (
     patch: Partial<
-      Pick<Project, 'name' | 'defaultCladdingHeightM' | 'defaultTilingWastePercent' | 'defaultCladdingWastePercent' | 'defaultPanelsWastePercent'>
+      Pick<
+        Project,
+        | 'name'
+        | 'defaultCladdingHeightM'
+        | 'defaultTilingWastePercent'
+        | 'defaultCladdingWastePercent'
+        | 'defaultPanelsWastePercent'
+        | 'wallHeightDefaultM'
+      >
     >
   ) => void;
 
@@ -137,10 +181,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   drawingPoints: [],
   measureTool: null,
   measurePoints: [],
+  markupTool: null,
+  markupPoints: [],
+  markupColor: '#ef4444',
+  markupFontScale: 1,
+  selectedMarkupId: null,
   areaShape: 'polygon',
+  areaCalcMode: 'footprint',
+  pendingAreaKind: null,
   orthoSnap: false,
   annotationsVisible: true,
+  measurementsVisible: true,
   dirty: false,
+  exportRegions: {},
+  setExportRegion: (pageNumber, region) =>
+    set((state) => {
+      const next = { ...state.exportRegions };
+      if (region) next[pageNumber] = region;
+      else delete next[pageNumber];
+      return { exportRegions: next };
+    }),
   history: [],
   future: [],
   detecting: false,
@@ -154,6 +214,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       project: p,
       currentPage: 1,
       selectedRoomId: null,
+      selectedMarkupId: null,
+      exportRegions: {},
       history: [],
       future: [],
       detectionSummary: null,
@@ -239,9 +301,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     scheduleSave(get);
   },
   setCurrentPage: (n) =>
-    set({ currentPage: n, selectedRoomId: null, drawingPoints: [], calibrationPoints: [], measurePoints: [] }),
+    set({
+      currentPage: n,
+      selectedRoomId: null,
+      selectedMarkupId: null,
+      drawingPoints: [],
+      calibrationPoints: [],
+      measurePoints: [],
+      markupPoints: [],
+    }),
   setNumPages: (n) => set({ numPages: n }),
-  setToolMode: (m) => set({ toolMode: m, calibrationPoints: [], drawingPoints: [], measurePoints: [] }),
+  setToolMode: (m) => set({ toolMode: m, calibrationPoints: [], drawingPoints: [], measurePoints: [], markupPoints: [] }),
   setSelectedRoomId: (id) => set({ selectedRoomId: id }),
 
   addCalibrationPoint: (p) => {
@@ -297,8 +367,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
   setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
+  setAreaCalcMode: (m) => set({ areaCalcMode: m, measurePoints: [] }),
+  setPendingAreaKind: (k) => set({ pendingAreaKind: k }),
+  setAreaKindColor: (kind, color) => {
+    const { project } = get();
+    if (!project) return;
+    set({ project: { ...project, areaKindColors: { ...project.areaKindColors, [kind]: color }, updatedAt: Date.now() } });
+    scheduleSave(get);
+  },
   setOrthoSnap: (v) => set({ orthoSnap: v }),
   toggleAnnotationsVisible: () => set((s) => ({ annotationsVisible: !s.annotationsVisible })),
+  toggleMeasurementsVisible: () => set((s) => ({ measurementsVisible: !s.measurementsVisible })),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (m) => {
@@ -309,6 +388,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ project: { ...project, measurements, updatedAt: Date.now() }, measurePoints: [] });
     scheduleSave(get);
   },
+  updateMeasurement: (id, patch) => {
+    const { project } = get();
+    if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
+    const measurements = (project.measurements ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m));
+    set({ project: { ...project, measurements, updatedAt: Date.now() } });
+    scheduleSave(get);
+  },
   deleteMeasurement: (id) => {
     const { project } = get();
     if (!project) return;
@@ -317,6 +404,63 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ project: { ...project, measurements, updatedAt: Date.now() } });
     scheduleSave(get);
   },
+
+  setMarkupTool: (t) => set({ toolMode: t ? 'markup' : 'select', markupTool: t, markupPoints: [] }),
+  setMarkupColor: (c) => set({ markupColor: c }),
+  setMarkupFontScale: (v) => set({ markupFontScale: v }),
+  addMarkupPoint: (p) => set({ markupPoints: [...get().markupPoints, p] }),
+  clearMarkupPoints: () => set({ markupPoints: [] }),
+  finishMarkup: (m) => {
+    const { project } = get();
+    if (!project) return;
+    historyTracker.push(get, set, project);
+    const markups = [...(project.markups ?? []), m];
+    set({ project: { ...project, markups, updatedAt: Date.now() }, markupPoints: [] });
+    scheduleSave(get);
+  },
+  updateMarkup: (id, patch) => {
+    const { project } = get();
+    if (!project) return;
+    const markups = (project.markups ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m));
+    set({ project: { ...project, markups, updatedAt: Date.now() } });
+    scheduleSave(get);
+  },
+  updateMarkupQuiet: (id, patch) => {
+    const { project } = get();
+    if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
+    const markups = (project.markups ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m));
+    set({ project: { ...project, markups } });
+  },
+  deleteMarkup: (id) => {
+    const { project, selectedMarkupId } = get();
+    if (!project) return;
+    historyTracker.push(get, set, project);
+    const markups = (project.markups ?? []).filter((m) => m.id !== id);
+    set({
+      project: { ...project, markups, updatedAt: Date.now() },
+      selectedMarkupId: selectedMarkupId === id ? null : selectedMarkupId,
+    });
+    scheduleSave(get);
+  },
+  duplicateMarkup: (id) => {
+    const { project } = get();
+    if (!project) return;
+    const original = (project.markups ?? []).find((m) => m.id === id);
+    if (!original) return;
+    historyTracker.push(get, set, project);
+    const offset = 20;
+    const copy: Markup = {
+      ...original,
+      id: uuid(),
+      points: original.points.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+      createdAt: Date.now(),
+    };
+    const markups = [...(project.markups ?? []), copy];
+    set({ project: { ...project, markups, updatedAt: Date.now() }, selectedMarkupId: copy.id });
+    scheduleSave(get);
+  },
+  setSelectedMarkupId: (id) => set({ selectedMarkupId: id }),
 
   updateRoom: (id, patch) => {
     const { project } = get();

@@ -3,37 +3,73 @@ import { useAppStore } from '../store/appStore';
 import { buildReportCategoryTotals, buildRoomSummaries } from '../lib/quantities';
 import { REPORT_CATEGORY_LABELS } from '../types';
 import { exportQuantitiesToExcel } from '../lib/exportExcel';
-import { exportQuantitiesToPdf } from '../lib/exportQuantitiesPdf';
+import { exportQuantitiesToPdf, getExportablePageNumbers } from '../lib/exportQuantitiesPdf';
 
 const DASH = '—';
 
 export default function QuantityTable() {
   const project = useAppStore((s) => s.project);
+  const currentPage = useAppStore((s) => s.currentPage);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
+  const measurementsVisible = useAppStore((s) => s.measurementsVisible);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [pageDialogPages, setPageDialogPages] = useState<Set<number> | null>(null);
+  const [excelDialog, setExcelDialog] = useState<{ mode: 'specific' | 'all'; page: number } | null>(null);
 
   const summaries = useMemo(() => (project ? buildRoomSummaries(project) : []), [project]);
   const totals = useMemo(() => (project ? buildReportCategoryTotals(project, summaries) : []), [project, summaries]);
 
   if (!project) return null;
 
-  const handleExportExcel = async () => {
+  const hasAreaMeasurements = (project.measurements ?? []).some((m) => m.tool === 'area' && m.areaKind);
+  const canExportPdf = summaries.length > 0 || hasAreaMeasurements;
+  const canExportExcel = summaries.length > 0 || hasAreaMeasurements;
+  const exportablePages = getExportablePageNumbers(project);
+
+  const runExportExcel = async (pageNumbers: number[]) => {
     setExportingExcel(true);
     try {
-      await exportQuantitiesToExcel(project, summaries, totals);
+      const roomPageById = new Map(project.rooms.map((r) => [r.id, r.pageNumber]));
+      const pageSet = new Set(pageNumbers);
+      const filteredSummaries = summaries.filter((s) => pageSet.has(roomPageById.get(s.roomId) ?? -1));
+      const filteredTotals = buildReportCategoryTotals(project, filteredSummaries);
+      const filteredAreaMeasurements = (project.measurements ?? []).filter(
+        (m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number' && pageSet.has(m.pageNumber)
+      );
+      await exportQuantitiesToExcel(project, filteredSummaries, filteredTotals, filteredAreaMeasurements);
     } finally {
       setExportingExcel(false);
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportExcel = () => {
+    if (exportablePages.length <= 1) {
+      void runExportExcel(exportablePages);
+      return;
+    }
+    setExcelDialog({ mode: 'specific', page: exportablePages.includes(currentPage) ? currentPage : exportablePages[0] });
+  };
+
+  const runExportPdf = async (pageNumbers: number[]) => {
     setExportingPdf(true);
     try {
-      await exportQuantitiesToPdf(project, summaries, totals, annotationsVisible);
+      const roomPageById = new Map(project.rooms.map((r) => [r.id, r.pageNumber]));
+      const pageSet = new Set(pageNumbers);
+      const filteredSummaries = summaries.filter((s) => pageSet.has(roomPageById.get(s.roomId) ?? -1));
+      const filteredTotals = buildReportCategoryTotals(project, filteredSummaries);
+      await exportQuantitiesToPdf(project, filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible);
     } finally {
       setExportingPdf(false);
     }
+  };
+
+  const handleExportPdf = () => {
+    if (exportablePages.length <= 1) {
+      void runExportPdf(exportablePages);
+      return;
+    }
+    setPageDialogPages(new Set(exportablePages.includes(currentPage) ? [currentPage] : exportablePages));
   };
 
   return (
@@ -41,17 +77,135 @@ export default function QuantityTable() {
       <div className="quantity-table-toolbar">
         <h4>טבלת כמויות</h4>
         <div className="quantity-table-toolbar-actions">
-          <button className="btn-secondary" onClick={handleExportPdf} disabled={summaries.length === 0 || exportingPdf}>
+          <button className="btn-secondary" onClick={handleExportPdf} disabled={!canExportPdf || exportingPdf}>
             {exportingPdf ? 'מייצא…' : '⬇ ייצוא ל-PDF'}
           </button>
-          <button className="btn-primary" onClick={handleExportExcel} disabled={summaries.length === 0 || exportingExcel}>
+          <button className="btn-primary" onClick={handleExportExcel} disabled={!canExportExcel || exportingExcel}>
             {exportingExcel ? 'מייצא…' : '⬇ ייצוא לאקסל'}
           </button>
         </div>
       </div>
 
+      {pageDialogPages && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>איזה עמודים לייצא?</h3>
+            <p>בחר אילו עמודי תוכנית לכלול בדוח ה-PDF.</p>
+            <div className="modal-actions" style={{ justifyContent: 'flex-start', marginTop: 0 }}>
+              <button
+                className="btn-secondary small"
+                onClick={() => setPageDialogPages(new Set(exportablePages))}
+              >
+                בחר הכל
+              </button>
+              <button className="btn-secondary small" onClick={() => setPageDialogPages(new Set())}>
+                נקה בחירה
+              </button>
+            </div>
+            <ul className="page-checkbox-list">
+              {exportablePages.map((p) => (
+                <li key={p}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={pageDialogPages.has(p)}
+                      onChange={(e) => {
+                        const next = new Set(pageDialogPages);
+                        if (e.target.checked) next.add(p);
+                        else next.delete(p);
+                        setPageDialogPages(next);
+                      }}
+                    />
+                    עמוד {p}
+                    {p === currentPage ? ' (נוכחי)' : ''}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setPageDialogPages(null)}>
+                ביטול
+              </button>
+              <button
+                className="btn-primary"
+                disabled={pageDialogPages.size === 0}
+                onClick={() => {
+                  const pages = Array.from(pageDialogPages).sort((a, b) => a - b);
+                  setPageDialogPages(null);
+                  void runExportPdf(pages);
+                }}
+              >
+                ייצוא
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {excelDialog && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3>איזה עמודים לייצא?</h3>
+            <p>בחר עמוד ספציפי לייצוא, או את כל העמודים בטבלה מסכמת אחת.</p>
+            <div className="form-row">
+              <label>
+                <input
+                  type="radio"
+                  name="excel-export-mode"
+                  checked={excelDialog.mode === 'specific'}
+                  onChange={() => setExcelDialog({ ...excelDialog, mode: 'specific' })}
+                />{' '}
+                עמוד ספציפי
+              </label>
+              {excelDialog.mode === 'specific' && (
+                <select
+                  value={excelDialog.page}
+                  onChange={(e) => setExcelDialog({ ...excelDialog, page: parseInt(e.target.value, 10) })}
+                >
+                  {exportablePages.map((p) => (
+                    <option key={p} value={p}>
+                      עמוד {p}
+                      {p === currentPage ? ' (נוכחי)' : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="form-row">
+              <label>
+                <input
+                  type="radio"
+                  name="excel-export-mode"
+                  checked={excelDialog.mode === 'all'}
+                  onChange={() => setExcelDialog({ ...excelDialog, mode: 'all' })}
+                />{' '}
+                כל העמודים (טבלה מסכמת)
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setExcelDialog(null)}>
+                ביטול
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  const pages = excelDialog.mode === 'all' ? exportablePages : [excelDialog.page];
+                  setExcelDialog(null);
+                  void runExportExcel(pages);
+                }}
+              >
+                ייצוא
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {summaries.length === 0 ? (
-        <p className="muted">אין עדיין כמויות לחישוב. סמן חדרים על התוכנית.</p>
+        <p className="muted">
+          אין עדיין כמויות חדרים לחישוב. סמן חדרים על התוכנית.
+          {hasAreaMeasurements && ' יש לך סימוני הריסה/בנייה — ייצוא ה-PDF וה-Excel יכללו אותם.'}
+        </p>
       ) : (
         <>
           <div className="qty-table-scroll">

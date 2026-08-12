@@ -1,24 +1,17 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type MouseEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
 import { useCompareStore } from '../../store/compareStore';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
-import { AREA_KIND_LABELS, IDENTITY_TRANSFORM, MEASURE_TOOL_LABELS } from '../../types/compare';
+import { AREA_KIND_LABELS, IDENTITY_TRANSFORM } from '../../types/compare';
 import type { Point } from '../../types';
 import type { AreaKind, ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
-import { polygonAreaM2, polygonPerimeterM, distancePx, pxToMeters, round, cloudPath, snapOrtho } from '../../lib/geometry';
+import { polygonAreaM2, polygonPerimeterM, longestEdgePx, distancePx, pxToMeters, round, cloudPath, snapOrtho, polygonCentroid, tickMarkEndpoints, arrowHeadPoints } from '../../lib/geometry';
+import { numberAreaMeasurements } from '../../lib/areaMeasurements';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
-
-function arrowHeadPoints(from: Point, to: Point, size: number): string {
-  const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const spread = Math.PI / 7;
-  const p1 = { x: to.x - size * Math.cos(angle - spread), y: to.y - size * Math.sin(angle - spread) };
-  const p2 = { x: to.x - size * Math.cos(angle + spread), y: to.y - size * Math.sin(angle + spread) };
-  return `${to.x},${to.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
-}
 
 /**
  * Renders one finished markup. When `draggable` (select tool active), its body accepts pointer
@@ -28,6 +21,7 @@ function arrowHeadPoints(from: Point, to: Point, size: number): string {
 function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: number; draggable: boolean }) {
   const [a, b] = markup.points;
   const hitProps = draggable ? { 'data-markup-id': markup.id, style: { pointerEvents: 'auto' as const, cursor: 'move' } } : {};
+  const fontScale = markup.fontScale ?? 1;
   switch (markup.tool) {
     case 'arrow':
       return (
@@ -69,7 +63,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
           <line x1={a.x - nx} y1={a.y - ny} x2={a.x + nx} y2={a.y + ny} stroke={markup.color} strokeWidth={strokeW} />
           <line x1={b.x - nx} y1={b.y - ny} x2={b.x + nx} y2={b.y + ny} stroke={markup.color} strokeWidth={strokeW} />
           {markup.text && (
-            <text x={midX} y={midY - tickLen - strokeW * 1.5} fontSize={strokeW * 6} fill={markup.color} fontWeight={600} textAnchor="middle">
+            <text x={midX} y={midY - tickLen - strokeW * 1.5} fontSize={strokeW * 6 * fontScale} fill={markup.color} fontWeight={600} textAnchor="middle">
               {markup.text}
             </text>
           )}
@@ -90,7 +84,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
       );
     case 'text':
       return (
-        <text x={a.x} y={a.y} fontSize={strokeW * 6.5} fill={markup.color} fontWeight={600} {...hitProps}>
+        <text x={a.x} y={a.y} fontSize={strokeW * 6.5 * fontScale} fill={markup.color} fontWeight={600} {...hitProps}>
           {markup.text}
         </text>
       );
@@ -168,6 +162,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const measurePoints = useCompareStore((s) => s.measurePoints);
   const pendingAreaKind = useCompareStore((s) => s.pendingAreaKind);
   const areaShape = useCompareStore((s) => s.areaShape);
+  const areaCalcMode = useCompareStore((s) => s.areaCalcMode);
   const orthoSnap = useCompareStore((s) => s.orthoSnap);
   const addMeasurePoint = useCompareStore((s) => s.addMeasurePoint);
   const clearMeasurePoints = useCompareStore((s) => s.clearMeasurePoints);
@@ -198,6 +193,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const exportRegion = useCompareStore((s) => s.exportRegion);
   const setExportRegion = useCompareStore((s) => s.setExportRegion);
   const annotationsVisible = useCompareStore((s) => s.annotationsVisible);
+  const measurementsVisible = useCompareStore((s) => s.measurementsVisible);
+  const markupFontScale = useCompareStore((s) => s.markupFontScale);
 
   const { containerRef, zoom, pan, screenToNative, handleWheel, fitToContainer, beginPanDrag, updatePanDrag, endPanDrag } =
     useCanvasTransform();
@@ -217,6 +214,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
 
   const activeRevisionId = comparison?.activeRevisionId ?? '';
   const activeRevision = comparison?.revisions.find((r) => r.id === activeRevisionId);
+  const areaNumbers = useMemo(() => numberAreaMeasurements(activeRevision?.measurements ?? []), [activeRevision]);
   const page = comparison?.pages[currentPageKey];
   const revisionPage = page?.revisions[activeRevisionId];
   const originalPageNumber = page?.originalPageNumber ?? currentPageKey;
@@ -279,9 +277,16 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     }
     let label = '';
     let areaM2: number | undefined;
+    let wallLengthM: number | undefined;
+    let wallHeightM: number | undefined;
     if (measureTool === 'distance') {
       const m = pxToMeters(distancePx(points[0], points[1]), metersPerPixel);
       label = `${round(m, 2)} מ'`;
+    } else if (measureTool === 'area' && areaCalcMode === 'wall') {
+      wallLengthM = round(pxToMeters(longestEdgePx(points), metersPerPixel), 2);
+      wallHeightM = comparison?.wallHeightDefaultM ?? 2.5;
+      areaM2 = round(wallLengthM * wallHeightM, 2);
+      label = `${areaM2} מ"ר`;
     } else if (measureTool === 'area') {
       areaM2 = round(polygonAreaM2(points, metersPerPixel), 2);
       label = `${areaM2} מ"ר`;
@@ -296,6 +301,9 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       label,
       areaKind: measureTool === 'area' && pendingAreaKind ? pendingAreaKind : undefined,
       areaM2,
+      calcMode: measureTool === 'area' ? areaCalcMode : undefined,
+      wallLengthM,
+      wallHeightM,
     });
   };
 
@@ -318,7 +326,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       const m = pxToMeters(distancePx(markupPoints[0], markupPoints[1]), metersPerPixel);
       text = `${round(m, 2)} מ'`;
     }
-    finishMarkup({ id: uuid(), tool: markupTool, points: markupPoints, color: markupColor, text, createdAt: Date.now() });
+    finishMarkup({ id: uuid(), tool: markupTool, points: markupPoints, color: markupColor, text, fontScale: markupFontScale, createdAt: Date.now() });
   };
 
   useEffect(() => {
@@ -513,7 +521,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       if (markupTool === 'text') {
         const text = window.prompt('טקסט הערה:');
         if (text && text.trim()) {
-          finishMarkup({ id: uuid(), tool: 'text', points: [native], color: markupColor, text: text.trim(), createdAt: Date.now() });
+          finishMarkup({ id: uuid(), tool: 'text', points: [native], color: markupColor, text: text.trim(), fontScale: markupFontScale, createdAt: Date.now() });
         }
         return;
       }
@@ -557,7 +565,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         const mult = 2;
         const areaTotals: Record<AreaKind, number> = { demolition: 0, construction: 0 };
         let hasAreaMeasurements = false;
-        if (annotationsVisible) {
+        if (measurementsVisible) {
           for (const m of activeRevision?.measurements ?? []) {
             if (m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number') {
               areaTotals[m.areaKind] += m.areaM2;
@@ -678,7 +686,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
       },
     }),
-    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision, exportRegion, annotationsVisible]
+    [comparison, pageSize, revisedPageSize, alignment, pivot, activeRevision, exportRegion, measurementsVisible]
   );
 
   if (!comparison) return null;
@@ -802,26 +810,86 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
               </g>
             )}
 
-            {/* Finished measurements */}
-            {annotationsVisible && (activeRevision?.measurements ?? []).map((m) => {
+            {/* Finished measurements — AutoCAD-style: distance line has its value rotated to follow the line and sits above it; perimeter/area vertices get a small dot. */}
+            {measurementsVisible && (activeRevision?.measurements ?? []).map((m) => {
               const color = m.areaKind ? comparison.areaKindColors[m.areaKind] : '#0ea5e9';
+              const vertexDotR = 3 / zoom;
+              const tickLen = 14 / zoom;
+              const isDistance = m.tool === 'distance';
+              const isWall = m.tool === 'area' && m.calcMode === 'wall';
+              let labelX = 0;
+              let labelY = 0;
+              let angleDeg = 0;
+              if (isDistance) {
+                const midX = (m.points[0].x + m.points[1].x) / 2;
+                const midY = (m.points[0].y + m.points[1].y) / 2;
+                const segDx = m.points[1].x - m.points[0].x;
+                const segDy = m.points[1].y - m.points[0].y;
+                const segLen = Math.hypot(segDx, segDy) || 1;
+                let perpX = -segDy / segLen;
+                let perpY = segDx / segLen;
+                if (perpY > 0) {
+                  perpX = -perpX;
+                  perpY = -perpY;
+                }
+                const offset = 12 / zoom;
+                labelX = midX + perpX * offset;
+                labelY = midY + perpY * offset;
+                angleDeg = (Math.atan2(segDy, segDx) * 180) / Math.PI;
+                if (angleDeg > 90) angleDeg -= 180;
+                if (angleDeg < -90) angleDeg += 180;
+              } else {
+                const c = polygonCentroid(m.points);
+                labelX = c.x;
+                labelY = c.y;
+              }
               return (
                 <g key={m.id}>
-                  {m.tool === 'distance' ? (
-                    <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke={color} strokeWidth={strokeW} />
+                  {isDistance ? (
+                    <>
+                      <line x1={m.points[0].x} y1={m.points[0].y} x2={m.points[1].x} y2={m.points[1].y} stroke={color} strokeWidth={strokeW} />
+                      {(() => {
+                        const [a1, b1] = tickMarkEndpoints(m.points[0], m.points[1], tickLen);
+                        const [a2, b2] = tickMarkEndpoints(m.points[1], m.points[0], tickLen);
+                        return (
+                          <>
+                            <line x1={a1.x} y1={a1.y} x2={b1.x} y2={b1.y} stroke={color} strokeWidth={strokeW} />
+                            <line x1={a2.x} y1={a2.y} x2={b2.x} y2={b2.y} stroke={color} strokeWidth={strokeW} />
+                          </>
+                        );
+                      })()}
+                    </>
                   ) : (
-                    <polygon
-                      points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
-                      fill={color}
-                      fillOpacity={m.areaKind ? 0.28 : 0.12}
-                      stroke={color}
-                      strokeWidth={m.tool === 'area' ? strokeW * 0.4 : strokeW}
-                    />
+                    <>
+                      <polygon
+                        points={m.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                        fill={color}
+                        fillOpacity={m.areaKind ? 0.28 : 0.12}
+                        stroke={color}
+                        strokeWidth={m.tool === 'area' ? strokeW * 0.4 : strokeW}
+                      />
+                      {m.tool !== 'area' &&
+                        m.points.map((p, i) => (
+                          <circle key={i} cx={p.x} cy={p.y} r={vertexDotR} fill={color} />
+                        ))}
+                    </>
                   )}
-                  {m.tool !== 'area' && (
-                    <text x={m.points[0].x} y={m.points[0].y - 8 / zoom} fontSize={12 / zoom} fill={color} fontWeight={600}>
-                      {MEASURE_TOOL_LABELS[m.tool]}: {m.label}
-                    </text>
+                  {(m.tool !== 'area' || isWall) && (
+                    <>
+                      {isWall && <circle cx={labelX} cy={labelY} r={9 / zoom} fill="#ffffff" fillOpacity={0.9} />}
+                      <text
+                        x={labelX}
+                        y={labelY}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={12 / zoom}
+                        fill={color}
+                        fontWeight={600}
+                        transform={isDistance ? `rotate(${angleDeg} ${labelX} ${labelY})` : undefined}
+                      >
+                        {isWall ? (areaNumbers.get(m.id) ?? '') : m.label}
+                      </text>
+                    </>
                   )}
                 </g>
               );
@@ -916,6 +984,21 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         <div className="swipe-divider" style={{ transform: `translateX(${dividerScreenX}px)` }} onMouseDown={handleDividerMouseDown}>
           <div className="swipe-divider-handle">⇔</div>
         </div>
+      )}
+
+      {pageSize.width > 0 && (
+        <button
+          className="btn-secondary small reset-view-btn"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            fitToContainer(pageSize.width, pageSize.height);
+          }}
+          title="איפוס תצוגה לזום המקורי"
+        >
+          ⤢ איפוס תצוגה
+        </button>
       )}
     </div>
   );

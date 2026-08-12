@@ -88,7 +88,6 @@ export default function LayerPanel() {
   };
 
   const handleRemove = async (id: string) => {
-    if (comparison.revisions.length <= 1) return;
     if (!confirm('להסיר את התוכנית המעודכנת הזו מההשוואה?')) return;
     removeRevision(id);
     await deleteComparePdfBlob(comparison.id, `revision:${id}`);
@@ -125,18 +124,16 @@ export default function LayerPanel() {
           >
             <span className="color-dot" style={{ background: r.colorTint }} />
             {r.label}
-            {comparison.revisions.length > 1 && (
-              <span
-                className="revision-tab-remove"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleRemove(r.id);
-                }}
-                title="הסר תוכנית מעודכנת"
-              >
-                ✕
-              </span>
-            )}
+            <span
+              className="revision-tab-remove"
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleRemove(r.id);
+              }}
+              title="הסר תוכנית מעודכנת"
+            >
+              ✕
+            </span>
           </button>
         ))}
         <button className="revision-tab revision-tab-add" onClick={() => fileInputRef.current?.click()} title="הוסף תוכנית מעודכנת">
@@ -154,6 +151,8 @@ export default function LayerPanel() {
           }}
         />
       </div>
+
+      {!activeRevision && <p className="muted">אין עדיין תוכנית מעודכנת. לחץ "+ הוסף" כדי להעלות אחת.</p>}
 
       {activeRevision && (
         <LayerRow

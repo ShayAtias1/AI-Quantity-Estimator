@@ -9,10 +9,11 @@ import CalibrationDialog from './components/CalibrationDialog';
 import RoomPanel from './components/RoomPanel';
 import QuantityTable from './components/QuantityTable';
 import MeasureToolbar from './components/MeasureToolbar';
+import MarkupToolbar from './components/MarkupToolbar';
 import CompareStartScreen from './components/compare/CompareStartScreen';
 import CompareWorkspace from './components/compare/CompareWorkspace';
 
-type SidebarTab = 'rooms' | 'quantities' | 'measure';
+type SidebarTab = 'rooms' | 'quantities' | 'measure' | 'markup';
 type HomeMode = 'takeoff' | 'compare';
 
 function Workspace() {
@@ -38,11 +39,15 @@ function Workspace() {
             <button className={tab === 'measure' ? 'active' : ''} onClick={() => setTab('measure')}>
               מדידה
             </button>
+            <button className={tab === 'markup' ? 'active' : ''} onClick={() => setTab('markup')}>
+              סימונים
+            </button>
           </div>
           <div className="sidebar-content">
             {tab === 'rooms' && <RoomPanel />}
             {tab === 'quantities' && <QuantityTable />}
             {tab === 'measure' && <MeasureToolbar />}
+            {tab === 'markup' && <MarkupToolbar />}
           </div>
         </div>
       </div>
