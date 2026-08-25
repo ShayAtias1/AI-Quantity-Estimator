@@ -123,6 +123,9 @@ interface AppState {
   markupPoints: Point[];
   markupColor: string;
   selectedMarkupId: string | null;
+  /** When on, markup lines (dimension/arrow/cloud) snap to horizontal/vertical from the previous point. */
+  markupOrtho: boolean;
+  setMarkupOrtho: (v: boolean) => void;
   setMarkupTool: (t: MarkupTool | null) => void;
   setMarkupColor: (c: string) => void;
   /** Label size multiplier applied to newly created text notes / dimension labels. */
@@ -184,6 +187,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   markupTool: null,
   markupPoints: [],
   markupColor: '#ef4444',
+  markupOrtho: false,
   markupFontScale: 1,
   selectedMarkupId: null,
   areaShape: 'polygon',
@@ -407,6 +411,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setMarkupTool: (t) => set({ toolMode: t ? 'markup' : 'select', markupTool: t, markupPoints: [] }),
   setMarkupColor: (c) => set({ markupColor: c }),
+  setMarkupOrtho: (v) => set({ markupOrtho: v }),
   setMarkupFontScale: (v) => set({ markupFontScale: v }),
   addMarkupPoint: (p) => set({ markupPoints: [...get().markupPoints, p] }),
   clearMarkupPoints: () => set({ markupPoints: [] }),

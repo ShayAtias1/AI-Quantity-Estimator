@@ -73,6 +73,19 @@ export function snapOrtho(from: Point, candidate: Point): Point {
   return Math.abs(dx) >= Math.abs(dy) ? { x: candidate.x, y: from.y } : { x: from.x, y: candidate.y };
 }
 
+/**
+ * Projects `p` onto the infinite line through `a` and `b` — used by the continued-dimension chain,
+ * where every stop after the first segment must stay exactly on the line the first segment defined.
+ */
+export function projectOntoLine(a: Point, b: Point, p: Point): Point {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-9) return { x: p.x, y: p.y };
+  const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  return { x: a.x + dx * t, y: a.y + dy * t };
+}
+
 export function pxToMeters(px: number, metersPerPixel: number): number {
   return px * metersPerPixel;
 }

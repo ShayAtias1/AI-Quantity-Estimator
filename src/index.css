@@ -232,6 +232,18 @@ input:focus, textarea:focus {
   margin-top: 16px;
 }
 
+.text-note-modal textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
 .calibration-modal p {
   color: var(--muted);
   font-size: 13px;
@@ -1191,6 +1203,31 @@ input:focus, textarea:focus {
   border: none;
   background: none;
 }
+/* Per-markup colour picker: a colour swatch that opens the OS picker for that one markup. */
+.markup-color-input {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.markup-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.markup-color-input::-webkit-color-swatch {
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.markup-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .area-summary {
   margin-top: 20px;
   padding-top: 16px;

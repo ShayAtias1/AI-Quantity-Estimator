@@ -75,11 +75,20 @@ export interface AlignmentPointPair {
 export interface Markup {
   id: string;
   tool: MarkupTool;
-  /** Interpretation depends on tool: 2 points for arrow/rectangle/dimension, polyline for cloud, 1 point for text. */
+  /**
+   * Interpretation depends on tool: 2 points for arrow/rectangle, polyline for cloud, 1 point for text.
+   * A dimension holds 2 points for a single measure, or 3+ colinear points for a continued chain
+   * (AutoCAD DIMCONTINUE style) — each consecutive pair is one measured segment.
+   */
   points: Point[];
+  /** For a dimension: the label of the whole run (the chain total when there are 3+ points). */
   text?: string;
+  /** For a dimension chain: one label per segment, so `segmentTexts.length === points.length - 1`. */
+  segmentTexts?: string[];
   /** Label size multiplier for text notes and dimension labels (1 = default). Absent means 1. */
   fontScale?: number;
+  /** For tool === 'text': the note's rotation in degrees (0 = horizontal, -90 = reading bottom-to-top). */
+  rotationDeg?: number;
   color: string;
   createdAt: number;
 }

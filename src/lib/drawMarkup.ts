@@ -1,5 +1,6 @@
 import type { Markup } from '../types';
 import { arrowHeadPoints, cloudPath } from './geometry';
+import { dimensionChainGeometry, dimensionStyleFor } from './dimensionChain';
 
 const FONT = "'Segoe UI', sans-serif";
 
@@ -60,32 +61,52 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
       break;
     }
     case 'dimension': {
-      const [a, b] = pts;
-      const angle = Math.atan2(b.y - a.y, b.x - a.x);
-      const tickLen = strokeW * 6;
-      const nx = Math.cos(angle + Math.PI / 2) * tickLen;
-      const ny = Math.sin(angle + Math.PI / 2) * tickLen;
-      ctx.strokeStyle = markup.color;
-      ctx.lineWidth = strokeW;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(a.x - nx, a.y - ny);
-      ctx.lineTo(a.x + nx, a.y + ny);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(b.x - nx, b.y - ny);
-      ctx.lineTo(b.x + nx, b.y + ny);
-      ctx.stroke();
-      if (markup.text) {
-        const midX = (a.x + b.x) / 2;
-        const midY = (a.y + b.y) / 2;
-        ctx.font = `bold ${strokeW * 6 * fontScale}px ${FONT}`;
+      // Mirrors components/DimensionShape.tsx: one line through every stop, a tick at each stop, a
+      // centimetre value above each measured segment and — for a chain — an overall dimension line.
+      const fontSize = strokeW * 6 * fontScale;
+      // The line weight scales with the label size too, so a small dimension isn't drawn with a heavy line.
+      const lineW = strokeW * fontScale;
+      const geo = dimensionChainGeometry(pts, dimensionStyleFor(fontSize));
+      if (!geo) break;
+      const angleRad = (geo.angleDeg * Math.PI) / 180;
+      const segment = (s: { from: { x: number; y: number }; to: { x: number; y: number } }) => {
+        ctx.beginPath();
+        ctx.moveTo(s.from.x, s.from.y);
+        ctx.lineTo(s.to.x, s.to.y);
+        ctx.stroke();
+      };
+      const drawLabel = (text: string, at: { x: number; y: number }) => {
+        ctx.save();
+        ctx.translate(at.x, at.y);
+        ctx.rotate(angleRad);
+        ctx.font = `italic ${fontSize}px ${FONT}`;
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillStyle = markup.color;
-        ctx.fillText(markup.text, midX, midY - tickLen - strokeW * 1.5);
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
+      };
+
+      ctx.strokeStyle = markup.color;
+      ctx.lineWidth = lineW;
+      ctx.beginPath();
+      pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+      geo.ticks.forEach(segment);
+
+      const labels = markup.segmentTexts ?? (markup.text && pts.length === 2 ? [markup.text] : []);
+      labels.forEach((label, i) => {
+        const seg = geo.segments[i];
+        if (seg && label) drawLabel(label, seg.labelPos);
+      });
+
+      if (geo.total) {
+        ctx.lineWidth = lineW * 0.6;
+        geo.total.extensions.forEach(segment);
+        ctx.lineWidth = lineW;
+        segment(geo.total.line);
+        geo.total.ticks.forEach(segment);
+        if (markup.text) drawLabel(markup.text, geo.total.labelPos);
       }
       break;
     }
@@ -103,12 +124,17 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
     case 'text': {
       const [a] = pts;
       if (markup.text) {
-        ctx.font = `bold ${strokeW * 6.5 * fontScale}px ${FONT}`;
+        const fontSize = strokeW * 6.5 * fontScale;
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        if (markup.rotationDeg) ctx.rotate((markup.rotationDeg * Math.PI) / 180);
+        ctx.font = `italic ${fontSize}px ${FONT}`;
         // SVG's default text-anchor="start" under dir="rtl" puts the anchor at the text's right edge.
         ctx.textAlign = 'right';
         ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = markup.color;
-        ctx.fillText(markup.text, a.x, a.y);
+        markup.text.split('\n').forEach((line, i) => ctx.fillText(line, 0, i * fontSize * 1.25));
+        ctx.restore();
       }
       break;
     }

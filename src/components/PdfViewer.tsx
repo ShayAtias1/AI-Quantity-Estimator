@@ -19,7 +19,12 @@ import {
   snapOrtho,
   tickMarkEndpoints,
 } from '../lib/geometry';
+import { projectOntoLine } from '../lib/geometry';
 import { numberAreaMeasurements } from '../lib/areaMeasurements';
+import { dimensionLabels } from '../lib/dimensionChain';
+import DimensionShape from './DimensionShape';
+import TextNoteShape from './TextNoteShape';
+import TextNoteDialog from './TextNoteDialog';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
 
@@ -71,29 +76,19 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
           {...hitProps}
         />
       );
-    case 'dimension': {
-      const angle = Math.atan2(b.y - a.y, b.x - a.x);
-      const tickLen = strokeW * 6;
-      const nx = Math.cos(angle + Math.PI / 2) * tickLen;
-      const ny = Math.sin(angle + Math.PI / 2) * tickLen;
-      const midX = (a.x + b.x) / 2;
-      const midY = (a.y + b.y) / 2;
+    case 'dimension':
       return (
-        <g>
-          {draggable && (
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={strokeW * 8} {...hitProps} />
-          )}
-          <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={markup.color} strokeWidth={strokeW} />
-          <line x1={a.x - nx} y1={a.y - ny} x2={a.x + nx} y2={a.y + ny} stroke={markup.color} strokeWidth={strokeW} />
-          <line x1={b.x - nx} y1={b.y - ny} x2={b.x + nx} y2={b.y + ny} stroke={markup.color} strokeWidth={strokeW} />
-          {markup.text && (
-            <text x={midX} y={midY - tickLen - strokeW * 1.5} fontSize={strokeW * 6 * fontScale} fill={markup.color} fontWeight={600} textAnchor="middle">
-              {markup.text}
-            </text>
-          )}
-        </g>
+        <DimensionShape
+          points={markup.points}
+          color={markup.color}
+          text={markup.text}
+          segmentTexts={markup.segmentTexts}
+          fontScale={fontScale}
+          strokeW={strokeW}
+          hitProps={hitProps}
+          draggable={draggable}
+        />
       );
-    }
     case 'cloud':
       return (
         <path
@@ -108,9 +103,15 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
       );
     case 'text':
       return (
-        <text x={a.x} y={a.y} fontSize={strokeW * 6.5 * fontScale} fill={markup.color} fontWeight={600} {...hitProps}>
-          {markup.text}
-        </text>
+        <TextNoteShape
+          point={a}
+          text={markup.text}
+          color={markup.color}
+          fontScale={fontScale}
+          rotationDeg={markup.rotationDeg}
+          strokeW={strokeW}
+          hitProps={hitProps}
+        />
       );
     default:
       return null;
@@ -154,6 +155,7 @@ export default function PdfViewer() {
   const markupTool = useAppStore((s) => s.markupTool);
   const markupPoints = useAppStore((s) => s.markupPoints);
   const markupColor = useAppStore((s) => s.markupColor);
+  const markupOrtho = useAppStore((s) => s.markupOrtho);
   const addMarkupPoint = useAppStore((s) => s.addMarkupPoint);
   const clearMarkupPoints = useAppStore((s) => s.clearMarkupPoints);
   const finishMarkup = useAppStore((s) => s.finishMarkup);
@@ -177,6 +179,8 @@ export default function PdfViewer() {
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null);
   const regionDragStart = useRef<Point | null>(null);
   const [regionDraft, setRegionDraft] = useState<ExportRegion | null>(null);
+  /** Open text-note editor: a new note at `point`, or an existing one when `markupId` is set. */
+  const [textDraft, setTextDraft] = useState<{ point: Point; markupId?: string; text: string; rotationDeg: number } | null>(null);
   const markupDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoints: Point[] } | null>(null);
   const handleDrag = useRef<{ id: string; index: number } | null>(null);
 
@@ -275,6 +279,16 @@ export default function PdfViewer() {
     });
   };
 
+  /**
+   * Where the next dimension stop lands: the second point may snap to 90°, and every stop after it
+   * is projected onto the line the first segment defined, so a continued run stays on one line.
+   */
+  const nextDimensionPoint = (pts: Point[], native: Point): Point => {
+    if (pts.length === 0) return native;
+    if (pts.length === 1) return markupOrtho ? snapOrtho(pts[0], native) : native;
+    return projectOntoLine(pts[0], pts[1], native);
+  };
+
   const finishOpenMarkup = () => {
     if (!markupTool) return;
     if (markupTool === 'cloud') {
@@ -289,18 +303,21 @@ export default function PdfViewer() {
       clearMarkupPoints();
       return;
     }
+    // Non-dimension 2-point tools ignore any extra points a stray click may have added.
+    const points = markupTool === 'dimension' ? markupPoints : markupPoints.slice(0, 2);
     let text: string | undefined;
+    let segmentTexts: string[] | undefined;
     if (markupTool === 'dimension' && metersPerPixel) {
-      const m = pxToMeters(distancePx(markupPoints[0], markupPoints[1]), metersPerPixel);
-      text = `${round(m, 2)} מ'`;
+      ({ text, segmentTexts } = dimensionLabels(points, metersPerPixel));
     }
     finishMarkup({
       id: uuid(),
       pageNumber: currentPage,
       tool: markupTool,
-      points: markupPoints,
+      points,
       color: markupColor,
       text,
+      segmentTexts,
       fontScale: markupFontScale,
       createdAt: Date.now(),
     });
@@ -321,6 +338,10 @@ export default function PdfViewer() {
         finishOpenMeasurement();
       }
       if (e.key === 'Enter' && markupTool === 'cloud' && markupPoints.length >= 3) {
+        finishOpenMarkup();
+      }
+      // A dimension chain keeps accepting stops until the user ends it explicitly.
+      if (e.key === 'Enter' && markupTool === 'dimension' && markupPoints.length >= 2) {
         finishOpenMarkup();
       }
       if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey) && selectedMarkupId) {
@@ -355,9 +376,10 @@ export default function PdfViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurePoints, measureTool]);
 
-  // Auto-finish 2-point markup tools (arrow/rectangle/dimension) once both points are placed.
+  // Auto-finish 2-point markup tools once both points are placed. Dimensions are excluded — they
+  // stay open so more stops can be continued along the same line (AutoCAD DIMCONTINUE style).
   useEffect(() => {
-    if (markupTool && markupTool !== 'cloud' && markupTool !== 'text' && markupPoints.length === 2) {
+    if (markupTool && markupTool !== 'cloud' && markupTool !== 'text' && markupTool !== 'dimension' && markupPoints.length === 2) {
       finishOpenMarkup();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -442,6 +464,9 @@ export default function PdfViewer() {
     if (toolMode === 'draw-rect' && drawingPoints.length === 1) {
       setHoverPoint(screenToNative(e.clientX, e.clientY));
     }
+    if (toolMode === 'markup' && markupTool === 'dimension' && markupPoints.length > 0) {
+      setHoverPoint(nextDimensionPoint(markupPoints, screenToNative(e.clientX, e.clientY)));
+    }
   };
 
   const handleMouseUp = () => {
@@ -454,7 +479,11 @@ export default function PdfViewer() {
       void persist();
     }
     if (handleDrag.current) {
-      updateMarkup(handleDrag.current.id, {});
+      // Reshaping a dimension changes what it measures, so its labels are recomputed.
+      const markup = (project?.markups ?? []).find((m) => m.id === handleDrag.current!.id);
+      const patch =
+        markup && markup.tool === 'dimension' && metersPerPixel ? dimensionLabels(markup.points, metersPerPixel) : {};
+      updateMarkup(handleDrag.current.id, patch);
       handleDrag.current = null;
     }
     if (markupDrag.current) {
@@ -472,7 +501,17 @@ export default function PdfViewer() {
   };
 
   const handleDoubleClick = (e: MouseEvent) => {
-    if (toolMode !== 'select' || !room) return;
+    if (toolMode !== 'select') return;
+    // Double-clicking a text note reopens it for editing.
+    const bodyTarget = (e.target as Element).closest?.('[data-markup-id]');
+    const noteId = bodyTarget?.getAttribute('data-markup-id');
+    const note = noteId ? (project?.markups ?? []).find((m) => m.id === noteId && m.tool === 'text') : undefined;
+    if (note) {
+      e.stopPropagation();
+      setTextDraft({ point: note.points[0], markupId: note.id, text: note.text ?? '', rotationDeg: note.rotationDeg ?? 0 });
+      return;
+    }
+    if (!room) return;
     const native = screenToNative(e.clientX, e.clientY);
     const idx = nearestPointIndex(room.points, native, VERTEX_HIT_RADIUS_SCREEN / zoom);
     if (idx >= 0) {
@@ -548,19 +587,7 @@ export default function PdfViewer() {
 
     if (toolMode === 'markup' && markupTool) {
       if (markupTool === 'text') {
-        const text = window.prompt('טקסט הערה:');
-        if (text && text.trim()) {
-          finishMarkup({
-            id: uuid(),
-            pageNumber: currentPage,
-            tool: 'text',
-            points: [native],
-            color: markupColor,
-            text: text.trim(),
-            fontScale: markupFontScale,
-            createdAt: Date.now(),
-          });
-        }
+        setTextDraft({ point: native, text: '', rotationDeg: 0 });
         return;
       }
       if (markupTool === 'cloud') {
@@ -572,10 +599,24 @@ export default function PdfViewer() {
             return;
           }
         }
-        addMarkupPoint(native);
+        addMarkupPoint(markupOrtho && markupPoints.length > 0 ? snapOrtho(markupPoints[markupPoints.length - 1], native) : native);
         return;
       }
-      addMarkupPoint(native);
+      if (markupTool === 'dimension') {
+        const point = nextDimensionPoint(markupPoints, native);
+        // Clicking the last stop again ends the run (a double-click lands here too).
+        if (markupPoints.length >= 2) {
+          const last = markupPoints[markupPoints.length - 1];
+          if (Math.hypot(point.x - last.x, point.y - last.y) * zoom < 10) {
+            finishOpenMarkup();
+            return;
+          }
+        }
+        addMarkupPoint(point);
+        setHoverPoint(null);
+        return;
+      }
+      addMarkupPoint(markupOrtho && markupTool === 'arrow' && markupPoints.length === 1 ? snapOrtho(markupPoints[0], native) : native);
       return;
     }
 
@@ -806,8 +847,30 @@ export default function PdfViewer() {
                   );
                 })}
 
+            {/* Dimension run in progress — live preview of the chain, including the segment under the cursor */}
+            {markupPoints.length > 0 && markupTool === 'dimension' && (() => {
+              const preview = hoverPoint ? [...markupPoints, hoverPoint] : markupPoints;
+              const labels = metersPerPixel && preview.length >= 2 ? dimensionLabels(preview, metersPerPixel) : undefined;
+              return (
+                <g>
+                  <DimensionShape
+                    points={preview}
+                    color={markupColor}
+                    text={labels?.text}
+                    segmentTexts={labels?.segmentTexts}
+                    fontScale={markupFontScale}
+                    strokeW={strokeW}
+                    dashed
+                  />
+                  {markupPoints.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r={vertexR} fill={markupColor} />
+                  ))}
+                </g>
+              );
+            })()}
+
             {/* Markup in progress (cloud multi-point) */}
-            {markupPoints.length > 0 && (
+            {markupPoints.length > 0 && markupTool !== 'dimension' && (
               <g>
                 <polyline
                   points={markupPoints.map((p) => `${p.x},${p.y}`).join(' ')}
@@ -887,6 +950,32 @@ export default function PdfViewer() {
           </svg>
         )}
       </div>
+
+      {textDraft && (
+        <TextNoteDialog
+          initialText={textDraft.text}
+          initialRotation={textDraft.rotationDeg}
+          onCancel={() => setTextDraft(null)}
+          onSubmit={(text, rotationDeg) => {
+            if (textDraft.markupId) {
+              updateMarkup(textDraft.markupId, { text, rotationDeg });
+            } else {
+              finishMarkup({
+                id: uuid(),
+                pageNumber: currentPage,
+                tool: 'text',
+                points: [textDraft.point],
+                color: markupColor,
+                text,
+                rotationDeg,
+                fontScale: markupFontScale,
+                createdAt: Date.now(),
+              });
+            }
+            setTextDraft(null);
+          }}
+        />
+      )}
 
       {toolMode === 'export-region' && !regionDraft && (
         <div className="export-region-hint">גרור על התוכנית כדי לבחור את האזור לייצוא ב-PDF</div>
