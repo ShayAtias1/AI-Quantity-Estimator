@@ -5,6 +5,14 @@ import { dimensionChainGeometry, dimensionStyleFor } from './dimensionChain';
 const FONT = "'Segoe UI', sans-serif";
 
 /**
+ * Draw order for a set of markups: masks first, so a block that hides part of the plan never
+ * hides the annotations drawn on top of it.
+ */
+export function orderMarkups<T extends { tool: string }>(markups: T[]): T[] {
+  return [...markups].sort((a, b) => Number(a.tool !== 'mask') - Number(b.tool !== 'mask'));
+}
+
+/**
  * Rasterizes one markup onto a 2D canvas context, matching the on-screen SVG rendering
  * (see MarkupShape in PdfViewer.tsx / CompareCanvas.tsx). `offsetX`/`offsetY` are in native
  * page coordinates (subtracted before scaling) — used when the canvas only covers a cropped region.
@@ -45,6 +53,13 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
       ctx.fill();
       break;
     }
+    case 'mask': {
+      // Solid fill only — the dashed outline is an on-screen editing aid, not part of the output.
+      const [a, b] = pts;
+      ctx.fillStyle = markup.color;
+      ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      break;
+    }
     case 'rectangle': {
       const [a, b] = pts;
       const x = Math.min(a.x, b.x);
@@ -66,7 +81,7 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
       const fontSize = strokeW * 6 * fontScale;
       // The line weight scales with the label size too, so a small dimension isn't drawn with a heavy line.
       const lineW = strokeW * fontScale;
-      const geo = dimensionChainGeometry(pts, dimensionStyleFor(fontSize));
+      const geo = dimensionChainGeometry(pts, dimensionStyleFor(fontSize), (markup.offset ?? 0) * mult);
       if (!geo) break;
       const angleRad = (geo.angleDeg * Math.PI) / 180;
       const segment = (s: { from: { x: number; y: number }; to: { x: number; y: number } }) => {
@@ -88,9 +103,11 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
       };
 
       ctx.strokeStyle = markup.color;
+      ctx.lineWidth = lineW * 0.6;
+      geo.extensions.forEach(segment);
       ctx.lineWidth = lineW;
       ctx.beginPath();
-      pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      geo.line.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
       ctx.stroke();
       geo.ticks.forEach(segment);
 
@@ -101,9 +118,6 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
       });
 
       if (geo.total) {
-        ctx.lineWidth = lineW * 0.6;
-        geo.total.extensions.forEach(segment);
-        ctx.lineWidth = lineW;
         segment(geo.total.line);
         geo.total.ticks.forEach(segment);
         if (markup.text) drawLabel(markup.text, geo.total.labelPos);

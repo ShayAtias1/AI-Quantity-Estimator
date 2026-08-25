@@ -6,7 +6,7 @@ import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import { groupSummariesByApartment } from './quantities';
 import { polygonCentroid } from './geometry';
-import { drawMarkupOnCanvas } from './drawMarkup';
+import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
 import { numberAreaMeasurements } from './areaMeasurements';
 import { buildAreaMeasurementTablePages } from './areaMeasurementTable';
@@ -136,7 +136,7 @@ async function renderFramedPlanPage(
     if (markups.length > 0) {
       ctx.save();
       ctx.translate(0, headerH);
-      for (const m of markups) drawMarkupOnCanvas(ctx, m, mult, 0, 0);
+      for (const m of orderMarkups(markups)) drawMarkupOnCanvas(ctx, m, mult, 0, 0);
       ctx.restore();
     }
   }

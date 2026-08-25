@@ -5,7 +5,7 @@ import { DEFAULT_AREA_KIND_COLORS } from '../types';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import { polygonCentroid } from './geometry';
-import { drawMarkupOnCanvas } from './drawMarkup';
+import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
 import { numberAreaMeasurements } from './areaMeasurements';
 
@@ -90,7 +90,7 @@ async function renderRegionCanvas(
 
   if (showMarkings) {
     const markups = (project.markups ?? []).filter((m) => m.pageNumber === pageNumber);
-    for (const m of markups) drawMarkupOnCanvas(ctx, m, mult, rx, ry);
+    for (const m of orderMarkups(markups)) drawMarkupOnCanvas(ctx, m, mult, rx, ry);
   }
 
   return canvas;

@@ -105,7 +105,7 @@ export interface Project {
 
 export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect' | 'measure' | 'export-region' | 'markup';
 
-export type MarkupTool = 'cloud' | 'arrow' | 'rectangle' | 'text' | 'dimension';
+export type MarkupTool = 'cloud' | 'arrow' | 'rectangle' | 'text' | 'dimension' | 'mask';
 
 export const MARKUP_TOOL_LABELS: Record<MarkupTool, string> = {
   cloud: 'ענן סימון',
@@ -113,6 +113,7 @@ export const MARKUP_TOOL_LABELS: Record<MarkupTool, string> = {
   rectangle: 'מלבן סימון',
   text: 'הערת טקסט',
   dimension: 'קו מידה',
+  mask: 'הסתרה',
 };
 
 export interface Markup {
@@ -129,6 +130,11 @@ export interface Markup {
   text?: string;
   /** For a dimension chain: one label per segment, so `segmentTexts.length === points.length - 1`. */
   segmentTexts?: string[];
+  /**
+   * For a dimension: how far the dimension line was moved off the points it measures, in page px
+   * along the run's normal. The points stay put; extension lines join them to the moved line.
+   */
+  offset?: number;
   /** Label size multiplier for text notes and dimension labels (1 = default). Absent means 1. */
   fontScale?: number;
   /** For tool === 'text': the note's rotation in degrees (0 = horizontal, -90 = reading bottom-to-top). */

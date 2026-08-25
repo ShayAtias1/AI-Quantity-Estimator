@@ -10,12 +10,15 @@ import type { AreaKind, ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
 import { polygonAreaM2, polygonPerimeterM, longestEdgePx, distancePx, pxToMeters, round, cloudPath, snapOrtho, projectOntoLine, polygonCentroid, tickMarkEndpoints, arrowHeadPoints } from '../../lib/geometry';
 import { numberAreaMeasurements } from '../../lib/areaMeasurements';
-import { dimensionLabels } from '../../lib/dimensionChain';
+import { dimensionLabels, dimensionNormal, reshapeDimension } from '../../lib/dimensionChain';
+import { orderMarkups } from '../../lib/drawMarkup';
 import DimensionShape from '../DimensionShape';
 import TextNoteShape from '../TextNoteShape';
 import TextNoteDialog from '../TextNoteDialog';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
+/** New masks start opaque white, the colour of the paper they hide. */
+const MASK_COLOR = '#ffffff';
 
 /**
  * Renders one finished markup. When `draggable` (select tool active), its body accepts pointer
@@ -51,6 +54,22 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
           {...hitProps}
         />
       );
+    // An opaque block that hides whatever it covers on the plan. Its outline only shows while the
+    // select tool is active, so it can be found and grabbed without printing a border.
+    case 'mask':
+      return (
+        <rect
+          x={Math.min(a.x, b.x)}
+          y={Math.min(a.y, b.y)}
+          width={Math.abs(b.x - a.x)}
+          height={Math.abs(b.y - a.y)}
+          fill={markup.color}
+          stroke={draggable ? '#94a3b8' : 'none'}
+          strokeWidth={strokeW}
+          strokeDasharray={draggable ? `${strokeW * 3} ${strokeW * 3}` : undefined}
+          {...hitProps}
+        />
+      );
     case 'dimension':
       return (
         <DimensionShape
@@ -59,6 +78,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
           text={markup.text}
           segmentTexts={markup.segmentTexts}
           fontScale={fontScale}
+          offset={markup.offset}
           strokeW={strokeW}
           hitProps={hitProps}
           draggable={draggable}
@@ -210,7 +230,9 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const swipeDrag = useRef(false);
   const regionDragStart = useRef<Point | null>(null);
   const [regionDraft, setRegionDraft] = useState<ExportRegion | null>(null);
-  const markupDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoints: Point[] } | null>(null);
+  const markupDrag = useRef<{ id: string; startClientX: number; startClientY: number; startPoints: Point[]; startOffset: number } | null>(
+    null,
+  );
   const handleDrag = useRef<{ id: string; index: number } | null>(null);
   /** Cursor position (snapped onto the run) previewing the next stop of a dimension chain. */
   const [dimensionHover, setDimensionHover] = useState<Point | null>(null);
@@ -343,7 +365,18 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     if (markupTool === 'dimension' && metersPerPixel) {
       ({ text, segmentTexts } = dimensionLabels(points, metersPerPixel));
     }
-    finishMarkup({ id: uuid(), tool: markupTool, points, color: markupColor, text, segmentTexts, fontScale: markupFontScale, createdAt: Date.now() });
+    finishMarkup({
+      id: uuid(),
+      tool: markupTool,
+      points,
+      // A mask starts opaque white — it's there to hide the plan under it; recolour it afterwards
+      // (grey or black) from the markup colour picker.
+      color: markupTool === 'mask' ? MASK_COLOR : markupColor,
+      text,
+      segmentTexts,
+      fontScale: markupFontScale,
+      createdAt: Date.now(),
+    });
   };
 
   useEffect(() => {
@@ -390,7 +423,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       const markup = id ? activeRevision?.markups.find((m) => m.id === id) : undefined;
       if (markup) {
         setSelectedMarkupId(markup.id);
-        markupDrag.current = { id: markup.id, startClientX: e.clientX, startClientY: e.clientY, startPoints: markup.points };
+        markupDrag.current = {
+          id: markup.id,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startPoints: markup.points,
+          startOffset: markup.offset ?? 0,
+        };
         return;
       }
       if (selectedMarkupId) setSelectedMarkupId(null);
@@ -419,7 +458,10 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       const native = screenToNative(e.clientX, e.clientY);
       const markup = activeRevision?.markups.find((m) => m.id === handleDrag.current!.id);
       if (markup) {
-        const points = markup.points.map((p, i) => (i === handleDrag.current!.index ? native : p));
+        const points =
+          markup.tool === 'dimension'
+            ? reshapeDimension(markup.points, handleDrag.current.index, native)
+            : markup.points.map((p, i) => (i === handleDrag.current!.index ? native : p));
         updateMarkupQuiet(handleDrag.current.id, { points });
       }
       return;
@@ -427,6 +469,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     if (markupDrag.current) {
       const dx = (e.clientX - markupDrag.current.startClientX) / zoom;
       const dy = (e.clientY - markupDrag.current.startClientY) / zoom;
+      const markup = activeRevision?.markups.find((m) => m.id === markupDrag.current!.id);
+      if (markup?.tool === 'dimension') {
+        // A dimension only slides along its own normal, so it stays parallel to what it measures.
+        const up = dimensionNormal(markupDrag.current.startPoints);
+        updateMarkupQuiet(markupDrag.current.id, { offset: markupDrag.current.startOffset + dx * up.x + dy * up.y });
+        return;
+      }
       const points = markupDrag.current.startPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
       updateMarkupQuiet(markupDrag.current.id, { points });
       return;
@@ -986,9 +1035,10 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             )}
 
             {/* Finished markups */}
-            {annotationsVisible && (activeRevision?.markups ?? []).map((m) => (
-              <MarkupShape key={m.id} markup={m} strokeW={strokeW} draggable={toolMode === 'select'} />
-            ))}
+            {annotationsVisible &&
+              orderMarkups(activeRevision?.markups ?? []).map((m) => (
+                <MarkupShape key={m.id} markup={m} strokeW={strokeW} draggable={toolMode === 'select'} />
+              ))}
 
             {/* Resize/reshape handles for the selected markup (select tool only) */}
             {toolMode === 'select' &&

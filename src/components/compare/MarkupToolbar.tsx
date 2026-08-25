@@ -1,13 +1,14 @@
 import { useCompareStore } from '../../store/compareStore';
 import { MARKUP_TOOL_LABELS, type MarkupTool } from '../../types/compare';
 
-const MARKUP_TOOLS: MarkupTool[] = ['cloud', 'arrow', 'rectangle', 'text', 'dimension'];
+const MARKUP_TOOLS: MarkupTool[] = ['cloud', 'arrow', 'rectangle', 'text', 'dimension', 'mask'];
 const MARKUP_ICONS: Record<MarkupTool, string> = {
   cloud: '☁️',
   arrow: '➤',
   rectangle: '▭',
   text: '💬',
   dimension: '📐',
+  mask: '⬜',
 };
 
 const MARKUP_COLORS = ['#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea', '#0f172a'];
@@ -134,6 +135,9 @@ export default function MarkupToolbar() {
       )}
       {toolMode === 'markup' && (markupTool === 'arrow' || markupTool === 'rectangle') && (
         <p className="alignment-hint">לחץ נקודת התחלה וסיום</p>
+      )}
+      {toolMode === 'markup' && markupTool === 'mask' && (
+        <p className="alignment-hint">לחץ פינת התחלה וסיום למלבן שיסתיר את מה שמתחתיו. נוצר בלבן — אפשר לשנות את הצבע אחר כך.</p>
       )}
       {toolMode === 'markup' && markupTool === 'dimension' && (
         <p className="alignment-hint">

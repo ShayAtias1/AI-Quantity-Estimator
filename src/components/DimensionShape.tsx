@@ -6,7 +6,8 @@ import { dimensionChainGeometry, dimensionStyleFor } from '../lib/dimensionChain
  * SVG rendering of a dimension markup — a single measure (2 points) or a continued chain
  * (3+ colinear points, AutoCAD DIMCONTINUE style). Values are whole centimeters set close above
  * the dimension line and rotated with it, matching how dimensions are drawn on the plans; a chain's
- * total gets its own overall dimension line offset outside the run.
+ * total gets its own overall dimension line offset outside the run, and extension lines tie the
+ * measured points to a dimension line that was moved off them.
  * Shared by the takeoff viewer and the revision-compare canvas; the PDF-export rasterizer in
  * lib/drawMarkup.ts mirrors it.
  */
@@ -16,6 +17,7 @@ export default function DimensionShape({
   text,
   segmentTexts,
   fontScale = 1,
+  offset = 0,
   strokeW,
   hitProps,
   dashed = false,
@@ -26,6 +28,7 @@ export default function DimensionShape({
   text?: string;
   segmentTexts?: string[];
   fontScale?: number;
+  offset?: number;
   strokeW: number;
   hitProps?: Record<string, unknown> & { style?: CSSProperties };
   dashed?: boolean;
@@ -35,12 +38,12 @@ export default function DimensionShape({
   const fontSize = strokeW * 6 * fontScale;
   // The line weight scales with the label size too, so a small dimension isn't drawn with a heavy line.
   const lineW = strokeW * fontScale;
-  const geo = dimensionChainGeometry(points, dimensionStyleFor(fontSize));
+  const geo = dimensionChainGeometry(points, dimensionStyleFor(fontSize), offset);
   if (!geo) return null;
 
   const isChain = points.length > 2;
   const labels = segmentTexts ?? (text && !isChain ? [text] : []);
-  const polyPoints = points.map((p) => `${p.x},${p.y}`).join(' ');
+  const linePoints = geo.line.map((p) => `${p.x},${p.y}`).join(' ');
   const dash = dashed ? `${lineW * 3} ${lineW * 3}` : undefined;
 
   const label = (key: string, value: string, at: Point) => (
@@ -60,9 +63,17 @@ export default function DimensionShape({
   );
 
   return (
-    <g>
-      {draggable && <polyline points={polyPoints} fill="none" stroke="transparent" strokeWidth={strokeW * 8} {...hitProps} />}
-      <polyline points={polyPoints} fill="none" stroke={color} strokeWidth={lineW} strokeDasharray={dash} />
+    // The whole dimension is grabbable, not just its line: the values, the ticks and the overall
+    // line move it too, and a fat transparent line covers the gaps between them.
+    <g {...hitProps}>
+      {draggable && <polyline points={linePoints} fill="none" stroke="transparent" strokeWidth={strokeW * 8} />}
+
+      {/* Extension lines back to the measured points, thinner than the dimension line itself */}
+      {geo.extensions.map((e, i) => (
+        <line key={i} x1={e.from.x} y1={e.from.y} x2={e.to.x} y2={e.to.y} stroke={color} strokeWidth={lineW * 0.6} />
+      ))}
+
+      <polyline points={linePoints} fill="none" stroke={color} strokeWidth={lineW} strokeDasharray={dash} />
       {geo.ticks.map((t, i) => (
         <line key={i} x1={t.from.x} y1={t.from.y} x2={t.to.x} y2={t.to.y} stroke={color} strokeWidth={lineW} />
       ))}
@@ -74,9 +85,6 @@ export default function DimensionShape({
       {/* Overall dimension line for a chain — the run total drawn as its own dimension, not as text */}
       {geo.total && (
         <g>
-          {geo.total.extensions.map((e, i) => (
-            <line key={i} x1={e.from.x} y1={e.from.y} x2={e.to.x} y2={e.to.y} stroke={color} strokeWidth={lineW * 0.6} />
-          ))}
           <line
             x1={geo.total.line.from.x}
             y1={geo.total.line.from.y}

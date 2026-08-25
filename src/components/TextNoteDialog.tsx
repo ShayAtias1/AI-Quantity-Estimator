@@ -28,7 +28,15 @@ export default function TextNoteDialog({
   };
 
   return (
-    <div className="modal-backdrop">
+    // The dialog sits inside the plan viewport, so its clicks must not reach the canvas underneath —
+    // otherwise saving or cancelling would immediately open another note where the button was.
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
       <div className="modal text-note-modal">
         <h3>הערת טקסט</h3>
         <textarea
