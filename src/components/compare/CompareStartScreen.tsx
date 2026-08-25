@@ -81,7 +81,6 @@ export default function CompareStartScreen() {
   return (
     <div className="start-screen">
       <div className="start-hero">
-        <h1>השוואת תוכניות</h1>
         <p>העלה תוכנית מקור ותוכנית מעודכנת של אותה דירה כדי להשוות ביניהן ולזהות שינויים</p>
         <button className="btn-primary large" onClick={() => setCreating(true)}>
           + השוואה חדשה

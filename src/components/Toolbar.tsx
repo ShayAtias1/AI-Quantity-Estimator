@@ -4,7 +4,6 @@ import type { ToolMode } from '../types';
 const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: 'select', label: 'בחירה', icon: '⭤', hint: 'בחירה והזזת נקודות' },
   { mode: 'pan', label: 'הזזה', icon: '✋', hint: 'גרירת התצוגה' },
-  { mode: 'calibrate', label: 'כיול', icon: '📏', hint: 'סימון מרחק ידוע' },
   { mode: 'draw', label: 'סימון אזור', icon: '✏️', hint: 'סימון פוליגון חדש' },
   { mode: 'draw-rect', label: 'מלבן', icon: '▭', hint: 'סימון מלבן — שתי פינות נגדיות' },
 ];

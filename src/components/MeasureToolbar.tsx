@@ -20,6 +20,7 @@ export default function MeasureToolbar() {
   const toolMode = useAppStore((s) => s.toolMode);
   const measureTool = useAppStore((s) => s.measureTool);
   const setMeasureTool = useAppStore((s) => s.setMeasureTool);
+  const setToolMode = useAppStore((s) => s.setToolMode);
   const measurePoints = useAppStore((s) => s.measurePoints);
   const areaShape = useAppStore((s) => s.areaShape);
   const setAreaShape = useAppStore((s) => s.setAreaShape);
@@ -56,15 +57,25 @@ export default function MeasureToolbar() {
 
   return (
     <div className="measure-toolbar">
-      <h4>מדידה</h4>
+      <h4>כיול ומדידה</h4>
 
       <div className="calibration-status">
         {hasCalibration ? (
           <span className="cal-ok">✓ קנה מידה כויל בעמוד זה</span>
         ) : (
-          <span className="cal-missing">יש לכייל קנה מידה (כלי "כיול") לפני מדידה</span>
+          <span className="cal-missing">יש לכייל קנה מידה לפני מדידה</span>
         )}
       </div>
+      <div className="work-item-add-row">
+        <button
+          className={`tool-btn small-tool ${toolMode === 'calibrate' ? 'active' : ''}`}
+          onClick={() => setToolMode(toolMode === 'calibrate' ? 'select' : 'calibrate')}
+        >
+          <span className="tool-icon">📏</span>
+          <span className="tool-label">{hasCalibration ? 'כיול מחדש' : 'כיול קנה מידה'}</span>
+        </button>
+      </div>
+      {toolMode === 'calibrate' && <p className="alignment-hint">לחץ שתי נקודות שהמרחק ביניהן ידוע, והזן אותו בחלון.</p>}
 
       <div className="work-item-add-row">
         {MEASURE_TOOLS.map((t) => (

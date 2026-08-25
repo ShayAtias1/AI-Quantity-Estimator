@@ -37,7 +37,7 @@ function Workspace() {
               טבלת כמויות
             </button>
             <button className={tab === 'measure' ? 'active' : ''} onClick={() => setTab('measure')}>
-              מדידה
+              כיול ומדידה
             </button>
             <button className={tab === 'markup' ? 'active' : ''} onClick={() => setTab('markup')}>
               סימונים
@@ -59,6 +59,10 @@ function Home() {
   const [mode, setMode] = useState<HomeMode>('takeoff');
   return (
     <div>
+      {/* The product name heads the page; the mode choice sits under it. */}
+      <div className="home-header">
+        <h1>BetterCalc</h1>
+      </div>
       <div className="home-mode-switch">
         <button className={mode === 'takeoff' ? 'active' : ''} onClick={() => setMode('takeoff')}>
           חישוב כמויות

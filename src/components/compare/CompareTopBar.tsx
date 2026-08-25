@@ -41,9 +41,6 @@ export default function CompareTopBar({ onExport, exporting }: { onExport: () =>
         <span className="app-brand-divider">|</span>
         <span className="app-brand-mode">השוואת תכניות</span>
       </div>
-      <button className="btn-secondary small" onClick={close}>
-        ← השוואות
-      </button>
       <input
         className="project-name-input"
         value={comparison.name}
@@ -121,6 +118,11 @@ export default function CompareTopBar({ onExport, exporting }: { onExport: () =>
           {exportRegion ? 'הייצוא ייחתך לאזור שסימנת על התוכנית.' : 'ללא אזור נבחר — מיוצאת התוכנית המלאה.'}
         </p>
       </TopBarMenu>
+
+      {/* Leaving the comparison lives at the far end of the bar, matching the takeoff top bar. */}
+      <button className="btn-secondary small" onClick={close}>
+        → השוואות
+      </button>
     </div>
   );
 }

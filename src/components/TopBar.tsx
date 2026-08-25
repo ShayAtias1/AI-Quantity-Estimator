@@ -66,23 +66,22 @@ export default function TopBar() {
         <span className="app-brand-divider">|</span>
         <span className="app-brand-mode">חישוב כמויות</span>
       </div>
-      <button className="btn-secondary small" onClick={closeProject}>
-        ← פרויקטים
-      </button>
       <input
         className="project-name-input"
         value={project.name}
         onChange={(e) => updateProjectMeta({ name: e.target.value })}
       />
 
+      {/* The page is dir="rtl", so previous sits on the right and next on the left. The chevrons are
+          bidi-mirrored characters — dir="ltr" on the buttons keeps each one pointing as written. */}
       <div className="page-nav">
-        <button disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)}>
+        <button dir="ltr" disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title="עמוד קודם">
           ›
         </button>
         <span>
           עמוד {currentPage} מתוך {numPages}
         </span>
-        <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)}>
+        <button dir="ltr" disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)} title="עמוד הבא">
           ‹
         </button>
       </div>
@@ -202,6 +201,11 @@ export default function TopBar() {
           />
         </div>
       </TopBarMenu>
+
+      {/* Leaving the project lives at the far end of the bar, past the defaults menu. */}
+      <button className="btn-secondary small" onClick={closeProject}>
+        → פרויקטים
+      </button>
     </div>
   );
 }

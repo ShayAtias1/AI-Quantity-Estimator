@@ -52,7 +52,6 @@ export default function StartScreen() {
   return (
     <div className="start-screen">
       <div className="start-hero">
-        <h1>BetterCalc</h1>
         <p>חישוב כמויות מתוכניות אדריכליות — ריצוף, חיפוי ופנלים, ישירות מה-PDF</p>
         <button
           className="btn-primary large"
