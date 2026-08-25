@@ -7,6 +7,9 @@ import AutoDetectPanel from './AutoDetectPanel';
 
 const WORK_TYPES: WorkType[] = ['tiling', 'cladding', 'panels'];
 
+/** Auto room detection is hidden for now — flip this back on to bring the panel back. */
+const SHOW_AUTO_DETECT = false;
+
 export default function RoomPanel() {
   const project = useAppStore((s) => s.project);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
@@ -28,7 +31,7 @@ export default function RoomPanel() {
 
   return (
     <div className="room-panel">
-      <AutoDetectPanel />
+      {SHOW_AUTO_DETECT && <AutoDetectPanel />}
       <div className="room-list">
         <h4>אזורים שסומנו ({project.rooms.length})</h4>
         {project.rooms.length === 0 && <p className="muted">בחר בכלי "סימון" וסמן חדר על התוכנית.</p>}
