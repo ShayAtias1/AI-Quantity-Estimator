@@ -38,6 +38,7 @@ export default function MarkupToolbar() {
 
   const sizeTargetMarkup = pageMarkups.find((m) => m.id === selectedMarkupId && (m.tool === 'text' || m.tool === 'dimension'));
   const selectedTextMarkup = pageMarkups.find((m) => m.id === selectedMarkupId && m.tool === 'text');
+  const selectedDimension = pageMarkups.find((m) => m.id === selectedMarkupId && m.tool === 'dimension');
   const activeFontScale = sizeTargetMarkup ? sizeTargetMarkup.fontScale ?? 1 : markupFontScale;
   const applyFontScale = (v: number) => {
     if (sizeTargetMarkup) updateMarkup(sizeTargetMarkup.id, { fontScale: v });
@@ -120,6 +121,13 @@ export default function MarkupToolbar() {
           onClick={() => updateMarkup(selectedTextMarkup.id, { rotationDeg: selectedTextMarkup.rotationDeg ? 0 : -90 })}
         >
           {selectedTextMarkup.rotationDeg ? '↺ החזר את ההערה לאופקי' : '⟲ סובב את ההערה ב-90°'}
+        </button>
+      )}
+
+      {/* Mirrors the selected dimension about its own line: values and the overall line swap sides. */}
+      {selectedDimension && (
+        <button className="btn-secondary small" onClick={() => updateMarkup(selectedDimension.id, { flipped: !selectedDimension.flipped })}>
+          ⇅ הפוך את המידה לצד השני
         </button>
       )}
 

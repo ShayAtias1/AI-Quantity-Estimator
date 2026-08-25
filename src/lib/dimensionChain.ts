@@ -77,8 +77,16 @@ export interface DimensionChainStyle {
  * `offset` slides the dimension line away from the points it measures, along the run's normal —
  * the only direction a dimension may be moved. The measured points stay put and are joined to the
  * line by extension lines, exactly as a plan draws them.
+ *
+ * `flipped` mirrors a chain about its own line: the overall line swaps to the other side of the run.
+ * Values always sit above their own line, so they stay readable either way.
  */
-export function dimensionChainGeometry(points: Point[], style: DimensionChainStyle, offset = 0): DimensionChainGeometry | null {
+export function dimensionChainGeometry(
+  points: Point[],
+  style: DimensionChainStyle,
+  offset = 0,
+  flipped = false,
+): DimensionChainGeometry | null {
   if (points.length < 2) return null;
   const { tickHalf, labelOffset, totalOffset } = style;
   const first = points[0];
@@ -107,6 +115,10 @@ export function dimensionChainGeometry(points: Point[], style: DimensionChainSty
   const line = points.map((p) => shift(p, offset));
   const ticks = line.map(tickAt);
 
+  // `side` mirrors the dimension about its own line: it moves a chain's overall line to the other
+  // side of the run. Values always sit above their own line, flipped or not.
+  const side = flipped ? -1 : 1;
+
   // The value sits centred on its segment, just clear of the dimension line — as drawn on plans.
   const segments = line.slice(0, -1).map((a, i) => {
     const b = line[i + 1];
@@ -115,10 +127,10 @@ export function dimensionChainGeometry(points: Point[], style: DimensionChainSty
   });
 
   let total: DimensionChainGeometry['total'] = null;
-  const totalAt = offset - totalOffset;
+  const totalAt = offset - totalOffset * side;
   if (points.length > 2) {
-    // The overall line runs on the far side of the chain — the segment values sit above the run,
-    // the total below it — and carries its own value above itself, as any dimension line does.
+    // The overall line runs parallel to the chain, below it by default and above it when flipped,
+    // and carries its own value above itself as any dimension line does.
     const from = shift(first, totalAt);
     const to = shift(last, totalAt);
     total = {
@@ -128,15 +140,18 @@ export function dimensionChainGeometry(points: Point[], style: DimensionChainSty
     };
   }
 
-  // One witness line per measured point, spanning from the point out past the outermost line it
-  // has to reach — so the dimension stays tied to what it measures however far it was moved.
-  const reach = total ? [offset, totalAt] : [offset];
-  const lo = Math.min(0, ...reach);
-  const hi = Math.max(0, ...reach);
-  const extensions =
-    hi - lo > 1e-6
-      ? points.map((p) => ({ from: shift(p, lo === 0 ? 0 : lo - tickHalf), to: shift(p, hi === 0 ? 0 : hi + tickHalf) }))
-      : [];
+  // One witness line per measured point. The inner stops run out to their own dimension line and no
+  // further, so nothing crosses the overall line of a chain; only the two end stops carry on to it,
+  // since that line has to be tied to the run it totals.
+  const span = (p: Point, reach: number[]) => {
+    const lo = Math.min(0, ...reach);
+    const hi = Math.max(0, ...reach);
+    if (hi - lo < 1e-6) return null;
+    return { from: shift(p, lo === 0 ? 0 : lo - tickHalf), to: shift(p, hi === 0 ? 0 : hi + tickHalf) };
+  };
+  const extensions = points
+    .map((p, i) => span(p, total && (i === 0 || i === points.length - 1) ? [offset, totalAt] : [offset]))
+    .filter((e): e is { from: Point; to: Point } => e !== null);
 
   return { line, ticks, segments, extensions, total, angleDeg, up: { x: upX, y: upY } };
 }

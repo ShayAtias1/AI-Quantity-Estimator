@@ -18,6 +18,7 @@ export default function DimensionShape({
   segmentTexts,
   fontScale = 1,
   offset = 0,
+  flipped = false,
   strokeW,
   hitProps,
   dashed = false,
@@ -29,6 +30,7 @@ export default function DimensionShape({
   segmentTexts?: string[];
   fontScale?: number;
   offset?: number;
+  flipped?: boolean;
   strokeW: number;
   hitProps?: Record<string, unknown> & { style?: CSSProperties };
   dashed?: boolean;
@@ -38,7 +40,7 @@ export default function DimensionShape({
   const fontSize = strokeW * 6 * fontScale;
   // The line weight scales with the label size too, so a small dimension isn't drawn with a heavy line.
   const lineW = strokeW * fontScale;
-  const geo = dimensionChainGeometry(points, dimensionStyleFor(fontSize), offset);
+  const geo = dimensionChainGeometry(points, dimensionStyleFor(fontSize), offset, flipped);
   if (!geo) return null;
 
   const isChain = points.length > 2;

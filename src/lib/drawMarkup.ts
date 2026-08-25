@@ -81,7 +81,7 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
       const fontSize = strokeW * 6 * fontScale;
       // The line weight scales with the label size too, so a small dimension isn't drawn with a heavy line.
       const lineW = strokeW * fontScale;
-      const geo = dimensionChainGeometry(pts, dimensionStyleFor(fontSize), (markup.offset ?? 0) * mult);
+      const geo = dimensionChainGeometry(pts, dimensionStyleFor(fontSize), (markup.offset ?? 0) * mult, markup.flipped);
       if (!geo) break;
       const angleRad = (geo.angleDeg * Math.PI) / 180;
       const segment = (s: { from: { x: number; y: number }; to: { x: number; y: number } }) => {

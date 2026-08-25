@@ -135,6 +135,8 @@ export interface Markup {
    * along the run's normal. The points stay put; extension lines join them to the moved line.
    */
   offset?: number;
+  /** For a dimension: mirrors it about its own line — values (and a chain's overall line) swap sides. */
+  flipped?: boolean;
   /** Label size multiplier for text notes and dimension labels (1 = default). Absent means 1. */
   fontScale?: number;
   /** For tool === 'text': the note's rotation in degrees (0 = horizontal, -90 = reading bottom-to-top). */

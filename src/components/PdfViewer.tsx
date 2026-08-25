@@ -104,6 +104,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
           segmentTexts={markup.segmentTexts}
           fontScale={fontScale}
           offset={markup.offset}
+          flipped={markup.flipped}
           strokeW={strokeW}
           hitProps={hitProps}
           draggable={draggable}
