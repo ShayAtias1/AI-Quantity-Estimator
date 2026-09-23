@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "demo:smoke": "node demo/smoke.mjs",
+    "demo:qto": "node demo/qto-demo.mjs",
+    "demo:compare": "node demo/compare-demo.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -28,6 +31,7 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "playwright": "^1.63.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

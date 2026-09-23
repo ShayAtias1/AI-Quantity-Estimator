@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Demo/automation pipeline — keep the scripts and input assets, not what they generate.
+# Playwright recordings, screenshots and exported demo reports:
+demo/output/
+# Remotion launch-video project: its own deps, rendered output, and the footage/report images it
+# imports (copied in from demo/output/ by the demo scripts, not source):
+demo/video/node_modules/
+demo/video/out/
+demo/video/public/
