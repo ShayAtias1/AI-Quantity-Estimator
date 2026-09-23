@@ -1,9 +1,11 @@
 import { useRef } from 'react';
 import { useCompareStore } from '../../store/compareStore';
 import { deleteComparePdfBlob, saveComparePdfBlob } from '../../db/database';
+import Icon from '../Icon';
 
 const TINT_PRESETS = ['#9ca3af', '#6b7280', '#ef4444', '#2563eb', '#16a34a', '#f59e0b', '#9333ea'];
 
+/** Appearance of one plan layer: shown or hidden, how strongly, and in which tint. */
 function LayerRow({
   title,
   visible,
@@ -28,11 +30,12 @@ function LayerRow({
   return (
     <div className="layer-row">
       <div className="layer-row-header">
-        <button className={`layer-toggle ${visible ? 'on' : ''}`} onClick={onToggleVisible} title={visible ? 'הסתר שכבה' : 'הצג שכבה'}>
-          {visible ? '👁' : '🚫'}
+        <button className="icon-btn" onClick={onToggleVisible} title={visible ? 'הסתר שכבה' : 'הצג שכבה'} aria-pressed={visible}>
+          <Icon name={visible ? 'eye' : 'eye-off'} />
         </button>
         <span className="layer-title">{title}</span>
         {!useSourceColors && <span className="color-dot" style={{ background: tint }} />}
+        <span className="muted tnum">{Math.round(opacity * 100)}%</span>
       </div>
       <input
         type="range"
@@ -42,6 +45,7 @@ function LayerRow({
         value={opacity}
         onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
         disabled={!visible}
+        title="שקיפות השכבה"
       />
       <label className="source-color-toggle">
         <input type="checkbox" checked={useSourceColors} onChange={(e) => onToggleSourceColors(e.target.checked)} />
@@ -73,6 +77,7 @@ export default function LayerPanel() {
   const removeRevision = useCompareStore((s) => s.removeRevision);
   const renameRevision = useCompareStore((s) => s.renameRevision);
   const setActiveRevisionId = useCompareStore((s) => s.setActiveRevisionId);
+  const moveRevision = useCompareStore((s) => s.moveRevision);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!comparison) return null;
@@ -100,45 +105,75 @@ export default function LayerPanel() {
 
   return (
     <div className="layer-panel">
-      <h4>שכבות</h4>
-      <LayerRow
-        title="תוכנית מקור"
-        visible={comparison.originalVisible}
-        opacity={comparison.originalOpacity}
-        tint={comparison.originalColorTint}
-        useSourceColors={comparison.originalUseSourceColors}
-        onToggleVisible={() => setLayerVisible('original', !comparison.originalVisible)}
-        onOpacityChange={(v) => setLayerOpacity('original', v)}
-        onTintChange={(c) => setLayerTint('original', c)}
-        onToggleSourceColors={(v) => setLayerSourceColors('original', v)}
-      />
-
-      <div className="revision-tabs">
-        {comparison.revisions.map((r) => (
-          <button
-            key={r.id}
-            className={`revision-tab ${r.id === comparison.activeRevisionId ? 'active' : ''}`}
-            onClick={() => setActiveRevisionId(r.id)}
-            onDoubleClick={() => handleRename(r.id, r.label)}
-            title="לחיצה כפולה לשינוי שם"
-          >
-            <span className="color-dot" style={{ background: r.colorTint }} />
-            {r.label}
-            <span
-              className="revision-tab-remove"
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleRemove(r.id);
-              }}
-              title="הסר תוכנית מעודכנת"
-            >
-              ✕
-            </span>
+      {/* 1 — which revision is active. A selectable list, in the export/display order, with its
+          row actions revealed on hover like the takeoff room list. */}
+      <div className="tool-group">
+        <span className="section-label">גרסאות מעודכנות</span>
+        {comparison.revisions.length === 0 ? (
+          <div className="empty-state">
+            <Icon name="layers" size={24} />
+            <p>אין עדיין תוכנית מעודכנת להשוואה מול המקור.</p>
+            <button className="btn-primary small" onClick={() => fileInputRef.current?.click()}>
+              <Icon name="plus" />
+              הוסף תוכנית מעודכנת
+            </button>
+          </div>
+        ) : (
+          <ul className="revision-list">
+            {comparison.revisions.map((r, i) => (
+              <li
+                key={r.id}
+                className={r.id === comparison.activeRevisionId ? 'active' : ''}
+                onClick={() => setActiveRevisionId(r.id)}
+                onDoubleClick={() => handleRename(r.id, r.label)}
+                title="לחיצה להשוואה מול גרסה זו · לחיצה כפולה לשינוי שם"
+              >
+                <span className="color-dot" style={{ background: r.colorTint }} />
+                <span className="revision-name">{r.label}</span>
+                <span className="list-item-actions">
+                  <button
+                    className="icon-btn"
+                    disabled={i === 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveRevision(r.id, -1);
+                    }}
+                    title="העבר למעלה — הסדר קובע גם את סדר הייצוא"
+                  >
+                    <Icon name="chevron-up" />
+                  </button>
+                  <button
+                    className="icon-btn"
+                    disabled={i === comparison.revisions.length - 1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveRevision(r.id, 1);
+                    }}
+                    title="העבר למטה — הסדר קובע גם את סדר הייצוא"
+                  >
+                    <Icon name="chevron-down" />
+                  </button>
+                  <button
+                    className="icon-btn danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleRemove(r.id);
+                    }}
+                    title="הסר תוכנית מעודכנת"
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {comparison.revisions.length > 0 && (
+          <button className="btn-secondary small full-width" onClick={() => fileInputRef.current?.click()}>
+            <Icon name="plus" />
+            הוסף תוכנית מעודכנת
           </button>
-        ))}
-        <button className="revision-tab revision-tab-add" onClick={() => fileInputRef.current?.click()} title="הוסף תוכנית מעודכנת">
-          + הוסף
-        </button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -152,21 +187,34 @@ export default function LayerPanel() {
         />
       </div>
 
-      {!activeRevision && <p className="muted">אין עדיין תוכנית מעודכנת. לחץ "+ הוסף" כדי להעלות אחת.</p>}
-
-      {activeRevision && (
+      {/* 2 — secondary: how each layer is drawn. */}
+      <div className="tool-group">
+        <span className="section-label">תצוגת השכבות</span>
         <LayerRow
-          title={`תוכנית מעודכנת${comparison.revisions.length > 1 ? ` — ${activeRevision.label}` : ''}`}
-          visible={activeRevision.visible}
-          opacity={activeRevision.opacity}
-          tint={activeRevision.colorTint}
-          useSourceColors={activeRevision.useSourceColors}
-          onToggleVisible={() => setLayerVisible(activeRevision.id, !activeRevision.visible)}
-          onOpacityChange={(v) => setLayerOpacity(activeRevision.id, v)}
-          onTintChange={(c) => setLayerTint(activeRevision.id, c)}
-          onToggleSourceColors={(v) => setLayerSourceColors(activeRevision.id, v)}
+          title="תוכנית מקור"
+          visible={comparison.originalVisible}
+          opacity={comparison.originalOpacity}
+          tint={comparison.originalColorTint}
+          useSourceColors={comparison.originalUseSourceColors}
+          onToggleVisible={() => setLayerVisible('original', !comparison.originalVisible)}
+          onOpacityChange={(v) => setLayerOpacity('original', v)}
+          onTintChange={(c) => setLayerTint('original', c)}
+          onToggleSourceColors={(v) => setLayerSourceColors('original', v)}
         />
-      )}
+        {activeRevision && (
+          <LayerRow
+            title={activeRevision.label}
+            visible={activeRevision.visible}
+            opacity={activeRevision.opacity}
+            tint={activeRevision.colorTint}
+            useSourceColors={activeRevision.useSourceColors}
+            onToggleVisible={() => setLayerVisible(activeRevision.id, !activeRevision.visible)}
+            onOpacityChange={(v) => setLayerOpacity(activeRevision.id, v)}
+            onTintChange={(c) => setLayerTint(activeRevision.id, c)}
+            onToggleSourceColors={(v) => setLayerSourceColors(activeRevision.id, v)}
+          />
+        )}
+      </div>
     </div>
   );
 }

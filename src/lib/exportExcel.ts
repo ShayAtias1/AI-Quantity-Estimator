@@ -5,6 +5,8 @@ import { AREA_KIND_LABELS } from '../types';
 import { numberAreaMeasurements } from './areaMeasurements';
 
 const DASH = '—';
+/** Written into quantity cells of a room whose page has no scale, so 0 is never implied. */
+const NOT_CALIBRATED = 'לא כויל';
 
 // Fill palette (matches the reference workbook "מטריצה מיכשווילי 2").
 const C_HEADER = 'FF1F4E79'; // dark blue header (white bold text)
@@ -34,8 +36,12 @@ const DATA_HEADERS = [
   'חיפוי להזמנה',
   'פנלים להזמנה',
   'הערות',
+  // Appended last on purpose: the order formulas below address columns by letter (C..N), so the
+  // panel length gets its own column P instead of shifting any of them.
+  'אורך פנלים (מ"א)',
+  'אורך פנלים להזמנה (מ"א)',
 ];
-const DATA_WIDTHS = [8, 26, 17, 16, 18, 14, 15, 15, 12, 12, 15, 15, 13, 13, 26];
+const DATA_WIDTHS = [8, 26, 17, 16, 18, 14, 15, 15, 12, 12, 15, 15, 13, 13, 26, 17, 21];
 
 const SUMMARY_HEADERS = [
   'דירה',
@@ -189,13 +195,16 @@ export async function exportQuantitiesToExcel(
     let lastDataRow = firstDataRow;
 
     for (const s of rooms) {
+      // An uncalibrated page has no quantities to report — the cells say so in words instead of
+      // printing 0. They stay text, so SUM() and the order formulas below simply skip them.
+      const areaCell = (v: number | null) => (s.pageCalibrated ? v ?? DASH : NOT_CALIBRATED);
       const row = dataSheet.addRow([
         s.apartmentNumber,
         s.roomName,
-        s.tilingRegularAreaM2 ?? DASH,
-        s.tilingAsAreaM2 ?? DASH,
-        s.claddingAreaM2 ?? DASH,
-        s.panelsAreaM2 ?? DASH,
+        areaCell(s.tilingRegularAreaM2),
+        areaCell(s.tilingAsAreaM2),
+        areaCell(s.claddingAreaM2),
+        areaCell(s.panelsAreaM2),
         s.tilingRegularWastePercent ?? DASH,
         s.tilingAsWastePercent ?? DASH,
         s.claddingWastePercent ?? DASH,
@@ -205,6 +214,8 @@ export async function exportQuantitiesToExcel(
         null,
         null,
         s.notes,
+        areaCell(s.panelsLengthM),
+        null,
       ]);
       const r = row.number;
       lastDataRow = r;
@@ -232,6 +243,15 @@ export async function exportQuantitiesToExcel(
         s.claddingAreaM2 != null ? C_WET : s.tilingAsAreaM2 != null ? C_BALCONY : r % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B;
       row.eachCell({ includeEmpty: true }, (c) => setFill(c, argb));
 
+      row.getCell(16).numFmt = NUM_FMT;
+      row.getCell(16).alignment = { horizontal: 'center' };
+      // Same shape as the m² order columns: length × (1 + waste/100), "—" when there is no length.
+      row.getCell(17).value = {
+        formula: `IF(ISNUMBER(P${r}),ROUND(P${r}*(1+IF(ISNUMBER(J${r}),J${r},0)/100),2),"${DASH}")`,
+        result: s.panelsOrderLengthM ?? DASH,
+      };
+      row.getCell(17).numFmt = NUM_FMT;
+      row.getCell(17).alignment = { horizontal: 'center' };
       for (let ci = 3; ci <= 14; ci++) {
         const cell = row.getCell(ci);
         cell.alignment = { horizontal: 'center' };
@@ -245,7 +265,14 @@ export async function exportQuantitiesToExcel(
     setFill(titleRow.getCell(1), C_TOTAL);
     titleRow.getCell(1).font = { bold: true };
 
-    const subHeader = dataSheet.addRow(['פריט', 'כמות נטו (מ"ר)', 'פחת (%)', 'להזמנה (מ"ר)']);
+    const subHeader = dataSheet.addRow([
+      'פריט',
+      'כמות נטו (מ"ר)',
+      'פחת (%)',
+      'להזמנה (מ"ר)',
+      'אורך (מ"א)',
+      'אורך להזמנה (מ"א)',
+    ]);
     subHeader.eachCell({ includeEmpty: true }, (c) => {
       setFill(c, C_TOTAL_HDR);
       c.font = { bold: true };
@@ -256,12 +283,35 @@ export async function exportQuantitiesToExcel(
       { label: 'ריצוף רגיל', areaCol: 'C', orderCol: 'K', net: sumField(rooms, (s) => s.tilingRegularAreaM2), ord: sumField(rooms, (s) => s.tilingRegularOrderM2) },
       { label: 'ריצוף AS', areaCol: 'D', orderCol: 'L', net: sumField(rooms, (s) => s.tilingAsAreaM2), ord: sumField(rooms, (s) => s.tilingAsOrderM2) },
       { label: 'חיפוי קירות', areaCol: 'E', orderCol: 'M', net: sumField(rooms, (s) => s.claddingAreaM2), ord: sumField(rooms, (s) => s.claddingOrderM2) },
-      { label: 'פנלים', areaCol: 'F', orderCol: 'N', net: sumField(rooms, (s) => s.panelsAreaM2), ord: sumField(rooms, (s) => s.panelsOrderM2) },
+      {
+        label: 'פנלים',
+        areaCol: 'F',
+        orderCol: 'N',
+        lengthCol: 'P',
+        orderLengthCol: 'Q',
+        net: sumField(rooms, (s) => s.panelsAreaM2),
+        ord: sumField(rooms, (s) => s.panelsOrderM2),
+      },
     ];
     const catRowNums: number[] = [];
     for (const cat of cats) {
-      const row = dataSheet.addRow([cat.label, null, null, null]);
+      const row = dataSheet.addRow([cat.label, null, null, null, null, null]);
       catRowNums.push(row.number);
+      // Panels are the only category with a linear reading; it sums the same rows, column P.
+      if (cat.lengthCol) {
+        row.getCell(5).value = {
+          formula: `ROUND(SUM(${cat.lengthCol}${firstDataRow}:${cat.lengthCol}${lastDataRow}),2)`,
+          result: sumField(rooms, (s) => s.panelsLengthM),
+        };
+        row.getCell(5).numFmt = NUM_FMT;
+        row.getCell(5).alignment = { horizontal: 'center' };
+        row.getCell(6).value = {
+          formula: `ROUND(SUM(${cat.orderLengthCol}${firstDataRow}:${cat.orderLengthCol}${lastDataRow}),2)`,
+          result: sumField(rooms, (s) => s.panelsOrderLengthM),
+        };
+        row.getCell(6).numFmt = NUM_FMT;
+        row.getCell(6).alignment = { horizontal: 'center' };
+      }
       row.getCell(2).value = { formula: `ROUND(SUM(${cat.areaCol}${firstDataRow}:${cat.areaCol}${lastDataRow}),2)`, result: cat.net };
       row.getCell(4).value = { formula: `ROUND(SUM(${cat.orderCol}${firstDataRow}:${cat.orderCol}${lastDataRow}),2)`, result: cat.ord };
       row.eachCell({ includeEmpty: true }, (c) => setFill(c, C_TOTAL));
@@ -348,6 +398,18 @@ export async function exportQuantitiesToExcel(
       setFill(c, C_GRAND);
       c.font = { bold: true };
     });
+  }
+
+  // Say plainly that the totals above are missing whatever could not be calculated.
+  const uncalibratedRooms = summaries.filter((s) => !s.pageCalibrated);
+  if (uncalibratedRooms.length > 0) {
+    summarySheet.addRow([]);
+    const note = summarySheet.addRow([
+      `שים לב: ${uncalibratedRooms.length} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל ולא ניתן לחשב את כמויותיהם (${uncalibratedRooms
+        .map((s) => s.roomName || 'ללא שם')
+        .join(', ')}).`,
+    ]);
+    note.getCell(1).font = { bold: true, color: { argb: 'FF92400E' } };
   }
   }
 

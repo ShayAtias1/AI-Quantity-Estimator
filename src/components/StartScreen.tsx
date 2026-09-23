@@ -1,7 +1,22 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore, createEmptyProject } from '../store/appStore';
 import { deleteProject, listProjects, savePdfBlob, saveProject } from '../db/database';
 import type { Project } from '../types';
+import SavedItemList, { type SavedItem } from './SavedItemList';
+import Icon from './Icon';
+
+/** What the row says about a project: what is in it, and when it was last touched. */
+function projectMeta(p: Project): string {
+  const updated = `עודכן ${new Date(p.updatedAt).toLocaleDateString('he-IL')}`;
+  if (p.rooms.length === 0) return `עדיין ריק · ${updated}`;
+  const pages = new Set(p.rooms.map((r) => r.pageNumber)).size;
+  const apartments = new Set(p.rooms.map((r) => r.apartmentNumber).filter(Boolean)).size;
+  const parts = [`${p.rooms.length} חדרים`];
+  if (apartments > 0) parts.push(`${apartments} דירות`);
+  if (pages > 1) parts.push(`${pages} עמודים`);
+  parts.push(updated);
+  return parts.join(' · ');
+}
 
 export default function StartScreen() {
   const setProject = useAppStore((s) => s.setProject);
@@ -20,23 +35,29 @@ export default function StartScreen() {
 
   useEffect(refresh, []);
 
-  const openProject = (p: Project) => setProject(p);
-
-  const handleDelete = async (e: MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleDelete = async (id: string) => {
     if (!confirm('למחוק את הפרויקט? הפעולה בלתי הפיכה.')) return;
     await deleteProject(id);
     refresh();
   };
 
-  const handleFilePicked = (file: File) => {
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+  const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  // Same flow as a new comparison: the dialog first, the file chosen inside it.
+  const pickFile = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!isPdf(file)) {
       alert('נא לבחור קובץ PDF');
       return;
     }
     setPendingFile(file);
-    setNewName(file.name.replace(/\.pdf$/i, ''));
-    setCreating(true);
+    if (!newName.trim()) setNewName(file.name.replace(/\.pdf$/i, ''));
+  };
+
+  const closeDialog = () => {
+    setCreating(false);
+    setPendingFile(null);
+    setNewName('');
   };
 
   const confirmCreate = async () => {
@@ -44,52 +65,39 @@ export default function StartScreen() {
     const project = createEmptyProject(newName || 'פרויקט חדש', pendingFile.name);
     await savePdfBlob(project.id, pendingFile);
     await saveProject(project);
-    setCreating(false);
-    setPendingFile(null);
+    closeDialog();
     setProject(project);
   };
 
+  const items: SavedItem[] = projects.map((p) => ({ id: p.id, name: p.name, meta: projectMeta(p) }));
+
   return (
-    <div className="start-screen">
-      <div className="start-hero">
-        <p>חישוב כמויות מתוכניות אדריכליות — ריצוף, חיפוי ופנלים, ישירות מה-PDF</p>
-        <button
-          className="btn-primary large"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          + פרויקט חדש מקובץ PDF
+    <div className="home-panel">
+      <div className="home-panel-head">
+        <div className="home-panel-text">
+          <h2>חישוב כמויות</h2>
+          <p className="muted">חישוב ריצוף, חיפוי ופנלים מתוך תוכנית PDF, עד כתב כמויות מלא.</p>
+        </div>
+        <button className="btn-primary" onClick={() => setCreating(true)}>
+          <Icon name="plus" />
+          פרויקט חדש
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFilePicked(f);
-            e.target.value = '';
-          }}
-        />
       </div>
 
-      <div className="project-list-section">
-        <h3>פרויקטים שמורים</h3>
-        {loading && <p className="muted">טוען…</p>}
-        {!loading && projects.length === 0 && <p className="muted">אין עדיין פרויקטים שמורים.</p>}
-        <ul className="project-list">
-          {projects.map((p) => (
-            <li key={p.id} onClick={() => openProject(p)}>
-              <div className="project-list-name">{p.name}</div>
-              <div className="project-list-meta">
-                {p.rooms.length} אזורים · עודכן {new Date(p.updatedAt).toLocaleDateString('he-IL')}
-              </div>
-              <button className="icon-btn danger" onClick={(e) => handleDelete(e, p.id)} title="מחק">
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <span className="section-label">פרויקטים שמורים</span>
+      <SavedItemList
+        items={items}
+        icon="map"
+        loading={loading}
+        emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש מקובץ PDF של התוכנית."
+        onOpen={(id) => {
+          const project = projects.find((p) => p.id === id);
+          if (project) setProject(project);
+        }}
+        onDelete={(id) => void handleDelete(id)}
+        openTitle="פתח את הפרויקט"
+        deleteTitle="מחק פרויקט"
+      />
 
       {creating && (
         <div className="modal-backdrop">
@@ -97,19 +105,30 @@ export default function StartScreen() {
             <h3>פרויקט חדש</h3>
             <div className="form-row">
               <label>שם הפרויקט</label>
-              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="לדוגמה: מגדל הכרמל — קומה טיפוסית" />
+            </div>
+            <div className="form-row">
+              <label>תוכנית (PDF)</label>
+              <button className="btn-secondary file-pick" onClick={() => fileInputRef.current?.click()}>
+                <Icon name={pendingFile ? 'check' : 'file'} />
+                {pendingFile ? pendingFile.name : 'בחר קובץ PDF'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                hidden
+                onChange={(e) => {
+                  pickFile(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
             </div>
             <div className="modal-actions">
-              <button
-                className="btn-secondary"
-                onClick={() => {
-                  setCreating(false);
-                  setPendingFile(null);
-                }}
-              >
+              <button className="btn-secondary" onClick={closeDialog}>
                 ביטול
               </button>
-              <button className="btn-primary" onClick={confirmCreate} disabled={!newName.trim()}>
+              <button className="btn-primary" onClick={confirmCreate} disabled={!pendingFile || !newName.trim()}>
                 צור פרויקט
               </button>
             </div>

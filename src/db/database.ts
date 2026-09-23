@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import type { Project } from '../types';
 import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Comparison, ComparisonPage, RevisionLayer } from '../types/compare';
+import { migrateComparePageOwnership } from '../lib/compareMigration';
 
 interface QtoDB extends DBSchema {
   projects: {
@@ -180,7 +181,10 @@ async function migrateRevisionScopedData(db: IDBPDatabase<QtoDB>, raw: Compariso
 
 async function migrateComparison(db: IDBPDatabase<QtoDB>, raw: Comparison): Promise<Comparison> {
   const step1 = await migrateLegacyRevisedLayer(db, raw);
-  return migrateRevisionScopedData(db, step1);
+  const step2 = await migrateRevisionScopedData(db, step1);
+  const { comparison, changed } = migrateComparePageOwnership(step2);
+  if (changed) await db.put('comparisons', comparison);
+  return comparison;
 }
 
 export async function saveComparison(comparison: Comparison): Promise<void> {

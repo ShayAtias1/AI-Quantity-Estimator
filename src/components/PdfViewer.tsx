@@ -32,6 +32,8 @@ import { loadPdfBlob } from '../db/database';
 const VERTEX_HIT_RADIUS_SCREEN = 9;
 /** New masks start opaque white, the colour of the paper they hide. */
 const MASK_COLOR = '#ffffff';
+/** Detection suggestions are drawn in one neutral colour — they are not rooms and have no room colour yet. */
+const CANDIDATE_COLOR = '#0ea5e9';
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
 
 function pointInPolygon(pt: Point, poly: Point[]): boolean {
@@ -185,6 +187,10 @@ export default function PdfViewer() {
   const selectedMarkupId = useAppStore((s) => s.selectedMarkupId);
   const setSelectedMarkupId = useAppStore((s) => s.setSelectedMarkupId);
   const duplicateMarkup = useAppStore((s) => s.duplicateMarkup);
+  const detectionCandidates = useAppStore((s) => s.detectionCandidates);
+  const clearDetectionCandidates = useAppStore((s) => s.clearDetectionCandidates);
+  const deleteMarkup = useAppStore((s) => s.deleteMarkup);
+  const deleteRoom = useAppStore((s) => s.deleteRoom);
 
   const { containerRef, zoom, pan, screenToNative, handleWheel, fitToContainer, beginPanDrag, updatePanDrag, endPanDrag } =
     useCanvasTransform();
@@ -253,6 +259,9 @@ export default function PdfViewer() {
 
   const room = project?.rooms.find((r) => r.id === selectedRoomId) ?? null;
   const metersPerPixel = project?.pages[currentPage]?.calibration?.metersPerPixel ?? 0;
+  // A tool that yields real-world numbers is active on a page with no scale.
+  const needsCalibrationHint =
+    metersPerPixel === 0 && (toolMode === 'measure' || (toolMode === 'markup' && markupTool === 'dimension'));
   // Numbered per page (not project-wide) so the on-canvas wall number always matches its row in that page's own exported table.
   const areaNumbers = useMemo(
     () => numberAreaMeasurements((project?.measurements ?? []).filter((m) => m.pageNumber === currentPage)),
@@ -350,11 +359,24 @@ export default function PdfViewer() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Anything typed into a field (including the text-note dialog and the contenteditable case)
+      // must never reach the shortcuts below that delete or undo.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isEditingField =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        !!target?.isContentEditable ||
+        !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
+
       if (e.code === 'Space') spaceHeld.current = true;
       if (e.key === 'Escape') {
         clearDrawingPoints();
         clearMeasurePoints();
         clearMarkupPoints();
+        // Nothing has been created yet, so this leaves no history entry behind.
+        clearDetectionCandidates();
       }
       if (e.key === 'Enter' && drawingPoints.length >= 3) {
         finishDrawing();
@@ -373,12 +395,25 @@ export default function PdfViewer() {
         e.preventDefault();
         duplicateMarkup(selectedMarkupId);
       }
-      const tag = (e.target as HTMLElement)?.tagName;
-      const isEditingField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if (!isEditingField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
+      }
+      // Delete/Backspace removes what is selected, through the very same mutations (and the same
+      // room confirmation) as the sidebar's ✕ buttons — so it lands in undo history identically.
+      // A selected markup wins over a selected room: it is the more recent selection on the plan.
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditingField && !textDraft) {
+        if (selectedMarkupId) {
+          e.preventDefault();
+          deleteMarkup(selectedMarkupId);
+        } else if (selectedRoomId) {
+          const room = project?.rooms.find((r) => r.id === selectedRoomId);
+          if (room) {
+            e.preventDefault();
+            if (confirm(`למחוק את "${room.name}"?`)) deleteRoom(selectedRoomId);
+          }
+        }
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -391,7 +426,24 @@ export default function PdfViewer() {
       window.removeEventListener('keyup', onKeyUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearDrawingPoints, drawingPoints.length, finishDrawing, measureTool, measurePoints, markupTool, markupPoints, selectedMarkupId, undo, redo]);
+  }, [
+    clearDrawingPoints,
+    drawingPoints.length,
+    finishDrawing,
+    measureTool,
+    measurePoints,
+    markupTool,
+    markupPoints,
+    selectedMarkupId,
+    selectedRoomId,
+    clearDetectionCandidates,
+    project,
+    textDraft,
+    deleteMarkup,
+    deleteRoom,
+    undo,
+    redo,
+  ]);
 
   // Auto-finish distance measurement once 2 points are placed.
   useEffect(() => {
@@ -729,6 +781,39 @@ export default function PdfViewer() {
                 );
               })}
 
+            {/* Detection suggestions: dashed, faint and unselectable, so they never read as rooms
+                that are already part of the project. They live in session state only. */}
+            {detectionCandidates
+              .filter((c) => c.pageNumber === currentPage)
+              .map((c) => {
+                const pts = c.points.map((p) => `${p.x},${p.y}`).join(' ');
+                const label = c.suggestedName || 'לא זוהה';
+                const centre = polygonCentroid(c.points);
+                return (
+                  <g key={c.id} pointerEvents="none">
+                    <polygon
+                      points={pts}
+                      fill={CANDIDATE_COLOR}
+                      fillOpacity={0.08}
+                      stroke={CANDIDATE_COLOR}
+                      strokeWidth={strokeW}
+                      strokeDasharray={`${6 / zoom} ${4 / zoom}`}
+                    />
+                    <text
+                      x={centre.x}
+                      y={centre.y}
+                      fontSize={9.5 / zoom}
+                      fill={CANDIDATE_COLOR}
+                      fontWeight={600}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+
             {/* In-progress polygon drawing */}
             {toolMode === 'draw' && drawingPoints.length > 0 && (
               <g>
@@ -1020,6 +1105,15 @@ export default function PdfViewer() {
 
       {toolMode === 'export-region' && !regionDraft && (
         <div className="export-region-hint">גרור על התוכנית כדי לבחור את האזור לייצוא ב-PDF</div>
+      )}
+
+      {/* Scale-dependent tools only: measuring and dimension markups produce real-world numbers, so
+          on an unscaled page they would silently read 0. Drawing a room is never blocked or warned
+          about — geometry is fine without a scale, only the quantity needs one. */}
+      {needsCalibrationHint && (
+        <div className="export-region-hint cal-hint-warning">
+          העמוד אינו מכויל. יש לכייל את העמוד לפני שניתן לחשב מידות.
+        </div>
       )}
 
       {pageSize.width > 0 && (

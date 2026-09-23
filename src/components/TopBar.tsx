@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { useAppStore } from '../store/appStore';
+import { useEffect, useState } from 'react';
+import { selectSaveState, useAppStore } from '../store/appStore';
+import QuantityExportActions from './QuantityExportActions';
 import TopBarMenu, { type MenuId } from './TopBarMenu';
+import Icon, { type IconName } from './Icon';
 import { exportAllPlanPagesToPdf, exportPlanPageToPdf } from '../lib/exportRegionPdf';
 
 export default function TopBar() {
@@ -11,6 +13,7 @@ export default function TopBar() {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const updateProjectMeta = useAppStore((s) => s.updateProjectMeta);
   const persist = useAppStore((s) => s.persist);
+  const saveState = useAppStore(selectSaveState);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
   const toggleAnnotationsVisible = useAppStore((s) => s.toggleAnnotationsVisible);
   const measurementsVisible = useAppStore((s) => s.measurementsVisible);
@@ -26,6 +29,25 @@ export default function TopBar() {
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const [exportingPage, setExportingPage] = useState(false);
   const [exportingAllPages, setExportingAllPages] = useState(false);
+  // Draft text of the page box. Kept as a string so the field can be empty/mid-typing, and re-synced
+  // whenever the page changes some other way (prev/next buttons, clicking a room in the list).
+  const [pageInput, setPageInput] = useState(String(currentPage));
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
+  // Enter (via blur) jumps to the typed page: out-of-range values clamp, anything unparsable just
+  // snaps the box back to the current page. Goes through the same setCurrentPage as prev/next.
+  const commitPageJump = () => {
+    const parsed = parseInt(pageInput, 10);
+    if (!Number.isFinite(parsed)) {
+      setPageInput(String(currentPage));
+      return;
+    }
+    const target = Math.min(Math.max(parsed, 1), numPages);
+    setPageInput(String(target));
+    if (target !== currentPage) setCurrentPage(target);
+  };
 
   if (!project) return null;
 
@@ -56,156 +78,168 @@ export default function TopBar() {
 
   const closeProject = async () => {
     await persist();
+    // If the save failed the work is still only in memory — stay in the project rather than drop it.
+    if (useAppStore.getState().saveError) return;
     setProject(null);
   };
 
+  // The save state was already tracked; it is shown in the bar, but quietly — it is a status,
+  // not an action, so only the states that need attention carry colour.
+  const saveLabels: Record<typeof saveState, { text: string; title: string; icon: IconName }> = {
+    saving: { text: 'שומר…', title: 'שומר את הפרויקט', icon: 'reset' },
+    saved: { text: 'נשמר', title: 'כל השינויים נשמרו', icon: 'check' },
+    unsaved: { text: 'לא נשמר', title: 'יש שינויים שטרם נשמרו', icon: 'alert' },
+    error: { text: 'שגיאה בשמירה', title: 'השמירה נכשלה — העבודה לא נשמרה', icon: 'alert' },
+  };
+
   return (
-    <div className="top-bar">
-      <div className="app-brand">
-        <span className="app-brand-name">BetterCalc</span>
-        <span className="app-brand-divider">|</span>
-        <span className="app-brand-mode">חישוב כמויות</span>
-      </div>
-      <input
-        className="project-name-input"
-        value={project.name}
-        onChange={(e) => updateProjectMeta({ name: e.target.value })}
-      />
-
-      {/* The page is dir="rtl", so previous sits on the right and next on the left. The chevrons are
-          bidi-mirrored characters — dir="ltr" on the buttons keeps each one pointing as written. */}
-      <div className="page-nav">
-        <button dir="ltr" disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title="עמוד קודם">
-          ›
-        </button>
-        <span>
-          עמוד {currentPage} מתוך {numPages}
-        </span>
-        <button dir="ltr" disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)} title="עמוד הבא">
-          ‹
-        </button>
+    <div className="top-bar" data-save-state={saveState}>
+      {/* Group 1 — identity. Compressed to the mark plus the project name: the workspace itself
+          says which mode we are in, so the subtitle no longer spends space here. */}
+      <div className="top-bar-group identity">
+        <div className="app-brand" title="BetterCalc — חישוב כמויות">
+          <span className="app-brand-name">BetterCalc</span>
+        </div>
+        <input
+          className="project-name-input"
+          value={project.name}
+          onChange={(e) => updateProjectMeta({ name: e.target.value })}
+          title="שם הפרויקט"
+        />
       </div>
 
-      <span className="top-bar-sep" />
-
-      <div className="undo-redo-group">
-        <button className="btn-secondary small" onClick={undo} disabled={!canUndo} title="בטל פעולה (Ctrl+Z)">
-          ↶
-        </button>
-        <button className="btn-secondary small" onClick={redo} disabled={!canRedo} title="בצע שוב (Ctrl+Shift+Z)">
-          ↷
-        </button>
-      </div>
-
-      <TopBarMenu
-        id="view"
-        openId={openMenu}
-        setOpenId={setOpenMenu}
-        label={`${annotationsVisible && measurementsVisible ? '👁' : '🚫'} תצוגה`}
-        title="מה מוצג על גבי התוכנית (ומיוצא ל-PDF)"
-        highlighted={!annotationsVisible || !measurementsVisible}
-      >
-        <button className="menu-item" onClick={toggleAnnotationsVisible}>
-          <span className="menu-check">{annotationsVisible ? '✓' : ''}</span>
-          סימוני שטחים והערות
-        </button>
-        <button className="menu-item" onClick={toggleMeasurementsVisible}>
-          <span className="menu-check">{measurementsVisible ? '✓' : ''}</span>
-          מדידות
-        </button>
-        <p className="menu-hint">מה שמוסתר כאן לא ייכלל גם בייצוא ה-PDF.</p>
-      </TopBarMenu>
-
-      <TopBarMenu
-        id="export"
-        openId={openMenu}
-        setOpenId={setOpenMenu}
-        label={exporting ? '⬇ מייצא…' : '⬇ ייצוא תוכנית'}
-        title="ייצוא התוכנית ל-PDF"
-        highlighted={!!exportRegion}
-      >
-        <button className="menu-item" onClick={handleExportPage} disabled={exporting}>
-          <span className="menu-check">📄</span>
-          {exportRegion ? `ייצוא האזור שנבחר (עמוד ${currentPage})` : `ייצוא עמוד ${currentPage} בלבד`}
-        </button>
-        <button className="menu-item" onClick={handleExportAllPages} disabled={exporting || numPages <= 1}>
-          <span className="menu-check">📚</span>
-          ייצוא כל {numPages} העמודים לקובץ אחד
-        </button>
-        <div className="menu-divider" />
-        <button
-          className={`menu-item ${toolMode === 'export-region' ? 'active' : ''}`}
-          onClick={() => {
-            setToolMode(toolMode === 'export-region' ? 'select' : 'export-region');
-            setOpenMenu(null);
-          }}
-        >
-          <span className="menu-check">✂</span>
-          {exportRegion ? 'שינוי אזור הייצוא' : 'בחירת אזור לייצוא'}
-        </button>
-        {exportRegion && (
-          <button className="menu-item" onClick={() => setExportRegion(currentPage, null)}>
-            <span className="menu-check">✕</span>
-            ביטול האזור בעמוד זה
+      {/* Group 2 — the document: where we are in it, and moving through its history. */}
+      <div className="top-bar-group grow">
+        {/* The page is dir="rtl", so previous sits on the right and next on the left. */}
+        <div className="page-nav">
+          <button disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title="עמוד קודם">
+            <Icon name="chevron-right" />
           </button>
-        )}
-        <p className="menu-hint">
-          {exportRegion
-            ? 'העמוד הנוכחי ייחתך לאזור שסימנת. עמודים ללא אזור מיוצאים במלואם.'
-            : 'ללא אזור נבחר — מיוצא העמוד המלא.'}
-        </p>
-      </TopBarMenu>
+          <span>
+            עמוד
+            <input
+              className="page-jump-input"
+              type="number"
+              min={1}
+              max={numPages}
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              onBlur={commitPageJump}
+              title={`הקלד מספר עמוד (1 עד ${numPages}) ולחץ Enter`}
+            />
+            / {numPages}
+          </span>
+          {/* Calibration state is not repeated here — the page-status strip above the sidebar tabs
+              is the single place that reports it and offers the action. */}
+          <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)} title="עמוד הבא">
+            <Icon name="chevron-left" />
+          </button>
+        </div>
 
-      <TopBarMenu id="settings" openId={openMenu} setOpenId={setOpenMenu} label="⚙ ברירות מחדל" title="ברירות מחדל לחישוב">
-        <div className="form-row">
-          <label>גובה חיפוי ברירת מחדל (מ')</label>
-          <input
-            type="number"
-            step="0.05"
-            min="0"
-            value={project.defaultCladdingHeightM}
-            onChange={(e) => updateProjectMeta({ defaultCladdingHeightM: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-        <div className="form-row">
-          <label>פחת ריצוף ברירת מחדל (%)</label>
-          <input
-            type="number"
-            step="1"
-            min="0"
-            max="100"
-            value={project.defaultTilingWastePercent}
-            onChange={(e) => updateProjectMeta({ defaultTilingWastePercent: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-        <div className="form-row">
-          <label>פחת חיפוי ברירת מחדל (%)</label>
-          <input
-            type="number"
-            step="1"
-            min="0"
-            max="100"
-            value={project.defaultCladdingWastePercent}
-            onChange={(e) => updateProjectMeta({ defaultCladdingWastePercent: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-        <div className="form-row">
-          <label>פחת פנלים ברירת מחדל (%)</label>
-          <input
-            type="number"
-            step="1"
-            min="0"
-            max="100"
-            value={project.defaultPanelsWastePercent}
-            onChange={(e) => updateProjectMeta({ defaultPanelsWastePercent: parseFloat(e.target.value) || 0 })}
-          />
-        </div>
-      </TopBarMenu>
+        <span className="top-bar-sep" />
 
-      {/* Leaving the project lives at the far end of the bar, past the defaults menu. */}
-      <button className="btn-secondary small" onClick={closeProject}>
-        → פרויקטים
-      </button>
+        <div className="undo-redo-group">
+          <button className="icon-btn" onClick={undo} disabled={!canUndo} title="בטל פעולה (Ctrl+Z)">
+            <Icon name="undo" />
+          </button>
+          <button className="icon-btn" onClick={redo} disabled={!canRedo} title="בצע שוב (Ctrl+Shift+Z)">
+            <Icon name="redo" />
+          </button>
+        </div>
+      </div>
+
+      {/* Group 3 — output: what is on the plan, what leaves the app, and the way out. */}
+      <div className="top-bar-group output">
+        <span className={`save-state save-state-${saveState}`} title={saveLabels[saveState].title}>
+          <Icon name={saveLabels[saveState].icon} size={13} />
+          {saveLabels[saveState].text}
+        </span>
+
+        <TopBarMenu
+          id="view"
+          openId={openMenu}
+          setOpenId={setOpenMenu}
+          icon={annotationsVisible && measurementsVisible ? 'eye' : 'eye-off'}
+          label="תצוגה"
+          variant="ghost"
+          title="מה מוצג על גבי התוכנית (ומיוצא ל-PDF)"
+          highlighted={!annotationsVisible || !measurementsVisible}
+        >
+          <button className="menu-item" onClick={toggleAnnotationsVisible}>
+            <span className="menu-check">{annotationsVisible && <Icon name="check" size={13} />}</span>
+            סימוני שטחים והערות
+          </button>
+          <button className="menu-item" onClick={toggleMeasurementsVisible}>
+            <span className="menu-check">{measurementsVisible && <Icon name="check" size={13} />}</span>
+            מדידות
+          </button>
+          <p className="menu-hint">מה שמוסתר כאן לא ייכלל גם בייצוא ה-PDF.</p>
+        </TopBarMenu>
+
+        {/* Export is the strongest action in the bar — the one filled control. */}
+        <TopBarMenu
+          id="export"
+          openId={openMenu}
+          setOpenId={setOpenMenu}
+          icon="download"
+          label={exporting ? 'מייצא…' : 'ייצוא'}
+          title="ייצוא כתב הכמויות או התוכנית"
+          variant="primary"
+          highlighted={!!exportRegion}
+        >
+          {/* The quantity report is the product's main output, so it heads the menu. */}
+          <p className="menu-hint menu-section-title">כתב כמויות</p>
+          <QuantityExportActions variant="menu" onPicked={() => setOpenMenu(null)} />
+
+          <div className="menu-divider" />
+          <p className="menu-hint menu-section-title">תוכנית מסומנת</p>
+          <button className="menu-item" onClick={handleExportPage} disabled={exporting}>
+            <span className="menu-check">
+              <Icon name="map" size={13} />
+            </span>
+            {exportRegion ? `האזור שנבחר (עמוד ${currentPage})` : `עמוד ${currentPage} בלבד`}
+          </button>
+          <button className="menu-item" onClick={handleExportAllPages} disabled={exporting || numPages <= 1}>
+            <span className="menu-check">
+              <Icon name="layers" size={13} />
+            </span>
+            כל {numPages} העמודים לקובץ אחד
+          </button>
+          <button
+            className={`menu-item ${toolMode === 'export-region' ? 'active' : ''}`}
+            onClick={() => {
+              setToolMode(toolMode === 'export-region' ? 'select' : 'export-region');
+              setOpenMenu(null);
+            }}
+          >
+            <span className="menu-check">
+              <Icon name="crop" size={13} />
+            </span>
+            {exportRegion ? 'שינוי אזור הייצוא' : 'בחירת אזור לייצוא'}
+          </button>
+          {exportRegion && (
+            <button className="menu-item" onClick={() => setExportRegion(currentPage, null)}>
+              <span className="menu-check">
+                <Icon name="close" size={13} />
+              </span>
+              ביטול האזור בעמוד זה
+            </button>
+          )}
+          <p className="menu-hint">
+            {exportRegion
+              ? 'העמוד הנוכחי ייחתך לאזור שסימנת. עמודים ללא אזור מיוצאים במלואם.'
+              : 'ללא אזור נבחר — מיוצא העמוד המלא.'}
+          </p>
+        </TopBarMenu>
+
+        <button className="btn-ghost small" onClick={closeProject} title="שמירה ויציאה לרשימת הפרויקטים">
+          <Icon name="exit" />
+          <span className="btn-label">פרויקטים</span>
+        </button>
+      </div>
     </div>
   );
 }

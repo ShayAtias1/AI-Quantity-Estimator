@@ -1,5 +1,21 @@
 // Domain types for the Drawing Overlay & Revision Compare feature.
-import type { Calibration, Point } from './index';
+import type { Point } from './index';
+
+/**
+ * A page calibration in Revision Compare. Same shape as the takeoff side's `Calibration`, plus the
+ * coordinate space the pixel distance was measured in — the comparison canvas has two of them (the
+ * source page's native px and the revised PDF's own native px), and a value is only interpretable
+ * together with the one it came from. Absent on data saved before this field existed.
+ */
+export interface CompareCalibration {
+  /** Distance in px between the two calibration points, in the space named by `space`. */
+  pixelDistance: number;
+  /** Real-world distance in meters entered by the user. */
+  realDistanceMeters: number;
+  /** meters per pixel, derived: realDistanceMeters / pixelDistance — in the space named by `space`. */
+  metersPerPixel: number;
+  space?: 'original' | 'revised';
+}
 
 export type CompareLayer = 'original' | 'revised';
 
@@ -75,6 +91,8 @@ export interface AlignmentPointPair {
 
 export interface Markup {
   id: string;
+  /** Source page this markup was drawn on. Its points are in that page's native px. */
+  pageNumber: number;
   tool: MarkupTool;
   /**
    * Interpretation depends on tool: 2 points for arrow/rectangle, polyline for cloud, 1 point for text.
@@ -103,6 +121,8 @@ export interface Markup {
 
 export interface Measurement {
   id: string;
+  /** Source page this measurement was taken on. Its points are in that page's native px. */
+  pageNumber: number;
   tool: MeasureTool;
   points: Point[];
   /** Computed display value, cached at creation time (e.g. "3.24 מ'" or "12.5 מ\"ר"). */
@@ -144,15 +164,18 @@ export interface RevisionLayer {
 
 /** Per-page data for one revision: its own page mapping, calibration and alignment against the original. */
 export interface RevisionPageData {
+  /** Which page of this revision's PDF is shown against the source page that owns this record. */
   revisedPageNumber: number;
-  revisedCalibration: Calibration | null;
+  revisedCalibration: CompareCalibration | null;
   alignment: LayerTransform;
   alignmentPoints: AlignmentPointPair[];
+  /** How `alignment` was produced, so the UI can report the alignment state honestly. */
+  alignmentMethod?: 'points' | 'manual';
 }
 
 export interface ComparisonPage {
   originalPageNumber: number;
-  originalCalibration: Calibration | null;
+  originalCalibration: CompareCalibration | null;
   /** Keyed by RevisionLayer.id. */
   revisions: Record<string, RevisionPageData>;
 }

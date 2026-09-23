@@ -1,7 +1,18 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCompareStore, createEmptyComparison } from '../../store/compareStore';
 import { deleteComparison, listComparisons, saveComparePdfBlob, saveComparison } from '../../db/database';
 import type { Comparison } from '../../types/compare';
+import SavedItemList, { type SavedItem } from '../SavedItemList';
+import Icon from '../Icon';
+
+/** What the row says about a comparison: which flat, how many revised plans, when it was touched. */
+function comparisonMeta(c: Comparison): string {
+  const parts: string[] = [];
+  if (c.apartmentNumber) parts.push(`דירה ${c.apartmentNumber}`);
+  parts.push(c.revisions.length === 1 ? 'גרסה אחת' : `${c.revisions.length} גרסאות`);
+  parts.push(`עודכן ${new Date(c.updatedAt).toLocaleDateString('he-IL')}`);
+  return parts.join(' · ');
+}
 
 export default function CompareStartScreen() {
   const setComparison = useCompareStore((s) => s.setComparison);
@@ -23,10 +34,7 @@ export default function CompareStartScreen() {
 
   useEffect(refresh, []);
 
-  const openComparison = (c: Comparison) => setComparison(c);
-
-  const handleDelete = async (e: MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleDelete = async (id: string) => {
     if (!confirm('למחוק את ההשוואה? הפעולה בלתי הפיכה.')) return;
     await deleteComparison(id);
     refresh();
@@ -41,6 +49,7 @@ export default function CompareStartScreen() {
       return;
     }
     setOriginalFile(file);
+    if (!name.trim()) setName(file.name.replace(/\.pdf$/i, ''));
   };
 
   const pickRevised = (files: FileList | null) => {
@@ -57,6 +66,14 @@ export default function CompareStartScreen() {
     setRevisedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const closeDialog = () => {
+    setCreating(false);
+    setOriginalFile(null);
+    setRevisedFiles([]);
+    setName('');
+    setApartmentNumber('');
+  };
+
   const confirmCreate = async () => {
     if (!originalFile) return;
     const comparison = createEmptyComparison(
@@ -70,42 +87,39 @@ export default function CompareStartScreen() {
       comparison.revisions.map((rev, i) => saveComparePdfBlob(comparison.id, `revision:${rev.id}`, revisedFiles[i]))
     );
     await saveComparison(comparison);
-    setCreating(false);
-    setOriginalFile(null);
-    setRevisedFiles([]);
-    setName('');
-    setApartmentNumber('');
+    closeDialog();
     setComparison(comparison);
   };
 
+  const items: SavedItem[] = comparisons.map((c) => ({ id: c.id, name: c.name, meta: comparisonMeta(c) }));
+
   return (
-    <div className="start-screen">
-      <div className="start-hero">
-        <p>העלה תוכנית מקור ותוכנית מעודכנת של אותה דירה כדי להשוות ביניהן ולזהות שינויים</p>
-        <button className="btn-primary large" onClick={() => setCreating(true)}>
-          + השוואה חדשה
+    <div className="home-panel">
+      <div className="home-panel-head">
+        <div className="home-panel-text">
+          <h2>השוואת תוכניות</h2>
+          <p className="muted">השוואת תוכנית מקור מול גרסאות מעודכנות, וסימון ההריסה והבנייה החדשה.</p>
+        </div>
+        <button className="btn-primary" onClick={() => setCreating(true)}>
+          <Icon name="plus" />
+          השוואה חדשה
         </button>
       </div>
 
-      <div className="project-list-section">
-        <h3>השוואות שמורות</h3>
-        {loading && <p className="muted">טוען…</p>}
-        {!loading && comparisons.length === 0 && <p className="muted">אין עדיין השוואות שמורות.</p>}
-        <ul className="project-list">
-          {comparisons.map((c) => (
-            <li key={c.id} onClick={() => openComparison(c)}>
-              <div className="project-list-name">{c.name}</div>
-              <div className="project-list-meta">
-                {c.apartmentNumber ? `דירה ${c.apartmentNumber} · ` : ''}
-                {c.revisions.reduce((sum, r) => sum + r.markups.length, 0)} סימונים · עודכן {new Date(c.updatedAt).toLocaleDateString('he-IL')}
-              </div>
-              <button className="icon-btn danger" onClick={(e) => handleDelete(e, c.id)} title="מחק">
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <span className="section-label">השוואות שמורות</span>
+      <SavedItemList
+        items={items}
+        icon="layers"
+        loading={loading}
+        emptyText="אין עדיין השוואות שמורות. צור השוואה חדשה מתוכנית מקור ומתוכנית מעודכנת."
+        onOpen={(id) => {
+          const comparison = comparisons.find((c) => c.id === id);
+          if (comparison) setComparison(comparison);
+        }}
+        onDelete={(id) => void handleDelete(id)}
+        openTitle="פתח את ההשוואה"
+        deleteTitle="מחק השוואה"
+      />
 
       {creating && (
         <div className="modal-backdrop">
@@ -113,16 +127,17 @@ export default function CompareStartScreen() {
             <h3>השוואה חדשה</h3>
             <div className="form-row">
               <label>שם ההשוואה</label>
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="לדוגמה: דירה 5 - שינויי דיירים" />
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="לדוגמה: דירה 5 — שינויי דיירים" />
             </div>
             <div className="form-row">
               <label>מספר דירה</label>
               <input value={apartmentNumber} onChange={(e) => setApartmentNumber(e.target.value)} />
             </div>
             <div className="form-row">
-              <label>תוכנית מקור (Original)</label>
-              <button className="btn-secondary" onClick={() => originalInputRef.current?.click()}>
-                {originalFile ? `✓ ${originalFile.name}` : 'בחר קובץ PDF'}
+              <label>תוכנית מקור (PDF)</label>
+              <button className="btn-secondary file-pick" onClick={() => originalInputRef.current?.click()}>
+                <Icon name={originalFile ? 'check' : 'file'} />
+                {originalFile ? originalFile.name : 'בחר קובץ PDF'}
               </button>
               <input
                 ref={originalInputRef}
@@ -136,9 +151,10 @@ export default function CompareStartScreen() {
               />
             </div>
             <div className="form-row">
-              <label>תוכניות מעודכנות (Revised) — אופציונלי, ניתן להוסיף גם מאוחר יותר</label>
-              <button className="btn-secondary" onClick={() => revisedInputRef.current?.click()}>
-                + הוסף קובץ PDF
+              <label>תוכניות מעודכנות — אופציונלי, ניתן להוסיף גם מאוחר יותר</label>
+              <button className="btn-secondary file-pick" onClick={() => revisedInputRef.current?.click()}>
+                <Icon name="plus" />
+                הוסף קובץ PDF
               </button>
               <input
                 ref={revisedInputRef}
@@ -155,9 +171,10 @@ export default function CompareStartScreen() {
                 <ul className="picked-file-list">
                   {revisedFiles.map((f, i) => (
                     <li key={i}>
-                      <span>✓ {f.name}</span>
-                      <button className="icon-btn danger" onClick={() => removeRevisedFile(i)}>
-                        ✕
+                      <Icon name="file" />
+                      <span className="picked-file-name">{f.name}</span>
+                      <button className="icon-btn danger" title="הסר קובץ" onClick={() => removeRevisedFile(i)}>
+                        <Icon name="trash" />
                       </button>
                     </li>
                   ))}
@@ -165,14 +182,7 @@ export default function CompareStartScreen() {
               )}
             </div>
             <div className="modal-actions">
-              <button
-                className="btn-secondary"
-                onClick={() => {
-                  setCreating(false);
-                  setOriginalFile(null);
-                  setRevisedFiles([]);
-                }}
-              >
+              <button className="btn-secondary" onClick={closeDialog}>
                 ביטול
               </button>
               <button className="btn-primary" onClick={confirmCreate} disabled={!originalFile}>

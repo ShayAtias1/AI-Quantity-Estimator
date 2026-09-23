@@ -1,4 +1,5 @@
 import type { Point } from '../types';
+import { ROOM_PROFILES, type RoomProfile, type TilingCategoryKey } from './roomProfiles';
 import type { PlanPageSource, PlanTextItem } from './planSource';
 
 /**
@@ -19,37 +20,12 @@ import type { PlanPageSource, PlanTextItem } from './planSource';
  * exposed via DetectionOptions for tuning.
  */
 
-export type TilingCategoryKey = 'regular' | 'as';
-
-export interface RoomProfile {
-  key: string;
-  /** Name keywords (Hebrew). Matched as substrings against text found inside the room. */
-  labels: string[];
-  /** Default room name to display when this profile matches. */
-  displayName: string;
-  tiling: TilingCategoryKey;
-  cladding: boolean;
-  panels: boolean;
-}
-
-/** Ordered roughly specific→generic; matching prefers the longest label so "חדר רחצה" beats "חדר". */
-export const ROOM_PROFILES: RoomProfile[] = [
-  { key: 'bath', labels: ['חדר רחצה', 'חדר אמבטיה', 'אמבטיה', 'מקלחת', 'רחצה'], displayName: 'חדר רחצה', tiling: 'as', cladding: true, panels: false },
-  { key: 'wc', labels: ['שירותי אורחים', 'שרותי אורחים', 'שירותים', 'שרותים', 'אסלה', 'שירות אורחים'], displayName: 'שירותים', tiling: 'as', cladding: true, panels: false },
-  { key: 'service', labels: ['חדר שירות', 'חדר כביסה', 'כביסה', 'חדר רחצה שירות'], displayName: 'חדר שירות', tiling: 'as', cladding: false, panels: false },
-  { key: 'kitchen', labels: ['מטבח', 'מטבחון'], displayName: 'מטבח', tiling: 'regular', cladding: true, panels: true },
-  { key: 'balcony', labels: ['מרפסת שירות', 'מרפסת שמש', 'מרפסת'], displayName: 'מרפסת', tiling: 'as', cladding: false, panels: false },
-  { key: 'safe', labels: ['ממ"ד', 'ממ״ד', 'ממד', 'מרחב מוגן', 'מקלט'], displayName: 'ממ"ד', tiling: 'regular', cladding: false, panels: true },
-  { key: 'living', labels: ['סלון', 'חדר מגורים', 'מגורים', 'פינת אוכל'], displayName: 'סלון', tiling: 'regular', cladding: false, panels: true },
-  { key: 'bedroom', labels: ['חדר שינה', 'חדר הורים', 'חדר ילדים', 'חדר שינה הורים', 'שינה', 'חדר'], displayName: 'חדר שינה', tiling: 'regular', cladding: false, panels: true },
-  { key: 'hall', labels: ['פרוזדור', 'מסדרון', 'הול', 'כניסה', 'לובי'], displayName: 'פרוזדור', tiling: 'regular', cladding: false, panels: true },
-  { key: 'storage', labels: ['מחסן', 'ארון', 'אחסון'], displayName: 'מחסן', tiling: 'regular', cladding: false, panels: false },
-];
-
-export function getRoomProfile(key: string | undefined | null): RoomProfile | null {
-  if (!key) return null;
-  return ROOM_PROFILES.find((p) => p.key === key) ?? null;
-}
+/**
+ * The room-type catalogue lives in roomProfiles.ts — it is shared with the manual room-type picker.
+ * Re-exported here so existing detection-side importers keep working unchanged.
+ */
+export { ROOM_PROFILES, getRoomProfile } from './roomProfiles';
+export type { RoomProfile, TilingCategoryKey } from './roomProfiles';
 
 /** Flat {label, profile} list sorted by label length desc, so the most specific keyword wins. */
 const LABEL_INDEX: { label: string; normalized: string; profile: RoomProfile }[] = ROOM_PROFILES.flatMap((profile) =>

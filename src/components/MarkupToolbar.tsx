@@ -1,14 +1,15 @@
 import { useAppStore } from '../store/appStore';
 import { MARKUP_TOOL_LABELS, type MarkupTool } from '../types';
+import Icon, { type IconName } from './Icon';
 
 const MARKUP_TOOLS: MarkupTool[] = ['cloud', 'arrow', 'rectangle', 'text', 'dimension', 'mask'];
-const MARKUP_ICONS: Record<MarkupTool, string> = {
-  cloud: '☁️',
-  arrow: '➤',
-  rectangle: '▭',
-  text: '💬',
-  dimension: '📐',
-  mask: '⬜',
+const MARKUP_ICONS: Record<MarkupTool, IconName> = {
+  cloud: 'cloud',
+  arrow: 'arrow',
+  rectangle: 'rectangle',
+  text: 'text',
+  dimension: 'dimension',
+  mask: 'mask',
 };
 
 const MARKUP_COLORS = ['#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea', '#0f172a'];
@@ -45,6 +46,30 @@ export default function MarkupToolbar() {
     else setMarkupFontScale(v);
   };
 
+  // The drawing hint for whichever tool is active: a single short line, with the long form kept
+  // as its tooltip. Null when no markup tool is in use, so the panel stays quiet.
+  const hint: { short: string; long?: string } | null =
+    toolMode !== 'markup' || !markupTool
+      ? null
+      : markupTool === 'cloud'
+        ? { short: `לחץ נקודות וסגור ליד הראשונה (${markupPoints.length})` }
+        : markupTool === 'arrow' || markupTool === 'rectangle'
+          ? { short: 'לחץ נקודת התחלה וסיום' }
+          : markupTool === 'mask'
+            ? {
+                short: 'לחץ פינת התחלה וסיום למלבן מסתיר',
+                long: 'לחץ פינת התחלה וסיום למלבן שיסתיר את מה שמתחתיו. נוצר בלבן — אפשר לשנות את הצבע אחר כך.',
+              }
+            : markupTool === 'dimension'
+              ? {
+                  short: `לחץ התחלה וסיום; כל לחיצה נוספת ממשיכה את הקו (${Math.max(0, markupPoints.length - 1)})`,
+                  long: 'לחץ נקודת התחלה וסיום, וכל לחיצה נוספת ממשיכה מידה על אותו קו. סיום: Enter, לחיצה כפולה או לחיצה על העצירה האחרונה. ביטול: Esc.',
+                }
+              : {
+                  short: 'לחץ במקום להוספת הערה',
+                  long: 'לחץ במקום להוספת הערה. נפתח חלון לכתיבת מספר שורות. לעריכה: לחיצה כפולה על ההערה בכלי הבחירה.',
+                };
+
   // The colour swatches recolour the selected markup when there is one, so any markup can be
   // recoloured after it was drawn; with nothing selected they set the colour for new markups.
   const selectedMarkup = pageMarkups.find((m) => m.id === selectedMarkupId);
@@ -58,7 +83,8 @@ export default function MarkupToolbar() {
     <div className="markup-toolbar">
       <h4>סימונים</h4>
 
-      <div className="markup-color-row">
+      <div className="markup-color-row" title={selectedMarkup ? 'משנה את הצבע של הסימון שנבחר' : 'צבע לסימונים חדשים — בחר סימון קיים כדי לשנות את הצבע שלו'}>
+        <span className="section-label">{selectedMarkup ? 'צבע הסימון' : 'צבע'}</span>
         <div className="tint-swatches">
           {MARKUP_COLORS.map((c) => (
             <button
@@ -78,25 +104,24 @@ export default function MarkupToolbar() {
           title="צבע חופשי"
         />
       </div>
-      <p className="alignment-hint">
-        {selectedMarkup ? 'משנה את הצבע של הסימון שנבחר' : 'צבע לסימונים חדשים — בחר סימון קיים כדי לשנות את הצבע שלו'}
-      </p>
 
-      <div className="markup-tool-grid">
+      <span className="section-label">כלי סימון</span>
+      <div className="markup-tool-grid segmented">
         {MARKUP_TOOLS.map((t) => (
           <button
             key={t}
-            className={`tool-btn small-tool ${toolMode === 'markup' && markupTool === t ? 'active' : ''}`}
+            className={`tool-btn ${toolMode === 'markup' && markupTool === t ? 'active' : ''}`}
+            aria-pressed={toolMode === 'markup' && markupTool === t}
             onClick={() => setMarkupTool(markupTool === t ? null : t)}
           >
-            <span className="tool-icon">{MARKUP_ICONS[t]}</span>
+            <Icon name={MARKUP_ICONS[t]} />
             <span className="tool-label">{MARKUP_TOOL_LABELS[t]}</span>
           </button>
         ))}
       </div>
 
       {/* Text-note / dimension-label size: edits the selected note when one is selected, otherwise sets the default for new ones. */}
-      <div className="markup-size-row">
+      <div className="markup-size-row" title={sizeTargetMarkup ? 'משנה את גודל ההערה שנבחרה' : 'גודל ברירת מחדל להערות טקסט ולקווי מידה חדשים'}>
         <label>גודל טקסט {Math.round(activeFontScale * 100)}%</label>
         <input
           type="range"
@@ -107,12 +132,9 @@ export default function MarkupToolbar() {
           onChange={(e) => applyFontScale(parseFloat(e.target.value))}
         />
         <button className="icon-btn" title="חזרה לגודל ברירת המחדל" onClick={() => applyFontScale(1)}>
-          ↺
+          <Icon name="reset" />
         </button>
       </div>
-      <p className="alignment-hint">
-        {sizeTargetMarkup ? 'משנה את גודל ההערה שנבחרה' : 'גודל ברירת מחדל להערות טקסט ולקווי מידה חדשים'}
-      </p>
 
       {/* Orientation of the selected text note; double-clicking a note on the plan reopens its editor. */}
       {selectedTextMarkup && (
@@ -120,14 +142,16 @@ export default function MarkupToolbar() {
           className="btn-secondary small"
           onClick={() => updateMarkup(selectedTextMarkup.id, { rotationDeg: selectedTextMarkup.rotationDeg ? 0 : -90 })}
         >
-          {selectedTextMarkup.rotationDeg ? '↺ החזר את ההערה לאופקי' : '⟲ סובב את ההערה ב-90°'}
+          <Icon name="rotate" />
+          {selectedTextMarkup.rotationDeg ? 'החזר את ההערה לאופקי' : 'סובב את ההערה ב-90°'}
         </button>
       )}
 
       {/* Mirrors the selected dimension about its own line: values and the overall line swap sides. */}
       {selectedDimension && (
         <button className="btn-secondary small" onClick={() => updateMarkup(selectedDimension.id, { flipped: !selectedDimension.flipped })}>
-          ⇅ הפוך את המידה לצד השני
+          <Icon name="flip" />
+          הפוך את המידה לצד השני
         </button>
       )}
 
@@ -138,27 +162,21 @@ export default function MarkupToolbar() {
         </label>
       )}
 
-      {toolMode === 'markup' && markupTool === 'cloud' && (
-        <p className="alignment-hint">לחץ נקודות ולסגור ליד הנקודה הראשונה ({markupPoints.length} נקודות)</p>
-      )}
-      {toolMode === 'markup' && (markupTool === 'arrow' || markupTool === 'rectangle') && (
-        <p className="alignment-hint">לחץ נקודת התחלה וסיום</p>
-      )}
-      {toolMode === 'markup' && markupTool === 'mask' && (
-        <p className="alignment-hint">לחץ פינת התחלה וסיום למלבן שיסתיר את מה שמתחתיו. נוצר בלבן — אפשר לשנות את הצבע אחר כך.</p>
-      )}
-      {toolMode === 'markup' && markupTool === 'dimension' && (
-        <p className="alignment-hint">
-          לחץ נקודת התחלה וסיום, וכל לחיצה נוספת ממשיכה מידה על אותו קו ({Math.max(0, markupPoints.length - 1)} מידות).
-          סיום: Enter, לחיצה כפולה או לחיצה על העצירה האחרונה. ביטול: Esc.
+      {/* One short hint at a time for the active tool. The full instructions — the three-line
+          dimension explanation in particular — are the tooltip, instead of five paragraphs
+          stacking up in the panel. */}
+      {hint && (
+        <p className="tool-hint" title={hint.long ?? hint.short}>
+          <Icon name="alert" size={13} />
+          {hint.short}
         </p>
-      )}
-      {toolMode === 'markup' && markupTool === 'text' && (
-        <p className="alignment-hint">לחץ במקום להוספת הערה. נפתח חלון לכתיבת מספר שורות. לעריכה: לחיצה כפולה על ההערה בכלי הבחירה.</p>
       )}
 
       {pageMarkups.length === 0 ? (
-        <p className="muted">אין עדיין סימונים בעמוד זה.</p>
+        <div className="empty-state">
+          <Icon name="cloud" size={24} />
+          <p>אין עדיין סימונים בעמוד זה. בחר כלי סימון למעלה וסמן על התוכנית.</p>
+        </div>
       ) : (
         <ul className="measurement-list">
           {pageMarkups.map((m) => (
@@ -183,10 +201,10 @@ export default function MarkupToolbar() {
               </span>
               <span className="list-item-actions">
                 <button className="icon-btn" title="שכפל" onClick={(e) => { e.stopPropagation(); duplicateMarkup(m.id); }}>
-                  ⧉
+                  <Icon name="copy" />
                 </button>
                 <button className="icon-btn danger" title="מחק" onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }}>
-                  ✕
+                  <Icon name="trash" />
                 </button>
               </span>
             </li>

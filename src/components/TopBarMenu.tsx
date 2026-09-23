@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import Icon, { type IconName } from './Icon';
 
 /** Ids of the top-bar dropdowns; both apps' bars pick the ones they use. */
 export type MenuId = 'view' | 'export' | 'settings';
@@ -13,6 +14,8 @@ export default function TopBarMenu({
   openId,
   setOpenId,
   label,
+  icon,
+  variant = 'secondary',
   title,
   highlighted,
   children,
@@ -21,6 +24,13 @@ export default function TopBarMenu({
   openId: MenuId | null;
   setOpenId: (v: MenuId | null) => void;
   label: string;
+  /** Leading glyph from the shared icon set. Callers that pass none keep a plain text trigger. */
+  icon?: IconName;
+  /**
+   * Button weight. 'primary' marks the strongest action in the bar (export — at most one per bar),
+   * 'ghost' the quiet ones. Defaults to 'secondary', which is what Revision Compare's bar uses.
+   */
+  variant?: 'secondary' | 'ghost' | 'primary';
   title?: string;
   highlighted?: boolean;
   children: ReactNode;
@@ -47,11 +57,16 @@ export default function TopBarMenu({
   return (
     <div className="top-bar-menu-anchor" ref={anchorRef}>
       <button
-        className={`btn-secondary small top-bar-menu-btn ${open || highlighted ? 'active' : ''}`}
+        className={`btn-${variant} small top-bar-menu-btn ${
+          variant !== 'primary' && (open || highlighted) ? 'active' : ''
+        }`}
         onClick={() => setOpenId(open ? null : id)}
         title={title}
+        aria-expanded={open}
       >
-        {label} <span className="menu-caret">▾</span>
+        {icon && <Icon name={icon} />}
+        <span className="btn-label">{label}</span>
+        <span className="menu-caret">▾</span>
       </button>
       {open && <div className="top-bar-menu">{children}</div>}
     </div>

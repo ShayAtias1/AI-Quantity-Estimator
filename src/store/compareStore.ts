@@ -5,6 +5,7 @@ import type {
   AreaCalcMode,
   AreaKind,
   AreaShape,
+  CompareCalibration,
   Comparison,
   CompareToolMode,
   CompareViewMode,
@@ -19,9 +20,10 @@ import type {
   RevisionPageData,
 } from '../types/compare';
 import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
-import type { Calibration, Point } from '../types';
+import type { Point } from '../types';
 import { saveComparison as dbSaveComparison } from '../db/database';
 import { createHistoryTracker } from '../lib/undoHistory';
+import { resolveAlignmentStatus, resolveCompareScale, type AlignmentStatus, type ResolvedScale } from '../lib/compareScale';
 
 const historyTracker = createHistoryTracker<Comparison>();
 
@@ -121,12 +123,31 @@ interface CompareState {
   selectedMarkupId: string | null;
   selectedMeasurementId: string | null;
 
-  exportRegion: ExportRegion | null;
+  /** Chosen PDF-export crop per page key (original layer's native px). Session state, like the takeoff side. */
+  exportRegions: Record<number, ExportRegion>;
+
+  /** Bottom "שינויים" panel: session UI state only, never persisted with the comparison. */
+  changesOpen: boolean;
+  changesHeight: number;
+  changesMaximized: boolean;
+  /** Whether the changes table lists the whole revision or only the source page on screen. */
+  changesScope: 'all' | 'page';
+  setChangesOpen: (open: boolean) => void;
+  setChangesHeight: (px: number) => void;
+  toggleChangesMaximized: () => void;
+  setChangesScope: (scope: 'all' | 'page') => void;
 
   /** Manual show/hide toggle for finished markups — independent of which revision is active. */
   annotationsVisible: boolean;
   /** Manual show/hide toggle for finished measurements — independent of the markups toggle. */
   measurementsVisible: boolean;
+
+  /** True from the moment a mutation happens until the next successful persist. */
+  dirty: boolean;
+  /** True while a persist is in flight. */
+  saving: boolean;
+  /** Message of the last failed persist, cleared on the next successful one. */
+  saveError: string | null;
 
   /** Undo/redo stacks of past/future comparison snapshots. Not persisted — reset whenever the comparison changes. */
   history: Comparison[];
@@ -144,7 +165,7 @@ interface CompareState {
   toggleAnnotationsVisible: () => void;
   toggleMeasurementsVisible: () => void;
   toggleBlink: () => void;
-  setExportRegion: (r: ExportRegion | null) => void;
+  setExportRegion: (pageKey: number, r: ExportRegion | null) => void;
 
   ensurePage: (pageKey: number) => ComparisonPage;
   updatePage: (pageKey: number, patch: Partial<ComparisonPage>) => void;
@@ -161,13 +182,22 @@ interface CompareState {
   removeRevision: (id: string) => void;
   renameRevision: (id: string, label: string) => void;
   setActiveRevisionId: (id: string) => void;
+  /**
+   * Moves a revision one slot up/down in `comparison.revisions`. That array's order is the display
+   * order (layer panel, revision tabs) and the order the all-revisions export walks, and it is part
+   * of the comparison, so the new order is persisted like any other edit.
+   */
+  moveRevision: (id: string, direction: -1 | 1) => void;
 
   startCalibration: (layer: 'original' | 'revised') => void;
   addCalibrationPoint: (p: Point) => void;
   clearCalibration: () => void;
   applyCalibration: (realDistanceMeters: number) => void;
 
-  setAlignmentTransform: (pageKey: number, transform: LayerTransform) => void;
+  /** `method` records how the transform was produced; it defaults to a manual adjustment. */
+  setAlignmentTransform: (pageKey: number, transform: LayerTransform, method?: 'points' | 'manual') => void;
+  /** Maps the given source page to a page of the active revision's PDF. */
+  setRevisedPageNumber: (pageKey: number, revisedPageNumber: number) => void;
   beginAlignmentPointPick: () => void;
   addAlignmentPoint: (p: Point, isOriginal: boolean) => void;
   clearAlignmentPicking: () => void;
@@ -175,12 +205,20 @@ interface CompareState {
 
   setMeasureTool: (t: MeasureTool | null) => void;
   setPendingAreaKind: (k: AreaKind | null) => void;
+  /** Arms the area tool already classified as demolition / new construction. */
+  startChangeMeasurement: (kind: AreaKind) => void;
+  /** Reclassifies an existing change item without touching its geometry or quantities. */
+  setMeasurementKind: (id: string, kind: AreaKind) => void;
+  setSelectedMeasurementId: (id: string | null) => void;
+  /** Selects a measurement, switching to the source page that owns it when necessary. */
+  focusMeasurement: (id: string) => void;
   setAreaShape: (s: AreaShape) => void;
   setAreaCalcMode: (m: AreaCalcMode) => void;
   setOrthoSnap: (v: boolean) => void;
   addMeasurePoint: (p: Point) => void;
   clearMeasurePoints: () => void;
-  finishMeasurement: (measurement: Measurement) => void;
+  /** Page ownership is assigned by the store from the page on screen, not by the caller. */
+  finishMeasurement: (measurement: Omit<Measurement, 'pageNumber'>) => void;
   updateMeasurement: (id: string, patch: Partial<Measurement>) => void;
   deleteMeasurement: (id: string) => void;
 
@@ -192,7 +230,8 @@ interface CompareState {
   setMarkupFontScale: (v: number) => void;
   addMarkupPoint: (p: Point) => void;
   clearMarkupPoints: () => void;
-  finishMarkup: (markup: Markup) => void;
+  /** Page ownership is assigned by the store from the page on screen, not by the caller. */
+  finishMarkup: (markup: Omit<Markup, 'pageNumber'>) => void;
   updateMarkup: (id: string, patch: Partial<Markup>) => void;
   /** Like updateMarkup but skips the autosave schedule — for continuous drag updates. */
   updateMarkupQuiet: (id: string, patch: Partial<Markup>) => void;
@@ -207,12 +246,54 @@ interface CompareState {
   persist: () => Promise<void>;
 }
 
+/**
+ * Marks the comparison as carrying unsaved work. Every mutation path goes through here: the normal
+ * autosave route below, and the `*Quiet` variants that persist only when a drag ends.
+ */
+function markDirty(set: (patch: Partial<CompareState>) => void) {
+  set({ dirty: true });
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleSave(get: () => CompareState) {
+function scheduleSave(get: () => CompareState, set: (patch: Partial<CompareState>) => void) {
+  markDirty(set);
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
+    saveTimer = null;
     void get().persist();
   }, 800);
+}
+
+export type CompareSaveState = 'saving' | 'saved' | 'unsaved' | 'error';
+
+/** Save state for the UI, derived from the flags above — `useCompareStore(selectCompareSaveState)`. */
+export function selectCompareSaveState(s: CompareState): CompareSaveState {
+  if (!s.comparison) return 'saved';
+  if (s.saving) return 'saving';
+  if (s.saveError) return 'error';
+  return s.dirty ? 'unsaved' : 'saved';
+}
+
+/**
+ * The active revision's record for a source page, if it has one yet. Plain helpers rather than
+ * zustand selectors: they build fresh objects, which a `useStore` selector must never do.
+ */
+export function revisionPageOf(comparison: Comparison | null, pageKey: number): RevisionPageData | undefined {
+  if (!comparison) return undefined;
+  return comparison.pages[pageKey]?.revisions[comparison.activeRevisionId];
+}
+
+/**
+ * The real-world scale in use for measurements on a page/active-revision pair — the single source
+ * of truth for both the canvas math and the UI's calibration status.
+ */
+export function compareScaleFor(comparison: Comparison | null, pageKey: number): ResolvedScale {
+  return resolveCompareScale(comparison?.pages[pageKey], revisionPageOf(comparison, pageKey));
+}
+
+/** Alignment state of a page/active-revision pair. */
+export function alignmentStatusFor(comparison: Comparison | null, pageKey: number): AlignmentStatus {
+  return resolveAlignmentStatus(revisionPageOf(comparison, pageKey));
 }
 
 function touch(comparison: Comparison): Comparison {
@@ -252,9 +333,16 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   selectedMarkupId: null,
   selectedMeasurementId: null,
 
-  exportRegion: null,
+  exportRegions: {},
+  changesOpen: false,
+  changesHeight: 300,
+  changesMaximized: false,
+  changesScope: 'all',
   annotationsVisible: true,
   measurementsVisible: true,
+  dirty: false,
+  saving: false,
+  saveError: null,
   history: [],
   future: [],
 
@@ -263,7 +351,9 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     set({
       comparison: c,
       currentPageKey: 1,
-      exportRegion: null,
+      exportRegions: {},
+      dirty: false,
+      saveError: null,
       annotationsVisible: true,
       measurementsVisible: true,
       selectedMarkupId: null,
@@ -284,9 +374,12 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       selectedMarkupId: null,
       selectedMeasurementId: null,
     });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   redo: () => {
+    // Consistent with undo: a mutation still inside the history debounce is recorded first,
+    // otherwise redo would restore a future snapshot on top of an un-snapshotted change.
+    historyTracker.flush(get, set);
     const { comparison, history, future } = get();
     if (!comparison || future.length === 0) return;
     const next = future[0];
@@ -297,9 +390,22 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       selectedMarkupId: null,
       selectedMeasurementId: null,
     });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
-  setCurrentPageKey: (n) => set({ currentPageKey: n }),
+  setCurrentPageKey: (n) =>
+    set({
+      currentPageKey: n,
+      // Same reset as switching tools/revisions: nothing half-drawn carries across pages.
+      calibrationPoints: [],
+      calibrationLayer: null,
+      alignmentPairs: [],
+      alignmentPendingOriginal: null,
+      pickingAlignmentPoints: false,
+      measurePoints: [],
+      markupPoints: [],
+      selectedMarkupId: null,
+      selectedMeasurementId: null,
+    }),
   setOriginalNumPages: (n) => set({ originalNumPages: n }),
   setRevisedNumPages: (n) => set({ revisedNumPages: n }),
   setToolMode: (m) =>
@@ -319,7 +425,18 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   toggleBlink: () => set((s) => ({ blinkShowingRevised: !s.blinkShowingRevised })),
   toggleAnnotationsVisible: () => set((s) => ({ annotationsVisible: !s.annotationsVisible })),
   toggleMeasurementsVisible: () => set((s) => ({ measurementsVisible: !s.measurementsVisible })),
-  setExportRegion: (r) => set({ exportRegion: r }),
+  setChangesOpen: (open) => set({ changesOpen: open, ...(open ? {} : { changesMaximized: false }) }),
+  setChangesHeight: (px) => set({ changesHeight: px }),
+  toggleChangesMaximized: () => set((s) => ({ changesMaximized: !s.changesMaximized })),
+  setChangesScope: (scope) => set({ changesScope: scope }),
+  setExportRegion: (pageKey, r) =>
+    set((state) => {
+      // Per page: a crop chosen on page 2 must not follow the user to page 5.
+      const next = { ...state.exportRegions };
+      if (r) next[pageKey] = r;
+      else delete next[pageKey];
+      return { exportRegions: next };
+    }),
 
   ensurePage: (pageKey) => {
     const { comparison } = get();
@@ -329,6 +446,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const created = emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: created };
     set({ comparison: touch({ ...comparison, pages }) });
+    markDirty(set);
     return created;
   },
 
@@ -338,7 +456,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const current = comparison.pages[pageKey] ?? emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: { ...current, ...patch } };
     set({ comparison: touch({ ...comparison, pages }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
 
   /** Like updatePage but skips the autosave schedule — for continuous drag updates. Caller persists explicitly when the drag ends. */
@@ -349,6 +467,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const current = comparison.pages[pageKey] ?? emptyPage(pageKey);
     const pages = { ...comparison.pages, [pageKey]: { ...current, ...patch } };
     set({ comparison: { ...comparison, pages } });
+    markDirty(set);
   },
 
   updateActiveRevisionPage: (pageKey, patch) => {
@@ -381,7 +500,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, opacity } : r));
       set({ comparison: touch({ ...comparison, revisions }) });
     }
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   setLayerVisible: (layer, visible) => {
     const { comparison } = get();
@@ -393,7 +512,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, visible } : r));
       set({ comparison: touch({ ...comparison, revisions }) });
     }
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   setLayerTint: (layer, color) => {
     const { comparison } = get();
@@ -405,7 +524,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, colorTint: color } : r));
       set({ comparison: touch({ ...comparison, revisions }) });
     }
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   setLayerSourceColors: (layer, useSource) => {
     const { comparison } = get();
@@ -417,7 +536,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       const revisions = comparison.revisions.map((r) => (r.id === layer ? { ...r, useSourceColors: useSource } : r));
       set({ comparison: touch({ ...comparison, revisions }) });
     }
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
 
   addRevision: (fileName) => {
@@ -439,7 +558,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     set({
       comparison: touch({ ...comparison, revisions: [...comparison.revisions, revision], activeRevisionId: id }),
     });
-    scheduleSave(get);
+    scheduleSave(get, set);
     return id;
   },
   removeRevision: (id) => {
@@ -457,7 +576,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     );
     const activeRevisionId = comparison.activeRevisionId === id ? revisions[0]?.id ?? '' : comparison.activeRevisionId;
     set({ comparison: touch({ ...comparison, revisions, pages, activeRevisionId }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   renameRevision: (id, label) => {
     const { comparison } = get();
@@ -465,7 +584,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     historyTracker.push(get, set, comparison);
     const revisions = comparison.revisions.map((r) => (r.id === id ? { ...r, label: label.trim() } : r));
     set({ comparison: touch({ ...comparison, revisions }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   setActiveRevisionId: (id) => {
     const { comparison } = get();
@@ -482,7 +601,20 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       selectedMarkupId: null,
       selectedMeasurementId: null,
     });
-    scheduleSave(get);
+    scheduleSave(get, set);
+  },
+
+  moveRevision: (id, direction) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    const index = comparison.revisions.findIndex((r) => r.id === id);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= comparison.revisions.length) return;
+    historyTracker.push(get, set, comparison);
+    const revisions = [...comparison.revisions];
+    [revisions[index], revisions[target]] = [revisions[target], revisions[index]];
+    set({ comparison: touch({ ...comparison, revisions }) });
+    scheduleSave(get, set);
   },
 
   startCalibration: (layer) => set({ toolMode: 'calibrate', calibrationLayer: layer, calibrationPoints: [] }),
@@ -495,22 +627,48 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const { comparison, calibrationPoints, calibrationLayer, currentPageKey } = get();
     if (!comparison || calibrationPoints.length !== 2 || !calibrationLayer || realDistanceMeters <= 0) return;
     const [a, b] = calibrationPoints;
-    const pixelDistance = Math.hypot(b.x - a.x, b.y - a.y);
-    if (pixelDistance === 0) return;
+    // The clicked points are always in the source page's native px — the overlay is drawn in that
+    // space whichever layer the user is looking at.
+    const sourcePixelDistance = Math.hypot(b.x - a.x, b.y - a.y);
+    if (sourcePixelDistance === 0) return;
     historyTracker.push(get, set, comparison);
-    const calibration: Calibration = { pixelDistance, realDistanceMeters, metersPerPixel: realDistanceMeters / pixelDistance };
     if (calibrationLayer === 'original') {
+      const calibration: CompareCalibration = {
+        pixelDistance: sourcePixelDistance,
+        realDistanceMeters,
+        metersPerPixel: realDistanceMeters / sourcePixelDistance,
+        space: 'original',
+      };
       get().updatePage(currentPageKey, { originalCalibration: calibration });
     } else {
+      // Store the revised layer's calibration in the revised PDF's *own* px, so it survives any
+      // later re-alignment: `alignment` is a similarity transform, so one revised px spans
+      // `alignment.scale` source px whatever the rotation or offset is.
+      const alignmentScale =
+        comparison.pages[currentPageKey]?.revisions[comparison.activeRevisionId]?.alignment.scale ?? 1;
+      if (!(alignmentScale > 0)) return;
+      const pixelDistance = sourcePixelDistance / alignmentScale;
+      const calibration: CompareCalibration = {
+        pixelDistance,
+        realDistanceMeters,
+        metersPerPixel: realDistanceMeters / pixelDistance,
+        space: 'revised',
+      };
       get().updateActiveRevisionPage(currentPageKey, { revisedCalibration: calibration });
     }
     set({ calibrationPoints: [], calibrationLayer: null, toolMode: 'select' });
   },
 
-  setAlignmentTransform: (pageKey, transform) => {
+  setAlignmentTransform: (pageKey, transform, method = 'manual') => {
     const { comparison } = get();
     if (comparison) historyTracker.pushDebounced(get, set, comparison);
-    get().updateActiveRevisionPage(pageKey, { alignment: transform });
+    get().updateActiveRevisionPage(pageKey, { alignment: transform, alignmentMethod: method });
+  },
+  setRevisedPageNumber: (pageKey, revisedPageNumber) => {
+    const { comparison } = get();
+    if (!comparison || !Number.isFinite(revisedPageNumber)) return;
+    historyTracker.push(get, set, comparison);
+    get().updateActiveRevisionPage(pageKey, { revisedPageNumber: Math.max(1, Math.round(revisedPageNumber)) });
   },
   beginAlignmentPointPick: () =>
     set({ toolMode: 'align', pickingAlignmentPoints: true, alignmentPairs: [], alignmentPendingOriginal: null }),
@@ -535,23 +693,49 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   clearAlignmentPoints: (pageKey) => {
     const { comparison } = get();
     if (comparison) historyTracker.push(get, set, comparison);
-    get().updateActiveRevisionPage(pageKey, { alignmentPoints: [], alignment: IDENTITY_TRANSFORM });
+    get().updateActiveRevisionPage(pageKey, { alignmentPoints: [], alignment: IDENTITY_TRANSFORM, alignmentMethod: undefined });
+    set({ alignmentPairs: [], alignmentPendingOriginal: null });
   },
 
-  setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [] }),
+  setMeasureTool: (t) => set({ toolMode: t ? 'measure' : 'select', measureTool: t, measurePoints: [], pendingAreaKind: null }),
   setPendingAreaKind: (k) => set({ pendingAreaKind: k }),
+  startChangeMeasurement: (kind) => set({ toolMode: 'measure', measureTool: 'area', pendingAreaKind: kind, measurePoints: [] }),
+  setMeasurementKind: (id, kind) => {
+    const { comparison } = get();
+    if (!comparison) return;
+    historyTracker.push(get, set, comparison);
+    const revisions = updateActiveRevision(comparison, (r) => ({
+      ...r,
+      measurements: r.measurements.map((m) => (m.id === id ? { ...m, areaKind: kind } : m)),
+    }));
+    set({ comparison: touch({ ...comparison, revisions }) });
+    scheduleSave(get, set);
+  },
+  setSelectedMeasurementId: (id) => set({ selectedMeasurementId: id }),
+  focusMeasurement: (id) => {
+    const { comparison, currentPageKey } = get();
+    if (!comparison) return;
+    const active = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
+    const target = active?.measurements.find((m) => m.id === id);
+    if (!target) return;
+    // Changing page clears in-progress state and the selection, so select afterwards.
+    if (target.pageNumber !== currentPageKey) get().setCurrentPageKey(target.pageNumber);
+    set({ selectedMeasurementId: id });
+  },
   setAreaShape: (s) => set({ areaShape: s, measurePoints: [] }),
   setAreaCalcMode: (m) => set({ areaCalcMode: m, measurePoints: [] }),
   setOrthoSnap: (v) => set({ orthoSnap: v }),
   addMeasurePoint: (p) => set({ measurePoints: [...get().measurePoints, p] }),
   clearMeasurePoints: () => set({ measurePoints: [] }),
   finishMeasurement: (measurement) => {
-    const { comparison } = get();
+    const { comparison, currentPageKey } = get();
     if (!comparison) return;
     historyTracker.push(get, set, comparison);
-    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: [...r.measurements, measurement] }));
+    // Page ownership is assigned here, not by the caller, so nothing can be stored page-less.
+    const owned: Measurement = { ...measurement, pageNumber: currentPageKey };
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: [...r.measurements, owned] }));
     set({ comparison: touch({ ...comparison, revisions }), measurePoints: [] });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   updateMeasurement: (id, patch) => {
     const { comparison } = get();
@@ -562,15 +746,18 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       measurements: r.measurements.map((m) => (m.id === id ? { ...m, ...patch } : m)),
     }));
     set({ comparison: touch({ ...comparison, revisions }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   deleteMeasurement: (id) => {
     const { comparison } = get();
     if (!comparison) return;
     historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: r.measurements.filter((m) => m.id !== id) }));
-    set({ comparison: touch({ ...comparison, revisions }) });
-    scheduleSave(get);
+    set({
+      comparison: touch({ ...comparison, revisions }),
+      selectedMeasurementId: get().selectedMeasurementId === id ? null : get().selectedMeasurementId,
+    });
+    scheduleSave(get, set);
   },
 
   setMarkupTool: (t) => set({ toolMode: t ? 'markup' : 'select', markupTool: t, markupPoints: [] }),
@@ -580,22 +767,27 @@ export const useCompareStore = create<CompareState>((set, get) => ({
   addMarkupPoint: (p) => set({ markupPoints: [...get().markupPoints, p] }),
   clearMarkupPoints: () => set({ markupPoints: [] }),
   finishMarkup: (markup) => {
-    const { comparison } = get();
+    const { comparison, currentPageKey } = get();
     if (!comparison) return;
     historyTracker.push(get, set, comparison);
-    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: [...r.markups, markup] }));
+    const owned: Markup = { ...markup, pageNumber: currentPageKey };
+    const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: [...r.markups, owned] }));
     set({ comparison: touch({ ...comparison, revisions }), markupPoints: [] });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   updateMarkup: (id, patch) => {
     const { comparison } = get();
     if (!comparison) return;
+    // Debounced like updateMarkupQuiet, so a drag burst and its closing call share one snapshot.
+    // An empty patch is the "drag finished, save it" signal and must not open an undo step of its
+    // own on a click that never moved anything.
+    if (Object.keys(patch).length > 0) historyTracker.pushDebounced(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({
       ...r,
       markups: r.markups.map((m) => (m.id === id ? { ...m, ...patch } : m)),
     }));
     set({ comparison: touch({ ...comparison, revisions }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   updateMarkupQuiet: (id, patch) => {
     const { comparison } = get();
@@ -606,6 +798,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       markups: r.markups.map((m) => (m.id === id ? { ...m, ...patch } : m)),
     }));
     set({ comparison: { ...comparison, revisions } });
+    markDirty(set);
   },
   deleteMarkup: (id) => {
     const { comparison } = get();
@@ -613,7 +806,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     historyTracker.push(get, set, comparison);
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: r.markups.filter((m) => m.id !== id) }));
     set({ comparison: touch({ ...comparison, revisions }), selectedMarkupId: get().selectedMarkupId === id ? null : get().selectedMarkupId });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   duplicateMarkup: (id) => {
     const { comparison } = get();
@@ -631,7 +824,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     };
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, markups: [...r.markups, copy] }));
     set({ comparison: touch({ ...comparison, revisions }), selectedMarkupId: copy.id });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
   setSelectedMarkupId: (id) => set({ selectedMarkupId: id }),
 
@@ -640,7 +833,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     if (!comparison) return;
     historyTracker.pushDebounced(get, set, comparison);
     set({ comparison: touch({ ...comparison, areaKindColors: { ...comparison.areaKindColors, [kind]: color } }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
 
   updateComparisonMeta: (patch) => {
@@ -648,12 +841,29 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     if (!comparison) return;
     historyTracker.pushDebounced(get, set, comparison);
     set({ comparison: touch({ ...comparison, ...patch }) });
-    scheduleSave(get);
+    scheduleSave(get, set);
   },
 
   persist: async () => {
     const { comparison } = get();
     if (!comparison) return;
-    await dbSaveComparison(comparison);
+    // A save happening now supersedes the scheduled one.
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    set({ saving: true });
+    try {
+      await dbSaveComparison(comparison);
+      // Only clear the flag when nothing was edited while the write was in flight.
+      if (get().comparison === comparison) set({ dirty: false });
+      set({ saveError: null });
+    } catch (err) {
+      // Stays dirty: the work is not on disk, and the unload guard must keep warning.
+      set({ saveError: err instanceof Error ? err.message : 'שמירה נכשלה' });
+      console.error('Failed to save comparison', err);
+    } finally {
+      set({ saving: false });
+    }
   },
 }));

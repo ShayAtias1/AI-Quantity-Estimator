@@ -16,11 +16,20 @@ export const WORK_TYPE_LABELS: Record<WorkType, string> = {
   panels: 'פנלים',
 };
 
+/** Second unit, for work types that are also counted linearly. */
+export const PANEL_LENGTH_UNIT = 'מ"א';
+
 export const WORK_TYPE_UNITS: Record<WorkType, string> = {
   tiling: 'מ"ר',
   cladding: 'מ"ר',
   panels: 'מ"ר',
 };
+
+/**
+ * Shown wherever a quantity or length would otherwise render as 0 only because the page has no
+ * scale yet — so a real zero and "not calculable" never look alike.
+ */
+export const NOT_CALIBRATED_LABEL = '— לא כויל';
 
 /** The 4 categories shown in quantity reports/totals (tiling is split by category). */
 export type ReportCategory = 'tiling_regular' | 'tiling_as' | 'cladding' | 'panels';
@@ -32,7 +41,11 @@ export const REPORT_CATEGORY_LABELS: Record<ReportCategory, string> = {
   panels: 'פנלים',
 };
 
-/** Panels (skirting) are a strip running along the room perimeter, this height (meters) tall. */
+/**
+ * Panels (skirting) are a strip running along the room perimeter, this height (meters) tall.
+ * This is the historical fallback only: the effective height is the work item's own `heightM`,
+ * then the project's `defaultPanelHeightM`, then this (see `effectivePanelHeightM`).
+ */
 export const PANEL_HEIGHT_M = 0.1;
 
 export interface WorkItem {
@@ -40,7 +53,7 @@ export interface WorkItem {
   type: WorkType;
   /** Only relevant for type 'tiling' — regular or AS (wet-area) tiling. Defaults to 'regular' if unset. */
   tilingCategory?: TilingCategory;
-  /** Only relevant for type 'cladding' — height in meters used to multiply perimeter. */
+  /** For 'cladding' and 'panels' — height in meters used to multiply the perimeter. Falls back to the project default. */
   heightM?: number;
   /** Waste percentage override (0-100). If undefined, the project's per-type default is used. */
   wastePercent?: number;
@@ -62,7 +75,13 @@ export interface Room {
   notes: string;
   workItems: WorkItem[];
   color: string;
-  /** Set when the room came from auto-detection: the matched room-type profile key (see roomDetection). */
+  /**
+   * The room type the *user* chose (a ROOM_PROFILES key), used for classification and defaults.
+   * Independent of `name`, which stays whatever the user typed, and of `detectedType`, which is
+   * only what auto-detection guessed. null/undefined means unclassified — a perfectly valid state.
+   */
+  roomType?: string | null;
+  /** Set when the room came from auto-detection: the matched room-type profile key (see roomProfiles). Never written from the user's pick. */
   detectedType?: string;
   /** Auto-detection confidence: 'high' when a name was recognized, 'low' when it needs manual review. */
   detectionConfidence?: 'high' | 'low';
@@ -94,7 +113,11 @@ export interface Project {
   measurements: Measurement[];
   markups: Markup[];
   defaultCladdingHeightM: number;
+  /** Panel (skirting) height in meters for items without their own `heightM`. Optional: projects saved before this existed fall back to PANEL_HEIGHT_M. */
+  defaultPanelHeightM?: number;
   defaultTilingWastePercent: number;
+  /** Waste % for AS tiling. Optional: projects saved before this existed fall back to defaultTilingWastePercent. */
+  defaultTilingAsWastePercent?: number;
   defaultCladdingWastePercent: number;
   defaultPanelsWastePercent: number;
   /** Customizable per project; defaults to DEFAULT_AREA_KIND_COLORS. */
@@ -209,10 +232,20 @@ export interface RoomQuantitySummary {
   roomId: string;
   apartmentNumber: string;
   roomName: string;
+  /**
+   * False when the room's page has no scale. All the numbers below are then `null` — the room's
+   * quantities are *not calculable*, which is a different thing from a real zero, and every
+   * consumer (screen table, PDF, Excel) must say so instead of printing 0.
+   */
+  pageCalibrated: boolean;
   tilingRegularAreaM2: number | null;
   tilingAsAreaM2: number | null;
   claddingAreaM2: number | null;
   panelsAreaM2: number | null;
+  /** Panels are also bought by the running metre: the room's perimeter. null when not calculable. */
+  panelsLengthM: number | null;
+  /** The same length with the item's waste applied — what to order in running metres. */
+  panelsOrderLengthM: number | null;
   tilingRegularWastePercent: number | null;
   tilingAsWastePercent: number | null;
   claddingWastePercent: number | null;
@@ -229,4 +262,8 @@ export interface ReportCategoryTotal {
   quantityM2: number;
   wastePercent: number;
   orderM2: number;
+  /** Running metres — only panels have a linear reading; null for every other category. */
+  lengthM: number | null;
+  /** Running metres to order (length + waste); null for every category but panels. */
+  orderLengthM: number | null;
 }

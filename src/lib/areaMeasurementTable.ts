@@ -1,10 +1,24 @@
 import { round } from './geometry';
 import { numberAreaMeasurements, type AreaMeasurementLike } from './areaMeasurements';
+import { changeTotals } from './changeMeasurements';
 
 interface WallMeasurementLike extends AreaMeasurementLike {
   calcMode?: 'footprint' | 'wall';
   wallLengthM?: number;
   wallHeightM?: number;
+  /** Revision Compare stamps every measurement with the source page it belongs to. */
+  pageNumber?: number;
+}
+
+export interface AreaTableOptions {
+  /**
+   * Numbering to print in the `#` column. Revision Compare passes the numbering built from the
+   * revision's whole measurement list, so a page-filtered table still shows the numbers drawn on
+   * the plan. Omitted, the table numbers the rows it was given.
+   */
+  numbering?: Map<string, number>;
+  /** Adds a source-page column — for multi-page comparisons, where the page matters. */
+  showPage?: boolean;
 }
 
 const AREA_KIND_LABELS: Record<'demolition' | 'construction', string> = {
@@ -24,6 +38,8 @@ const C_BORDER = '#E2E8F0';
 
 const HEADERS = ['#', 'סוג', 'אופן חישוב', "אורך (מ')", "גובה (מ')", 'שטח (מ"ר)'];
 const WEIGHTS = [8, 22, 24, 16, 16, 24];
+const HEADERS_WITH_PAGE = ['#', 'סוג', 'עמוד', 'אופן חישוב', "אורך (מ')", "גובה (מ')", 'שטח (מ"ר)'];
+const WEIGHTS_WITH_PAGE = [7, 20, 10, 21, 14, 14, 24];
 
 /**
  * Builds the printable demolition/construction area breakdown (one canvas per page) as PNG data
@@ -32,16 +48,20 @@ const WEIGHTS = [8, 22, 24, 16, 16, 24];
  */
 export function buildAreaMeasurementTablePages<T extends WallMeasurementLike>(
   title: string,
-  measurements: T[]
+  measurements: T[],
+  options: AreaTableOptions = {}
 ): { dataUrl: string; width: number; height: number }[] {
+  const showPage = !!options.showPage;
+  const headers = showPage ? HEADERS_WITH_PAGE : HEADERS;
+  const weights = showPage ? WEIGHTS_WITH_PAGE : WEIGHTS;
   const PAGE_W = 1200;
   const PAGE_H = 1132;
   const MARGIN = 40;
   const HEADER_ROW_H = 40;
   const ROW_H = 32;
   const usableWidth = PAGE_W - MARGIN * 2;
-  const totalWeight = WEIGHTS.reduce((a, b) => a + b, 0);
-  const colWidths = WEIGHTS.map((w) => (usableWidth * w) / totalWeight);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const colWidths = weights.map((w) => (usableWidth * w) / totalWeight);
 
   const pages: { dataUrl: string; width: number; height: number }[] = [];
   let ctx: CanvasRenderingContext2D;
@@ -72,7 +92,7 @@ export function buildAreaMeasurementTablePages<T extends WallMeasurementLike>(
     ctx.font = `bold 12.5px ${FONT}`;
     ctx.textAlign = 'center';
     let x = PAGE_W - MARGIN;
-    HEADERS.forEach((label, i) => {
+    headers.forEach((label, i) => {
       const w = colWidths[i];
       ctx.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, w - 6);
       x -= w;
@@ -116,35 +136,50 @@ export function buildAreaMeasurementTablePages<T extends WallMeasurementLike>(
   newPage();
 
   const kinds: Array<'demolition' | 'construction'> = ['demolition', 'construction'];
-  const numbers = numberAreaMeasurements(measurements);
+  const numbers = options.numbering ?? numberAreaMeasurements(measurements);
+  // Padded to the column count so the same row builder serves both layouts.
+  const cells = (n: string, kind: string, page: string, mode: string, len: string, h: string, area: string) =>
+    showPage ? [n, kind, page, mode, len, h, area] : [n, kind, mode, len, h, area];
   let grandTotal = 0;
+  let grandLength = 0;
   for (const kind of kinds) {
     const rows = measurements.filter((m) => m.areaKind === kind);
     if (rows.length === 0) continue;
-    let subtotal = 0;
+    // Summed by the same helper the Changes panel uses, so the report and the panel cannot drift
+    // apart — including the rule that only wall-mode rows carry running metres.
+    const { areaM2: subtotal, lengthM: subLength } = changeTotals(rows, kind);
     rows.forEach((m, i) => {
       ensureRoom(1);
       const isWall = m.calcMode === 'wall';
-      subtotal += m.areaM2 ?? 0;
       drawRow(
-        [
+        cells(
           `${numbers.get(m.id) ?? ''}`,
           AREA_KIND_LABELS[kind],
+          m.pageNumber === undefined ? DASH : `${m.pageNumber}`,
           isWall ? 'קיר (אורך × גובה)' : 'שטח בפועל',
           isWall ? `${round(m.wallLengthM ?? 0, 2)}` : DASH,
           isWall ? `${round(m.wallHeightM ?? 0, 2)}` : DASH,
-          `${round(m.areaM2 ?? 0, 2)}`,
-        ],
+          `${round(m.areaM2 ?? 0, 2)}`
+        ),
         i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B
       );
     });
     grandTotal += subtotal;
+    grandLength += subLength;
     ensureRoom(1);
-    drawRow([`סה"כ ${AREA_KIND_LABELS[kind]}`, '', '', '', '', `${round(subtotal, 2)}`], C_TOTAL, { bold: true });
+    drawRow(
+      cells(`סה"כ ${AREA_KIND_LABELS[kind]}`, '', '', '', subLength > 0 ? `${round(subLength, 2)}` : DASH, '', `${round(subtotal, 2)}`),
+      C_TOTAL,
+      { bold: true }
+    );
   }
 
   ensureRoom(1);
-  drawRow(['סה"כ כללי', '', '', '', '', `${round(grandTotal, 2)}`], C_GRAND, { bold: true });
+  drawRow(
+    cells('סה"כ כללי', '', '', '', grandLength > 0 ? `${round(grandLength, 2)}` : DASH, '', `${round(grandTotal, 2)}`),
+    C_GRAND,
+    { bold: true }
+  );
 
   finalizeCurrentPage();
   return pages;

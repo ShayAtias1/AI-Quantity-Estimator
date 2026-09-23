@@ -1,0 +1,74 @@
+import Icon, { type IconName } from './Icon';
+
+export interface SavedItem {
+  id: string;
+  name: string;
+  /** One line of honest metadata: what is in it, and when it was last touched. */
+  meta: string;
+}
+
+/**
+ * The saved-work list on the home screen, shared by both products so a project row and a
+ * comparison row are the same object in two colours of ink.
+ *
+ * Same language as the lists inside the workspaces: background separation rather than a bordered,
+ * shadowed card, a neutral hover, the accent reserved for state, and the destructive action
+ * revealed on hover/focus instead of a permanent ✕.
+ */
+export default function SavedItemList({
+  items,
+  icon,
+  loading,
+  emptyText,
+  onOpen,
+  onDelete,
+  openTitle,
+  deleteTitle,
+}: {
+  items: SavedItem[];
+  /** Marks which product the row belongs to. */
+  icon: IconName;
+  loading: boolean;
+  emptyText: string;
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+  openTitle: string;
+  deleteTitle: string;
+}) {
+  if (loading) return <p className="muted saved-list-loading">טוען…</p>;
+
+  if (items.length === 0) {
+    return (
+      <div className="empty-state">
+        <Icon name={icon} size={24} />
+        <p>{emptyText}</p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="saved-list">
+      {items.map((item) => (
+        <li key={item.id} onClick={() => onOpen(item.id)} title={openTitle}>
+          <Icon name={icon} />
+          <span className="saved-list-text">
+            <span className="saved-list-name">{item.name}</span>
+            <span className="saved-list-meta">{item.meta}</span>
+          </span>
+          <span className="list-item-actions">
+            <button
+              className="icon-btn danger"
+              title={deleteTitle}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(item.id);
+              }}
+            >
+              <Icon name="trash" />
+            </button>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}

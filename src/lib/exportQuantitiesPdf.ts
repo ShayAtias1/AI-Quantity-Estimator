@@ -12,6 +12,8 @@ import { numberAreaMeasurements } from './areaMeasurements';
 import { buildAreaMeasurementTablePages } from './areaMeasurementTable';
 
 const DASH = '—';
+/** Printed in quantity cells of a room whose page has no scale, so 0 is never implied. */
+const NOT_CALIBRATED = 'לא כויל';
 const FONT = "'Segoe UI', sans-serif";
 
 // Same palette as the Excel export, for a consistent look across formats.
@@ -31,6 +33,7 @@ const DATA_HEADERS = [
   'שטח ריצוף רגיל',
   'שטח ריצוף AS',
   'שטח חיפוי',
+  'אורך פנלים (מ"א)',
   'שטח פנלים',
   'פחת רגיל %',
   'פחת AS %',
@@ -39,10 +42,33 @@ const DATA_HEADERS = [
   'ריצוף רגיל להזמנה',
   'ריצוף AS להזמנה',
   'חיפוי להזמנה',
+  'אורך פנלים להזמנה (מ"א)',
   'פנלים להזמנה',
   'הערות',
 ];
-const DATA_WEIGHTS = [8, 20, 15, 14, 14, 12, 11, 11, 11, 11, 14, 14, 13, 13, 22];
+/**
+ * Builds a summary row whose cells land under the matching data columns. Kept as one helper so the
+ * totals stay aligned with DATA_HEADERS whenever a column is added.
+ */
+function totalsRow(cells: {
+  label: string;
+  length?: string;
+  net?: string;
+  waste?: string;
+  order?: string;
+  orderLength?: string;
+}): string[] {
+  const row = new Array<string>(DATA_HEADERS.length).fill('');
+  row[0] = cells.label;
+  row[2] = cells.net ?? '';
+  row[5] = cells.length ?? '';
+  row[7] = cells.waste ?? '';
+  row[11] = cells.order ?? '';
+  row[14] = cells.orderLength ?? '';
+  return row;
+}
+
+const DATA_WEIGHTS = [8, 18, 13, 12, 12, 12, 11, 10, 10, 10, 10, 12, 12, 11, 13, 11, 17];
 
 /** Renders one PDF-source page (the plan itself) with its rooms overlaid, as a standalone framed image. */
 async function renderFramedPlanPage(
@@ -227,6 +253,8 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
 
   const num = (v: number | null) => (v == null ? DASH : `${v}`);
   const pct = (v: number | null) => (v == null ? DASH : `${v}%`);
+  /** Quantity cell of a room whose page has no scale: says why it is empty instead of printing 0. */
+  const qty = (s: RoomQuantitySummary, v: number | null) => (s.pageCalibrated ? num(v) : NOT_CALIBRATED);
 
   newPage();
   const groups = groupSummariesByApartment(summaries);
@@ -238,18 +266,20 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
         [
           s.apartmentNumber || DASH,
           s.roomName,
-          num(s.tilingRegularAreaM2),
-          num(s.tilingAsAreaM2),
-          num(s.claddingAreaM2),
-          num(s.panelsAreaM2),
+          qty(s, s.tilingRegularAreaM2),
+          qty(s, s.tilingAsAreaM2),
+          qty(s, s.claddingAreaM2),
+          qty(s, s.panelsLengthM),
+          qty(s, s.panelsAreaM2),
           pct(s.tilingRegularWastePercent),
           pct(s.tilingAsWastePercent),
           pct(s.claddingWastePercent),
           pct(s.panelsWastePercent),
-          num(s.tilingRegularOrderM2),
-          num(s.tilingAsOrderM2),
-          num(s.claddingOrderM2),
-          num(s.panelsOrderM2),
+          qty(s, s.tilingRegularOrderM2),
+          qty(s, s.tilingAsOrderM2),
+          qty(s, s.claddingOrderM2),
+          qty(s, s.panelsOrderLengthM),
+          qty(s, s.panelsOrderM2),
           s.notes || DASH,
         ],
         bg
@@ -257,18 +287,40 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
     });
 
     const cats = [
-      { label: 'ריצוף רגיל', net: group.rooms.reduce((a, s) => a + (s.tilingRegularAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.tilingRegularOrderM2 ?? 0), 0) },
-      { label: 'ריצוף AS', net: group.rooms.reduce((a, s) => a + (s.tilingAsAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.tilingAsOrderM2 ?? 0), 0) },
-      { label: 'חיפוי קירות', net: group.rooms.reduce((a, s) => a + (s.claddingAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.claddingOrderM2 ?? 0), 0) },
-      { label: 'פנלים', net: group.rooms.reduce((a, s) => a + (s.panelsAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.panelsOrderM2 ?? 0), 0) },
+      { label: 'ריצוף רגיל', net: group.rooms.reduce((a, s) => a + (s.tilingRegularAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.tilingRegularOrderM2 ?? 0), 0), len: null as number | null, ordLen: null as number | null },
+      { label: 'ריצוף AS', net: group.rooms.reduce((a, s) => a + (s.tilingAsAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.tilingAsOrderM2 ?? 0), 0), len: null as number | null, ordLen: null as number | null },
+      { label: 'חיפוי קירות', net: group.rooms.reduce((a, s) => a + (s.claddingAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.claddingOrderM2 ?? 0), 0), len: null as number | null, ordLen: null as number | null },
+      {
+        label: 'פנלים',
+        net: group.rooms.reduce((a, s) => a + (s.panelsAreaM2 ?? 0), 0),
+        ord: group.rooms.reduce((a, s) => a + (s.panelsOrderM2 ?? 0), 0),
+        len: group.rooms.reduce((a, s) => a + (s.panelsLengthM ?? 0), 0),
+        ordLen: group.rooms.reduce((a, s) => a + (s.panelsOrderLengthM ?? 0), 0),
+      },
     ];
     ensureRoom(2 + cats.length);
     y += ROW_H * 0.3;
-    drawRow([`סה"כ דירה ${group.apartment || DASH}`, '', '', '', '', '', '', '', '', '', '', '', '', '', ''], C_TOTAL, { bold: true });
-    drawRow(['פריט', '', 'כמות נטו (מ"ר)', '', '', '', '', '', '', '', 'להזמנה (מ"ר)', '', '', '', ''], C_TOTAL_HDR, { bold: true });
+    drawRow(totalsRow({ label: `סה"כ דירה ${group.apartment || DASH}` }), C_TOTAL, { bold: true });
+    drawRow(
+      totalsRow({
+        label: 'פריט',
+        length: 'אורך (מ"א)',
+        net: 'כמות נטו (מ"ר)',
+        orderLength: 'אורך להזמנה (מ"א)',
+        order: 'להזמנה (מ"ר)',
+      }),
+      C_TOTAL_HDR,
+      { bold: true }
+    );
     for (const cat of cats) {
       drawRow(
-        [cat.label, '', `${Math.round(cat.net * 100) / 100}`, '', '', '', '', '', '', '', `${Math.round(cat.ord * 100) / 100}`, '', '', '', ''],
+        totalsRow({
+          label: cat.label,
+          length: cat.len == null ? '' : `${Math.round(cat.len * 100) / 100}`,
+          net: `${Math.round(cat.net * 100) / 100}`,
+          orderLength: cat.ordLen == null ? '' : `${Math.round(cat.ordLen * 100) / 100}`,
+          order: `${Math.round(cat.ord * 100) / 100}`,
+        }),
         C_TOTAL
       );
     }
@@ -277,12 +329,41 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
 
   // Grand-totals block.
   ensureRoom(2 + totals.length);
-  drawRow(['סה"כ כללי לפרויקט', '', '', '', '', '', '', '', '', '', '', '', '', '', ''], C_GRAND, { bold: true });
-  drawRow(['פריט', '', 'כמות נטו (מ"ר)', '', '', '', 'פחת %', '', '', '', 'להזמנה (מ"ר)', '', '', '', ''], C_TOTAL_HDR, { bold: true });
+  drawRow(totalsRow({ label: 'סה"כ כללי לפרויקט' }), C_GRAND, { bold: true });
+  drawRow(
+    totalsRow({
+      label: 'פריט',
+      length: 'אורך (מ"א)',
+      net: 'כמות נטו (מ"ר)',
+      waste: 'פחת %',
+      orderLength: 'אורך להזמנה (מ"א)',
+      order: 'להזמנה (מ"ר)',
+    }),
+    C_TOTAL_HDR,
+    { bold: true }
+  );
   for (const t of totals) {
     drawRow(
-      [REPORT_CATEGORY_LABELS[t.category], '', `${t.quantityM2}`, '', '', '', `${t.wastePercent}%`, '', '', '', `${t.orderM2}`, '', '', '', ''],
+      totalsRow({
+        label: REPORT_CATEGORY_LABELS[t.category],
+        length: t.lengthM == null ? '' : `${t.lengthM}`,
+        net: `${t.quantityM2}`,
+        waste: `${t.wastePercent}%`,
+        orderLength: t.orderLengthM == null ? '' : `${t.orderLengthM}`,
+        order: `${t.orderM2}`,
+      }),
       C_GRAND
+    );
+  }
+
+  // Say plainly that rooms which could not be calculated are missing from those totals.
+  const uncalibratedCount = summaries.filter((s) => !s.pageCalibrated).length;
+  if (uncalibratedCount > 0) {
+    ensureRoom(1);
+    drawRow(
+      totalsRow({ label: `שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל` }),
+      C_TOTAL_HDR,
+      { bold: true, color: '#92400e' }
     );
   }
 
