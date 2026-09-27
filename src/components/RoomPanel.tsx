@@ -28,6 +28,13 @@ import Icon from './Icon';
 
 const WORK_TYPES: WorkType[] = ['tiling', 'cladding', 'panels'];
 
+/**
+ * Auto room detection is experimental and hidden from users for now. This flag gates only its entry
+ * points in the room list (launcher button, launcher panel, review panel); the detection pipeline,
+ * store actions and any rooms already saved from it are untouched. Flip to true to bring it back.
+ */
+const SHOW_AUTO_DETECT = false;
+
 export default function RoomPanel() {
   const project = useAppStore((s) => s.project);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
@@ -134,7 +141,7 @@ export default function RoomPanel() {
   return (
     <div className="room-panel">
       {/* Suggestions awaiting review take over the top of the tab until they are handled. */}
-      <DetectionReviewPanel />
+      {SHOW_AUTO_DETECT && <DetectionReviewPanel />}
 
       <div className="room-create-row">
         <button
@@ -152,14 +159,16 @@ export default function RoomPanel() {
         >
           <Icon name="rectangle" />
         </button>
-        <button
-          className={`btn-secondary small ${showDetection ? 'active' : ''}`}
-          onClick={() => setShowDetection((v) => !v)}
-          title="זיהוי אוטומטי של חדרים — מציע אזורים לאישור"
-          aria-label="זיהוי אוטומטי"
-        >
-          <Icon name="scan" />
-        </button>
+        {SHOW_AUTO_DETECT && (
+          <button
+            className={`btn-secondary small ${showDetection ? 'active' : ''}`}
+            onClick={() => setShowDetection((v) => !v)}
+            title="זיהוי אוטומטי של חדרים — מציע אזורים לאישור"
+            aria-label="זיהוי אוטומטי"
+          >
+            <Icon name="scan" />
+          </button>
+        )}
       </div>
 
       {/* Workspace state, not a form field: this is the apartment being worked in, and the sentence
@@ -271,7 +280,7 @@ export default function RoomPanel() {
       {/* Room details are a separate view — the list stays a list, however many apartments it holds. */}
 
       {/* Auto detection is a secondary path: its launcher only appears when asked for. */}
-      {showDetection && <AutoDetectPanel />}
+      {SHOW_AUTO_DETECT && showDetection && <AutoDetectPanel />}
 
       {apartmentDialogSource !== null && (
         <DuplicateApartmentDialog
