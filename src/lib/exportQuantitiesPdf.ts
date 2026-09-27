@@ -200,7 +200,9 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
   let ctx: CanvasRenderingContext2D;
   let y = 0;
 
-  const drawRow = (cells: string[], bg: string, opts?: { bold?: boolean; color?: string }) => {
+  // `spanLabel`: the first cell also takes the (empty) room column beside it. Used by the totals
+  // rows, whose category labels would otherwise be squeezed into the narrow apartment column.
+  const drawRow = (cells: string[], bg: string, opts?: { bold?: boolean; color?: string; spanLabel?: boolean }) => {
     ctx.fillStyle = bg;
     ctx.fillRect(MARGIN, y, usableWidth, ROW_H);
     ctx.strokeStyle = C_BORDER;
@@ -211,12 +213,15 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
     ctx.textAlign = 'center';
     let x = PAGE_W - MARGIN;
     cells.forEach((cell, i) => {
-      const w = colWidths[i] ?? 0;
+      if (opts?.spanLabel && i === 1) return; // already covered by the spanned label
+      const w = opts?.spanLabel && i === 0 ? (colWidths[0] ?? 0) + (colWidths[1] ?? 0) : (colWidths[i] ?? 0);
       ctx.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, w - 6);
       x -= w;
     });
     y += ROW_H;
   };
+  const drawTotalsRow = (cells: string[], bg: string, opts?: { bold?: boolean; color?: string }) =>
+    drawRow(cells, bg, { ...opts, spanLabel: true });
 
   const drawColumnHeader = () => {
     ctx.fillStyle = C_HEADER;
@@ -326,8 +331,8 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
     ];
     ensureRoom(2 + cats.length);
     y += ROW_H * 0.3;
-    drawRow(tRow({ label: `סה"כ דירה ${group.apartment || DASH}` }), C_TOTAL, { bold: true });
-    drawRow(
+    drawTotalsRow(tRow({ label: `סה"כ דירה ${group.apartment || DASH}` }), C_TOTAL, { bold: true });
+    drawTotalsRow(
       tRow({
         label: 'פריט',
         length: 'אורך (מ"א)',
@@ -339,7 +344,7 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
       { bold: true }
     );
     for (const cat of cats) {
-      drawRow(
+      drawTotalsRow(
         tRow({
           label: cat.label,
           length: cat.len == null ? '' : `${Math.round(cat.len * 100) / 100}`,
@@ -355,8 +360,8 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
 
   // Grand-totals block.
   ensureRoom(2 + totals.length);
-  drawRow(tRow({ label: 'סה"כ כללי לפרויקט' }), C_GRAND, { bold: true });
-  drawRow(
+  drawTotalsRow(tRow({ label: 'סה"כ כללי לפרויקט' }), C_GRAND, { bold: true });
+  drawTotalsRow(
     tRow({
       label: 'פריט',
       length: 'אורך (מ"א)',
@@ -369,7 +374,7 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
     { bold: true }
   );
   for (const t of totals) {
-    drawRow(
+    drawTotalsRow(
       tRow({
         label: REPORT_CATEGORY_LABELS[t.category],
         length: t.lengthM == null ? '' : `${t.lengthM}`,
@@ -393,7 +398,7 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
     };
     ensureRoom(3);
     y += ROW_H * 0.3;
-    drawRow(deductionRow(['ניכוי פתחים']), C_TOTAL, { bold: true });
+    drawTotalsRow(deductionRow(['ניכוי פתחים']), C_TOTAL, { bold: true });
     drawRow(deductionRow(['דירה', 'חדר', 'סוג עבודה', 'ברוטו (מ"ר)', 'ניכוי פתחים (מ"ר)', 'נטו (מ"ר)']), C_TOTAL_HDR, { bold: true });
     deductions.forEach(({ s, d }, i) => {
       ensureRoom(1);
@@ -408,7 +413,7 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
   const uncalibratedCount = summaries.filter((s) => !s.pageCalibrated).length;
   if (uncalibratedCount > 0) {
     ensureRoom(1);
-    drawRow(
+    drawTotalsRow(
       tRow({ label: `שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל` }),
       C_TOTAL_HDR,
       { bold: true, color: '#92400e' }
