@@ -14,6 +14,7 @@ import MarkupToolbar from './components/MarkupToolbar';
 import CompareStartScreen from './components/compare/CompareStartScreen';
 import CompareWorkspace from './components/compare/CompareWorkspace';
 import Icon from './components/Icon';
+import BrandLogo from './components/BrandLogo';
 
 /** Quantities is no longer one of these — it has the full-width bottom panel instead. */
 type SidebarTab = 'rooms' | 'measure' | 'markup';
@@ -69,7 +70,7 @@ function Home() {
       <div className="top-bar">
         <div className="top-bar-group identity">
           <div className="app-brand" title="BetterCalc">
-            <span className="app-brand-name">BetterCalc</span>
+            <BrandLogo />
           </div>
         </div>
         <div className="top-bar-group grow" />

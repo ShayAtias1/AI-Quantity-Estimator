@@ -3,6 +3,7 @@ import { selectSaveState, useAppStore } from '../store/appStore';
 import QuantityExportActions from './QuantityExportActions';
 import TopBarMenu, { type MenuId } from './TopBarMenu';
 import Icon, { type IconName } from './Icon';
+import BrandLogo from './BrandLogo';
 import { exportAllPlanPagesToPdf, exportPlanPageToPdf } from '../lib/exportRegionPdf';
 
 export default function TopBar() {
@@ -98,7 +99,7 @@ export default function TopBar() {
           says which mode we are in, so the subtitle no longer spends space here. */}
       <div className="top-bar-group identity">
         <div className="app-brand" title="BetterCalc — חישוב כמויות">
-          <span className="app-brand-name">BetterCalc</span>
+          <BrandLogo />
         </div>
         <input
           className="project-name-input"

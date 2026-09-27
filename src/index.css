@@ -587,11 +587,14 @@ button:disabled,
   align-items: center;
   flex-shrink: 0;
 }
-.app-brand-name {
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: -0.01em;
-  color: var(--text-h);
+.app-brand picture {
+  display: contents;
+}
+/* Final lockup, sized by height so the wordmark sits at the old 14px name's size. */
+.app-brand-logo {
+  display: block;
+  width: auto;
+  height: 16px;
 }
 
 .project-name-input {

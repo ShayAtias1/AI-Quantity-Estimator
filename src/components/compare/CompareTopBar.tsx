@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { selectCompareSaveState, useCompareStore } from '../../store/compareStore';
 import TopBarMenu, { type MenuId } from '../TopBarMenu';
 import Icon, { type IconName } from '../Icon';
+import BrandLogo from '../BrandLogo';
 import ViewModeSwitch from './ViewModeSwitch';
 
 export default function CompareTopBar({
@@ -87,7 +88,7 @@ export default function CompareTopBar({
           of comparison context that must never require opening the sidebar. */}
       <div className="top-bar-group identity">
         <div className="app-brand" title="BetterCalc — השוואת תוכניות">
-          <span className="app-brand-name">BetterCalc</span>
+          <BrandLogo />
         </div>
         <input
           className="project-name-input"
