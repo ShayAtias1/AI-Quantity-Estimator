@@ -12,7 +12,7 @@
  */
 
 import { v4 as uuid } from 'uuid';
-import type { Project, WorkItem } from '../types';
+import type { Plan, WorkItem } from '../types';
 
 export type TilingCategoryKey = 'regular' | 'as';
 
@@ -25,6 +25,10 @@ export interface RoomProfile {
   tiling: TilingCategoryKey;
   cladding: boolean;
   panels: boolean;
+  /** Wall painting (net of openings, at the plan's default wall height). */
+  painting?: boolean;
+  /** Floor waterproofing (wet areas). */
+  waterproofing?: boolean;
   /**
    * Optional per-profile overrides for the work items this profile creates. Intentionally unset on
    * every profile today: with no value here, items fall back to the project's own defaults
@@ -36,16 +40,16 @@ export interface RoomProfile {
 
 /** Ordered roughly specific→generic; matching prefers the longest label so "חדר רחצה" beats "חדר". */
 export const ROOM_PROFILES: RoomProfile[] = [
-  { key: 'bath', labels: ['חדר רחצה', 'חדר אמבטיה', 'אמבטיה', 'מקלחת', 'רחצה'], displayName: 'חדר רחצה', tiling: 'as', cladding: true, panels: false },
-  { key: 'wc', labels: ['שירותי אורחים', 'שרותי אורחים', 'שירותים', 'שרותים', 'אסלה', 'שירות אורחים'], displayName: 'שירותים', tiling: 'as', cladding: true, panels: false },
-  { key: 'service', labels: ['חדר שירות', 'חדר כביסה', 'כביסה', 'חדר רחצה שירות'], displayName: 'חדר שירות', tiling: 'as', cladding: false, panels: false },
-  { key: 'kitchen', labels: ['מטבח', 'מטבחון'], displayName: 'מטבח', tiling: 'regular', cladding: true, panels: true },
-  { key: 'balcony', labels: ['מרפסת שירות', 'מרפסת שמש', 'מרפסת'], displayName: 'מרפסת', tiling: 'as', cladding: false, panels: false },
-  { key: 'safe', labels: ['ממ"ד', 'ממ״ד', 'ממד', 'מרחב מוגן', 'מקלט'], displayName: 'ממ"ד', tiling: 'regular', cladding: false, panels: true },
-  { key: 'living', labels: ['סלון', 'חדר מגורים', 'מגורים', 'פינת אוכל'], displayName: 'סלון', tiling: 'regular', cladding: false, panels: true },
-  { key: 'bedroom', labels: ['חדר שינה', 'חדר הורים', 'חדר ילדים', 'חדר שינה הורים', 'שינה', 'חדר'], displayName: 'חדר שינה', tiling: 'regular', cladding: false, panels: true },
-  { key: 'hall', labels: ['פרוזדור', 'מסדרון', 'הול', 'כניסה', 'לובי'], displayName: 'פרוזדור', tiling: 'regular', cladding: false, panels: true },
-  { key: 'storage', labels: ['מחסן', 'ארון', 'אחסון'], displayName: 'מחסן', tiling: 'regular', cladding: false, panels: false },
+  { key: 'bath', labels: ['חדר רחצה', 'חדר אמבטיה', 'אמבטיה', 'מקלחת', 'רחצה'], displayName: 'חדר רחצה', tiling: 'as', cladding: true, panels: false, waterproofing: true },
+  { key: 'wc', labels: ['שירותי אורחים', 'שרותי אורחים', 'שירותים', 'שרותים', 'אסלה', 'שירות אורחים'], displayName: 'שירותים', tiling: 'as', cladding: true, panels: false, waterproofing: true },
+  { key: 'service', labels: ['חדר שירות', 'חדר כביסה', 'כביסה', 'חדר רחצה שירות'], displayName: 'חדר שירות', tiling: 'as', cladding: false, panels: false, waterproofing: true },
+  { key: 'kitchen', labels: ['מטבח', 'מטבחון'], displayName: 'מטבח', tiling: 'regular', cladding: true, panels: true, painting: true },
+  { key: 'balcony', labels: ['מרפסת שירות', 'מרפסת שמש', 'מרפסת'], displayName: 'מרפסת', tiling: 'as', cladding: false, panels: false, waterproofing: true },
+  { key: 'safe', labels: ['ממ"ד', 'ממ״ד', 'ממד', 'מרחב מוגן', 'מקלט'], displayName: 'ממ"ד', tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'living', labels: ['סלון', 'חדר מגורים', 'מגורים', 'פינת אוכל'], displayName: 'סלון', tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'bedroom', labels: ['חדר שינה', 'חדר הורים', 'חדר ילדים', 'חדר שינה הורים', 'שינה', 'חדר'], displayName: 'חדר שינה', tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'hall', labels: ['פרוזדור', 'מסדרון', 'הול', 'כניסה', 'לובי'], displayName: 'פרוזדור', tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'storage', labels: ['מחסן', 'ארון', 'אחסון'], displayName: 'מחסן', tiling: 'regular', cladding: false, panels: false, painting: true },
 ];
 
 export function getRoomProfile(key: string | undefined | null): RoomProfile | null {
@@ -63,7 +67,7 @@ export function roomProfileLabel(key: string | undefined | null): string | null 
  * The work items a profile implies, with the project's defaults filled in (a profile-level override
  * wins over the project default when one is defined). This is the only place that rule lives.
  */
-export function buildWorkItemsForProfile(profile: RoomProfile, project: Project): WorkItem[] {
+export function buildWorkItemsForProfile(profile: RoomProfile, project: Plan): WorkItem[] {
   // Left off the item entirely when the profile has no opinion, so the item keeps following the
   // project default rather than freezing a copy of it.
   const waste = profile.defaultWastePercent != null ? { wastePercent: profile.defaultWastePercent } : {};
@@ -79,5 +83,8 @@ export function buildWorkItemsForProfile(profile: RoomProfile, project: Project)
   }
   // Panel height is deliberately left unset so the item follows the project's default panel height.
   if (profile.panels) items.push({ id: uuid(), type: 'panels', ...waste });
+  // Heights left unset for the same reason: painting follows the plan's wall height, waterproofing its upturn default.
+  if (profile.painting) items.push({ id: uuid(), type: 'painting', ...waste });
+  if (profile.waterproofing) items.push({ id: uuid(), type: 'waterproofing', ...waste });
   return items;
 }

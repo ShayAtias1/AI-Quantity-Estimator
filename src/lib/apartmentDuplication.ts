@@ -6,18 +6,18 @@
  * geometry, same page — so the copy carries the same quantities as the original.
  */
 
-import type { Project, Room } from '../types';
+import type { Plan, Room } from '../types';
 import { isPageCalibrated } from './quantities';
 
 /** Pages the rooms of an apartment live on. */
-export function apartmentPageNumbers(project: Project, apartmentNumber: string): number[] {
+export function apartmentPageNumbers(project: Plan, apartmentNumber: string): number[] {
   return Array.from(
     new Set(project.rooms.filter((r) => r.apartmentNumber === apartmentNumber).map((r) => r.pageNumber))
   ).sort((a, b) => a - b);
 }
 
 /** Apartment numbers that actually exist in the project (blank is not an apartment), in page order. */
-export function apartmentNumbersInProject(project: Project): string[] {
+export function apartmentNumbersInProject(project: Plan): string[] {
   const seen = new Set<string>();
   for (const room of project.rooms) {
     if (room.apartmentNumber) seen.add(room.apartmentNumber);
@@ -33,7 +33,7 @@ export const UNASSIGNED_APARTMENT = '';
  * `apartmentNumbersInProject`), then the unassigned rooms. Apartments are derived from
  * `Room.apartmentNumber` exactly as the Excel report already groups them — no new entity.
  */
-export function groupRoomsByApartment(project: Project): { apartmentNumber: string; rooms: Room[] }[] {
+export function groupRoomsByApartment(project: Plan): { apartmentNumber: string; rooms: Room[] }[] {
   const groups: { apartmentNumber: string; rooms: Room[] }[] = apartmentNumbersInProject(project).map((apartmentNumber) => ({
     apartmentNumber,
     rooms: project.rooms.filter((r) => r.apartmentNumber === apartmentNumber),
@@ -48,7 +48,7 @@ export function groupRoomsByApartment(project: Project): { apartmentNumber: stri
  * Never blocks: the rooms are worth copying even on an unscaled page, exactly as drawing one there
  * is allowed — only the quantities have to wait for a calibration.
  */
-export function apartmentDuplicationWarnings(project: Project, sourceApartmentNumber: string): string[] {
+export function apartmentDuplicationWarnings(project: Plan, sourceApartmentNumber: string): string[] {
   const uncalibrated = apartmentPageNumbers(project, sourceApartmentNumber).filter((p) => !isPageCalibrated(project, p));
   if (uncalibrated.length === 0) return [];
   return [

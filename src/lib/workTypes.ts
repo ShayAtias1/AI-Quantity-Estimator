@@ -1,0 +1,144 @@
+/**
+ * The work-type catalogue: what each work type measures, in which unit, with which defaults and how
+ * openings affect it. `lib/quantities.ts` reads everything from here — no work type is special-cased
+ * by label, unit or default value anywhere else.
+ */
+
+import type { OpeningType, Plan, WorkType } from '../types';
+import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
+import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
+
+/**
+ * - floorArea: the room polygon's area.
+ * - wallArea: perimeter × height, minus applicable openings (each clipped to that height).
+ * - perimeter: running metres along the perimeter, minus applicable opening widths; the m² reading
+ *   is that length × the strip height.
+ * - floorAndUpturn: floor area plus a perimeter strip turned up the walls (perimeter × height).
+ */
+export type CalculationBasis = 'floorArea' | 'wallArea' | 'perimeter' | 'floorAndUpturn';
+
+/** Plan fields that hold the user's per-project default waste %. */
+export type WasteDefaultField =
+  | 'defaultTilingWastePercent'
+  | 'defaultCladdingWastePercent'
+  | 'defaultPanelsWastePercent'
+  | 'defaultPaintingWastePercent'
+  | 'defaultPlasterWastePercent'
+  | 'defaultWaterproofingWastePercent';
+
+/** Plan fields that hold a per-project default height. */
+type HeightDefaultField = 'defaultCladdingHeightM' | 'defaultPanelHeightM' | 'wallHeightDefaultM';
+
+export interface WorkTypeDefinition {
+  id: WorkType;
+  label: string;
+  /** Unit of the item's primary quantity. */
+  unit: string;
+  basis: CalculationBasis;
+  /** Waste % when neither the item nor the project sets one. */
+  defaultWastePercent: number;
+  /** Where the project keeps its own default waste % for this type. */
+  wasteDefaultField: WasteDefaultField;
+  /** Whether openings are deducted unless the item says otherwise (`WorkItem.deductOpenings`). */
+  deductsOpenings: boolean;
+  /** Opening types that reduce this work. Empty = openings never affect it. */
+  deductedOpeningTypes: OpeningType[];
+  /** Height input for types that multiply the perimeter; absent for floor-only types. */
+  height?: {
+    label: string;
+    /** Plan default used when the item has no height of its own. */
+    projectField?: HeightDefaultField;
+    /** Used when the project has no usable default either (older projects). */
+    fallbackM: number;
+  };
+}
+
+export const WORK_TYPE_DEFINITIONS: Record<WorkType, WorkTypeDefinition> = {
+  tiling: {
+    id: 'tiling',
+    label: 'ריצוף',
+    unit: AREA_UNIT,
+    basis: 'floorArea',
+    defaultWastePercent: 0,
+    wasteDefaultField: 'defaultTilingWastePercent',
+    deductsOpenings: false,
+    deductedOpeningTypes: [],
+  },
+  cladding: {
+    id: 'cladding',
+    label: 'חיפוי קירות',
+    unit: AREA_UNIT,
+    basis: 'wallArea',
+    defaultWastePercent: 0,
+    wasteDefaultField: 'defaultCladdingWastePercent',
+    deductsOpenings: true,
+    deductedOpeningTypes: ['door', 'window', 'custom'],
+    height: { label: "גובה חיפוי (מ')", projectField: 'defaultCladdingHeightM', fallbackM: MEASUREMENT_DEFAULTS.claddingHeightM },
+  },
+  panels: {
+    id: 'panels',
+    label: 'פנלים',
+    unit: PANEL_LENGTH_UNIT,
+    basis: 'perimeter',
+    defaultWastePercent: 0,
+    wasteDefaultField: 'defaultPanelsWastePercent',
+    // Skirting stops at door openings; windows sit above it and never reduce it.
+    deductsOpenings: true,
+    deductedOpeningTypes: ['door'],
+    height: { label: "גובה פנל (מ')", projectField: 'defaultPanelHeightM', fallbackM: MEASUREMENT_DEFAULTS.panelHeightM },
+  },
+  painting: {
+    id: 'painting',
+    label: 'צבע',
+    unit: AREA_UNIT,
+    basis: 'wallArea',
+    defaultWastePercent: 0,
+    wasteDefaultField: 'defaultPaintingWastePercent',
+    deductsOpenings: true,
+    deductedOpeningTypes: ['door', 'window', 'custom'],
+    height: { label: "גובה קיר (מ')", projectField: 'wallHeightDefaultM', fallbackM: MEASUREMENT_DEFAULTS.wallHeightM },
+  },
+  plaster: {
+    id: 'plaster',
+    label: 'טיח',
+    unit: AREA_UNIT,
+    basis: 'wallArea',
+    defaultWastePercent: 0,
+    wasteDefaultField: 'defaultPlasterWastePercent',
+    deductsOpenings: true,
+    deductedOpeningTypes: ['door', 'window', 'custom'],
+    height: { label: "גובה קיר (מ')", projectField: 'wallHeightDefaultM', fallbackM: MEASUREMENT_DEFAULTS.wallHeightM },
+  },
+  waterproofing: {
+    id: 'waterproofing',
+    label: 'איטום',
+    unit: AREA_UNIT,
+    basis: 'floorAndUpturn',
+    defaultWastePercent: 0,
+    wasteDefaultField: 'defaultWaterproofingWastePercent',
+    deductsOpenings: false,
+    deductedOpeningTypes: [],
+    height: { label: "הגבהה בקירות (מ')", fallbackM: MEASUREMENT_DEFAULTS.waterproofingUpturnM },
+  },
+};
+
+/** Order of the "+" buttons in the room panel. */
+export const WORK_TYPE_ORDER: WorkType[] = ['tiling', 'cladding', 'panels', 'painting', 'plaster', 'waterproofing'];
+
+/** Tolerates a work type this build doesn't know (a project saved by a newer version): it counts as nothing. */
+export function workTypeDefinition(type: WorkType): WorkTypeDefinition | undefined {
+  return WORK_TYPE_DEFINITIONS[type];
+}
+
+/** Plan default waste % for a work type (before the AS-tiling special case in lib/quantities). */
+export function projectWasteDefault(def: WorkTypeDefinition, project: Plan): number {
+  const v = project[def.wasteDefaultField];
+  return typeof v === 'number' && Number.isFinite(v) ? v : def.defaultWastePercent;
+}
+
+/** Plan default height for a work type, or its catalogue fallback. */
+export function projectHeightDefault(def: WorkTypeDefinition, project: Plan): number {
+  if (!def.height) return 0;
+  const v = def.height.projectField ? project[def.height.projectField] : undefined;
+  return typeof v === 'number' && Number.isFinite(v) ? v : def.height.fallbackM;
+}

@@ -1,26 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAppStore, createEmptyProject } from '../store/appStore';
-import { deleteProject, listProjects, savePdfBlob, saveProject } from '../db/database';
-import type { Project } from '../types';
+import { useAppStore } from '../store/appStore';
+import { deleteProject, listProjects, type ProjectWithPlans } from '../db/database';
 import SavedItemList, { type SavedItem } from './SavedItemList';
 import Icon from './Icon';
 
-/** What the row says about a project: what is in it, and when it was last touched. */
-function projectMeta(p: Project): string {
-  const updated = `עודכן ${new Date(p.updatedAt).toLocaleDateString('he-IL')}`;
-  if (p.rooms.length === 0) return `עדיין ריק · ${updated}`;
-  const pages = new Set(p.rooms.map((r) => r.pageNumber)).size;
-  const apartments = new Set(p.rooms.map((r) => r.apartmentNumber).filter(Boolean)).size;
-  const parts = [`${p.rooms.length} חדרים`];
-  if (apartments > 0) parts.push(`${apartments} דירות`);
-  if (pages > 1) parts.push(`${pages} עמודים`);
+/** What the row says about a project: its plans and rooms, and when it was last touched. */
+function projectMeta({ project, plans }: ProjectWithPlans): string {
+  const lastTouched = Math.max(project.updatedAt, ...plans.map((p) => p.updatedAt));
+  const updated = `עודכן ${new Date(lastTouched).toLocaleDateString('he-IL')}`;
+  if (plans.length === 0) return `אין עדיין תוכניות · ${updated}`;
+  const rooms = plans.reduce((n, p) => n + p.rooms.length, 0);
+  const parts = [plans.length === 1 ? 'תוכנית אחת' : `${plans.length} תוכניות`];
+  if (rooms > 0) parts.push(`${rooms} חדרים`);
   parts.push(updated);
   return parts.join(' · ');
 }
 
 export default function StartScreen() {
-  const setProject = useAppStore((s) => s.setProject);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const openProject = useAppStore((s) => s.openProject);
+  const createProject = useAppStore((s) => s.createProject);
+  const [projects, setProjects] = useState<ProjectWithPlans[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +35,9 @@ export default function StartScreen() {
   useEffect(refresh, []);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('למחוק את הפרויקט? הפעולה בלתי הפיכה.')) return;
+    const entry = projects.find((p) => p.project.id === id);
+    const planCount = entry?.plans.length ?? 0;
+    if (!confirm(`למחוק את הפרויקט${planCount > 0 ? ` ואת ${planCount} התוכניות שבו` : ''}? הפעולה בלתי הפיכה.`)) return;
     await deleteProject(id);
     refresh();
   };
@@ -60,23 +61,22 @@ export default function StartScreen() {
     setNewName('');
   };
 
+  // The first plan is optional: a project can start empty and get its plans from the overview.
   const confirmCreate = async () => {
-    if (!pendingFile) return;
-    const project = createEmptyProject(newName || 'פרויקט חדש', pendingFile.name);
-    await savePdfBlob(project.id, pendingFile);
-    await saveProject(project);
+    const name = newName.trim() || 'פרויקט חדש';
+    const file = pendingFile;
     closeDialog();
-    setProject(project);
+    await createProject(name, file ? { file, name: file.name.replace(/\.pdf$/i, '') || 'תוכנית 1' } : undefined);
   };
 
-  const items: SavedItem[] = projects.map((p) => ({ id: p.id, name: p.name, meta: projectMeta(p) }));
+  const items: SavedItem[] = projects.map((p) => ({ id: p.project.id, name: p.project.name, meta: projectMeta(p) }));
 
   return (
     <div className="home-panel">
       <div className="home-panel-head">
         <div className="home-panel-text">
           <h2>חישוב כמויות</h2>
-          <p className="muted">חישוב ריצוף, חיפוי ופנלים מתוך תוכנית PDF, עד כתב כמויות מלא.</p>
+          <p className="muted">פרויקט מרכז את כל התוכניות שלו — מדידה בכל תוכנית, וכתב כמויות אחד לכל הפרויקט.</p>
         </div>
         <button className="btn-primary" onClick={() => setCreating(true)}>
           <Icon name="plus" />
@@ -89,11 +89,8 @@ export default function StartScreen() {
         items={items}
         icon="map"
         loading={loading}
-        emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש מקובץ PDF של התוכנית."
-        onOpen={(id) => {
-          const project = projects.find((p) => p.id === id);
-          if (project) setProject(project);
-        }}
+        emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש והוסף לו תוכניות PDF."
+        onOpen={(id) => void openProject(id)}
         onDelete={(id) => void handleDelete(id)}
         openTitle="פתח את הפרויקט"
         deleteTitle="מחק פרויקט"
@@ -108,7 +105,7 @@ export default function StartScreen() {
               <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="לדוגמה: מגדל הכרמל — קומה טיפוסית" />
             </div>
             <div className="form-row">
-              <label>תוכנית (PDF)</label>
+              <label>תוכנית ראשונה (PDF, לא חובה)</label>
               <button className="btn-secondary file-pick" onClick={() => fileInputRef.current?.click()}>
                 <Icon name={pendingFile ? 'check' : 'file'} />
                 {pendingFile ? pendingFile.name : 'בחר קובץ PDF'}
@@ -128,7 +125,7 @@ export default function StartScreen() {
               <button className="btn-secondary" onClick={closeDialog}>
                 ביטול
               </button>
-              <button className="btn-primary" onClick={confirmCreate} disabled={!pendingFile || !newName.trim()}>
+              <button className="btn-primary" onClick={confirmCreate} disabled={!newName.trim()}>
                 צור פרויקט
               </button>
             </div>

@@ -27,10 +27,17 @@ the canvas engine and the geometry/markup libraries:
 
 | | Quantity takeoff | Revision Compare |
 |---|---|---|
-| Entity | `Project` (`src/types/index.ts`) | `Comparison` (`src/types/compare.ts`) |
+| Entity | `Project` → `Plan`s (`src/types/index.ts`) | `Comparison` (`src/types/compare.ts`) |
 | Store | `src/store/appStore.ts` | `src/store/compareStore.ts` |
 | Viewer | `src/components/PdfViewer.tsx` | `src/components/compare/CompareCanvas.tsx` |
-| Purpose | Draw rooms on a plan → work items → m² + waste → Excel/PDF report | Overlay an original plan with one or more revised plans, align, measure, mark up |
+| Purpose | Projects of plans; draw rooms on a plan → work items → m² + waste → per-plan and per-project Excel/PDF | Overlay an original plan with one or more revised plans, align, measure, mark up |
+
+In takeoff, a `Project` is a thin folder (`name`, ordered `planIds`); each `Plan` is its own saved
+document holding one PDF plus everything measured on it (this type was called `Project` before
+projects existed). Only one plan is in memory: the store key `project` is the open **plan**, and
+`currentProject`/`projectPlans` describe the folder around it. Leaving a plan (switch, overview,
+home) always persists it first. Project totals come from `src/lib/projectQuantities.ts`, which only
+sums each plan's own `buildRoomSummaries` — never re-implement work-type logic there.
 
 `types/compare.ts` deliberately re-declares `Markup`, `Measurement`, `AreaKind`, etc. rather than
 importing them from `types/index.ts` — the two features are allowed to diverge. When you change a
@@ -70,9 +77,11 @@ history).
 
 ## Persistence and migrations
 
-`src/db/database.ts` — `idb`, DB `bettercalc-qto`, four stores: `projects`, `pdfFiles` (Blob keyed
-by projectId), `comparisons`, `comparePdfFiles` (Blob keyed by `${comparisonId}:original` or
-`${comparisonId}:revision:${revisionId}`).
+`src/db/database.ts` — `idb`, DB `bettercalc-qto` (v3), five stores: `projects` (holds **plans**;
+name kept so no record had to move), `pdfFiles` (Blob keyed by planId), `takeoffProjects` (project
+folders), `comparisons`, `comparePdfFiles` (Blob keyed by `${comparisonId}:original` or
+`${comparisonId}:revision:${revisionId}`). `migrateLegacyPlans` wraps any plan without a project
+(pre-v3 data) into project `legacy-${planId}` on load — idempotent.
 
 Schema changes to saved documents are handled by **lazy migrations on load**, not by the IndexedDB
 `upgrade` callback: `migrateComparison` converts the old single-`revised*`-layer shape into the

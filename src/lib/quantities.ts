@@ -1,21 +1,24 @@
 import type {
   Calibration,
-  Project,
+  ExtraReportCategory,
+  Opening,
+  Plan,
   ReportCategory,
   ReportCategoryTotal,
   Room,
   RoomQuantitySummary,
   WorkItem,
 } from '../types';
-import { PANEL_HEIGHT_M, REPORT_CATEGORY_LABELS, WORK_TYPE_LABELS, WORK_TYPE_UNITS } from '../types';
+import { EXTRA_REPORT_CATEGORIES } from '../types';
 import { polygonAreaM2, polygonPerimeterM, round } from './geometry';
+import { projectHeightDefault, projectWasteDefault, workTypeDefinition, WORK_TYPE_DEFINITIONS } from './workTypes';
 
 /**
  * Whether a page carries a usable scale. Matches exactly what `roomMetrics` treats as usable, so
  * "the UI says uncalibrated" and "the numbers come out 0" can never disagree.
  * Display-only: no stored data or computed quantity changes based on this.
  */
-export function isPageCalibrated(project: Project, pageNumber: number): boolean {
+export function isPageCalibrated(project: Plan, pageNumber: number): boolean {
   return (project.pages[pageNumber]?.calibration?.metersPerPixel ?? 0) > 0;
 }
 
@@ -28,6 +31,11 @@ function finiteOr(value: number | undefined | null, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+/** A dimension that can only take away or add, never go below zero (a negative width is a typo, not a quantity). */
+function nonNegative(value: number | undefined | null): number {
+  return Math.max(0, finiteOr(value, 0));
+}
+
 export function roomMetrics(room: Room, calibration: Calibration | null) {
   const mpp = calibration?.metersPerPixel ?? 0;
   const areaM2 = mpp ? polygonAreaM2(room.points, mpp) : 0;
@@ -35,61 +43,108 @@ export function roomMetrics(room: Room, calibration: Calibration | null) {
   return { areaM2, perimeterM };
 }
 
-/**
- * Panel height for one item: its own override, else the project default, else the historical 0.1 m
- * (projects saved before `defaultPanelHeightM` existed).
- */
-export function effectivePanelHeightM(item: WorkItem, project: Project): number {
-  return finiteOr(item.heightM, finiteOr(project.defaultPanelHeightM, PANEL_HEIGHT_M));
-}
-
-/** Project default waste % for AS tiling — falls back to the regular tiling default on older projects. */
-export function effectiveTilingAsWastePercent(project: Project): number {
-  return finiteOr(project.defaultTilingAsWastePercent, finiteOr(project.defaultTilingWastePercent, 0));
+/** Area of one opening row: width × height × quantity. Entered in metres, so it needs no page scale. */
+export function openingAreaM2(opening: Opening): number {
+  return nonNegative(opening.widthM) * nonNegative(opening.heightM) * nonNegative(opening.quantity);
 }
 
 /**
- * Linear metres of a work item, where that is a meaningful second quantity. Panels (skirting) are
- * bought by the running metre and priced by area, so both numbers matter: the length is the room's
- * perimeter, and the m² quantity below is that length times the panel height.
- * Returns null for work types that have no linear reading.
+ * Height used by an item that multiplies the perimeter: its own override, else the project default
+ * for its type, else the catalogue fallback (projects saved before that default existed).
  */
-export function itemLengthM(item: WorkItem, perimeterM: number): number | null {
-  return item.type === 'panels' ? perimeterM : null;
+export function effectiveHeightM(item: WorkItem, project: Plan): number {
+  const def = workTypeDefinition(item.type);
+  if (!def?.height) return 0;
+  return finiteOr(item.heightM, projectHeightDefault(def, project));
 }
 
-/** Raw (pre-waste) quantity in m² for a work item. */
-export function itemQuantityM2(item: WorkItem, areaM2: number, perimeterM: number, project: Project): number {
-  switch (item.type) {
-    case 'tiling':
-      return areaM2;
-    case 'cladding':
-      return perimeterM * finiteOr(item.heightM, finiteOr(project.defaultCladdingHeightM, 0));
-    case 'panels':
-      return perimeterM * effectivePanelHeightM(item, project);
+/** Plan default waste % for AS tiling — falls back to the regular tiling default on older projects. */
+export function effectiveTilingAsWastePercent(project: Plan): number {
+  return finiteOr(project.defaultTilingAsWastePercent, projectWasteDefault(WORK_TYPE_DEFINITIONS.tiling, project));
+}
+
+/** Whether this item has openings taken off it: the type must allow it, then the item's own switch, else the type's default. */
+export function itemDeductsOpenings(item: WorkItem): boolean {
+  const def = workTypeDefinition(item.type);
+  if (!def || def.deductedOpeningTypes.length === 0) return false;
+  return item.deductOpenings ?? def.deductsOpenings;
+}
+
+/** Everything one work item works out to, before waste. All values are ≥ 0. */
+export interface WorkItemCalc {
+  /** m² before openings. */
+  grossM2: number;
+  /** m² taken off for openings; always `grossM2 - netM2`. */
+  deductedM2: number;
+  /** Net m² — what the report counts. */
+  netM2: number;
+  /** Perimeter-based work only (skirting): net running metres, before openings, and the door widths taken off. */
+  lengthM: number | null;
+  grossLengthM: number | null;
+  deductedLengthM: number | null;
+}
+
+/**
+ * The single calculation for a work item, driven by its type's definition in lib/workTypes.
+ * `areaM2`/`perimeterM` come from `roomMetrics` — 0 on an uncalibrated page, and so is everything here.
+ */
+export function calculateWorkItem(item: WorkItem, room: Room, areaM2: number, perimeterM: number, project: Plan): WorkItemCalc {
+  const def = workTypeDefinition(item.type);
+  const none: WorkItemCalc = { grossM2: 0, deductedM2: 0, netM2: 0, lengthM: null, grossLengthM: null, deductedLengthM: null };
+  if (!def) return none;
+
+  const heightM = nonNegative(effectiveHeightM(item, project));
+  const openings = itemDeductsOpenings(item)
+    ? (room.openings ?? []).filter((o) => def.deductedOpeningTypes.includes(o.type))
+    : [];
+
+  switch (def.basis) {
+    case 'floorArea':
+      return { ...none, grossM2: areaM2, netM2: areaM2 };
+    case 'floorAndUpturn': {
+      const total = areaM2 + perimeterM * heightM;
+      return { ...none, grossM2: total, netM2: total };
+    }
+    case 'wallArea': {
+      const grossM2 = perimeterM * heightM;
+      // An opening taller than the work (a 2.1 m door in 1.5 m cladding) only removes the part
+      // that the work actually covers.
+      const openingM2 = openings.reduce(
+        (sum, o) => sum + nonNegative(o.widthM) * Math.min(nonNegative(o.heightM), heightM) * nonNegative(o.quantity),
+        0
+      );
+      const netM2 = Math.max(0, grossM2 - openingM2);
+      return { ...none, grossM2, deductedM2: grossM2 - netM2, netM2 };
+    }
+    case 'perimeter': {
+      const doorWidthsM = openings.reduce((sum, o) => sum + nonNegative(o.widthM) * nonNegative(o.quantity), 0);
+      const lengthM = Math.max(0, perimeterM - doorWidthsM);
+      const grossM2 = perimeterM * heightM;
+      const netM2 = lengthM * heightM;
+      return {
+        grossM2,
+        deductedM2: grossM2 - netM2,
+        netM2,
+        lengthM,
+        grossLengthM: perimeterM,
+        deductedLengthM: perimeterM - lengthM,
+      };
+    }
     default:
-      return 0;
+      return none;
   }
 }
 
 /**
- * Project-level default waste % for an item — the single source of truth for every caller
+ * Plan-level default waste % for an item — the single source of truth for every caller
  * (room detail, report table, Excel and PDF exports all go through here or through the summaries
  * built with it), so regular and AS tiling never diverge by accident.
  */
-export function defaultWasteFor(item: WorkItem, project: Project): number {
-  switch (item.type) {
-    case 'tiling':
-      return item.tilingCategory === 'as'
-        ? effectiveTilingAsWastePercent(project)
-        : finiteOr(project.defaultTilingWastePercent, 0);
-    case 'cladding':
-      return finiteOr(project.defaultCladdingWastePercent, 0);
-    case 'panels':
-      return finiteOr(project.defaultPanelsWastePercent, 0);
-    default:
-      return 0;
-  }
+export function defaultWasteFor(item: WorkItem, project: Plan): number {
+  const def = workTypeDefinition(item.type);
+  if (!def) return 0;
+  if (item.type === 'tiling' && item.tilingCategory === 'as') return effectiveTilingAsWastePercent(project);
+  return projectWasteDefault(def, project);
 }
 
 /**
@@ -97,22 +152,32 @@ export function defaultWasteFor(item: WorkItem, project: Project): number {
  * project default. The single place this decision is made — room detail, report table and exports
  * all go through here or through the summaries built with it.
  */
-export function effectiveWastePercent(item: WorkItem, project: Project): number {
+export function effectiveWastePercent(item: WorkItem, project: Plan): number {
   return finiteOr(item.wastePercent, defaultWasteFor(item, project));
+}
+
+/** Report category an item is tallied under (tiling is split by category); null for an unknown type. */
+function reportCategoryOf(item: WorkItem): ReportCategory | null {
+  if (!workTypeDefinition(item.type)) return null;
+  if (item.type === 'tiling') return item.tilingCategory === 'as' ? 'tiling_as' : 'tiling_regular';
+  return item.type;
 }
 
 interface Bucket {
   areaM2: number;
+  /** Wall-based items only: m² before openings and m² taken off. */
+  grossM2: number;
+  deductedM2: number;
   wastePercent: number | null;
   orderM2: number;
 }
 
 function emptyBucket(): Bucket {
-  return { areaM2: 0, wastePercent: null, orderM2: 0 };
+  return { areaM2: 0, grossM2: 0, deductedM2: 0, wastePercent: null, orderM2: 0 };
 }
 
 /** Build one summary row per room, matching the contractor-facing quantities report layout. */
-export function buildRoomSummaries(project: Project): RoomQuantitySummary[] {
+export function buildRoomSummaries(project: Plan): RoomQuantitySummary[] {
   return project.rooms.map((room) => {
     const calibration = project.pages[room.pageNumber]?.calibration ?? null;
     const pageCalibrated = isPageCalibrated(project, room.pageNumber);
@@ -123,6 +188,9 @@ export function buildRoomSummaries(project: Project): RoomQuantitySummary[] {
       tiling_as: emptyBucket(),
       cladding: emptyBucket(),
       panels: emptyBucket(),
+      painting: emptyBucket(),
+      plaster: emptyBucket(),
+      waterproofing: emptyBucket(),
     };
 
     // Panels are tallied in running metres as well as m² — same geometry, second reading, and the
@@ -130,18 +198,21 @@ export function buildRoomSummaries(project: Project): RoomQuantitySummary[] {
     let panelsLengthM = 0;
     let panelsOrderLengthM = 0;
     for (const item of room.workItems) {
-      const qty = itemQuantityM2(item, areaM2, perimeterM, project);
+      const category = reportCategoryOf(item);
+      if (!category) continue;
+      const calc = calculateWorkItem(item, room, areaM2, perimeterM, project);
       const waste = effectiveWastePercent(item, project);
-      const lengthM = itemLengthM(item, perimeterM);
-      if (lengthM != null) {
-        panelsLengthM += lengthM;
-        panelsOrderLengthM += lengthM * (1 + waste / 100);
+      if (calc.lengthM != null) {
+        panelsLengthM += calc.lengthM;
+        panelsOrderLengthM += calc.lengthM * (1 + waste / 100);
       }
-      const category: ReportCategory =
-        item.type === 'tiling' ? (item.tilingCategory === 'as' ? 'tiling_as' : 'tiling_regular') : item.type;
       const bucket = buckets[category];
-      bucket.areaM2 += qty;
-      bucket.orderM2 += qty * (1 + waste / 100);
+      bucket.areaM2 += calc.netM2;
+      if (workTypeDefinition(item.type)?.basis === 'wallArea') {
+        bucket.grossM2 += calc.grossM2;
+        bucket.deductedM2 += calc.deductedM2;
+      }
+      bucket.orderM2 += calc.netM2 * (1 + waste / 100);
       if (bucket.wastePercent == null) bucket.wastePercent = waste;
     }
 
@@ -151,6 +222,13 @@ export function buildRoomSummaries(project: Project): RoomQuantitySummary[] {
     const toArea = (b: Bucket) => (b.wastePercent == null || !pageCalibrated ? null : round(b.areaM2, 2));
     const toWaste = (b: Bucket) => (b.wastePercent == null ? null : b.wastePercent);
     const toOrder = (b: Bucket) => (b.wastePercent == null || !pageCalibrated ? null : round(b.orderM2, 2));
+
+    const extra = Object.fromEntries(
+      EXTRA_REPORT_CATEGORIES.map((c) => [
+        c,
+        { areaM2: toArea(buckets[c]), wastePercent: toWaste(buckets[c]), orderM2: toOrder(buckets[c]) },
+      ])
+    ) as RoomQuantitySummary['extra'];
 
     return {
       roomId: room.id,
@@ -171,9 +249,28 @@ export function buildRoomSummaries(project: Project): RoomQuantitySummary[] {
       tilingAsOrderM2: toOrder(buckets.tiling_as),
       claddingOrderM2: toOrder(buckets.cladding),
       panelsOrderM2: toOrder(buckets.panels),
+      extra,
+      openingDeductions: pageCalibrated
+        ? (Object.keys(buckets) as ReportCategory[])
+            .filter((c) => buckets[c].deductedM2 > 0)
+            .map((c) => ({
+              category: c,
+              grossM2: round(buckets[c].grossM2, 2),
+              deductedM2: round(buckets[c].deductedM2, 2),
+              netM2: round(buckets[c].grossM2 - buckets[c].deductedM2, 2),
+            }))
+        : [],
       notes: room.notes,
     };
   });
+}
+
+/**
+ * The later work types that at least one room uses. Reports add columns only for these, so a
+ * project that never uses them exports exactly as it did before they existed.
+ */
+export function usedExtraCategories(summaries: RoomQuantitySummary[]): ExtraReportCategory[] {
+  return EXTRA_REPORT_CATEGORIES.filter((c) => summaries.some((s) => s.extra[c].wastePercent != null));
 }
 
 /** Groups room summaries by apartment number, preserving first-seen order (matches the Excel export's blocks). */
@@ -191,13 +288,16 @@ export function groupSummariesByApartment(summaries: RoomQuantitySummary[]): { a
   return order.map((key) => ({ apartment: key, rooms: groups.get(key)! }));
 }
 
-/** Totals across all rooms for the 4 report categories. */
-export function buildReportCategoryTotals(project: Project, summaries: RoomQuantitySummary[]): ReportCategoryTotal[] {
+/** Totals across all rooms: the original 4 report categories always, the later ones only when used. */
+export function buildReportCategoryTotals(project: Plan, summaries: RoomQuantitySummary[]): ReportCategoryTotal[] {
   const totals: Record<ReportCategory, { quantityM2: number; orderM2: number }> = {
     tiling_regular: { quantityM2: 0, orderM2: 0 },
     tiling_as: { quantityM2: 0, orderM2: 0 },
     cladding: { quantityM2: 0, orderM2: 0 },
     panels: { quantityM2: 0, orderM2: 0 },
+    painting: { quantityM2: 0, orderM2: 0 },
+    plaster: { quantityM2: 0, orderM2: 0 },
+    waterproofing: { quantityM2: 0, orderM2: 0 },
   };
 
   let panelsLengthM = 0;
@@ -221,16 +321,27 @@ export function buildReportCategoryTotals(project: Project, summaries: RoomQuant
       totals.panels.quantityM2 += s.panelsAreaM2;
       totals.panels.orderM2 += s.panelsOrderM2 ?? 0;
     }
+    for (const c of EXTRA_REPORT_CATEGORIES) {
+      const q = s.extra[c];
+      if (q.areaM2 != null) {
+        totals[c].quantityM2 += q.areaM2;
+        totals[c].orderM2 += q.orderM2 ?? 0;
+      }
+    }
   }
 
   const defaultWaste: Record<ReportCategory, number> = {
-    tiling_regular: project.defaultTilingWastePercent,
+    tiling_regular: projectWasteDefault(WORK_TYPE_DEFINITIONS.tiling, project),
     tiling_as: effectiveTilingAsWastePercent(project),
-    cladding: project.defaultCladdingWastePercent,
-    panels: project.defaultPanelsWastePercent,
+    cladding: projectWasteDefault(WORK_TYPE_DEFINITIONS.cladding, project),
+    panels: projectWasteDefault(WORK_TYPE_DEFINITIONS.panels, project),
+    painting: projectWasteDefault(WORK_TYPE_DEFINITIONS.painting, project),
+    plaster: projectWasteDefault(WORK_TYPE_DEFINITIONS.plaster, project),
+    waterproofing: projectWasteDefault(WORK_TYPE_DEFINITIONS.waterproofing, project),
   };
 
-  return (Object.keys(totals) as ReportCategory[]).map((category) => ({
+  const categories: ReportCategory[] = ['tiling_regular', 'tiling_as', 'cladding', 'panels', ...usedExtraCategories(summaries)];
+  return categories.map((category) => ({
     category,
     quantityM2: round(totals[category].quantityM2, 2),
     wastePercent: defaultWaste[category],
@@ -240,5 +351,3 @@ export function buildReportCategoryTotals(project: Project, summaries: RoomQuant
     orderLengthM: category === 'panels' ? round(panelsOrderLengthM, 2) : null,
   }));
 }
-
-export { WORK_TYPE_LABELS, WORK_TYPE_UNITS, REPORT_CATEGORY_LABELS };

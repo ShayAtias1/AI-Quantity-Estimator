@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
-import type { ExportRegion, Project } from '../types';
+import type { ExportRegion, Plan } from '../types';
 import { DEFAULT_AREA_KIND_COLORS } from '../types';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
@@ -17,7 +17,7 @@ const FONT = "'Segoe UI', sans-serif";
  * coordinates; pass null for the whole page.
  */
 async function renderRegionCanvas(
-  project: Project,
+  project: Plan,
   pageNumber: number,
   region: ExportRegion | null,
   showMarkings: boolean,
@@ -117,7 +117,7 @@ async function savePdf(pdfDoc: PDFDocument, fileName: string) {
  * to crop to it, or null to export the whole page.
  */
 export async function exportPlanPageToPdf(
-  project: Project,
+  project: Plan,
   pageNumber: number,
   region: ExportRegion | null,
   showMarkings: boolean,
@@ -137,7 +137,7 @@ export async function exportPlanPageToPdf(
  * pick a region and export page by page.
  */
 export async function exportAllPlanPagesToPdf(
-  project: Project,
+  project: Plan,
   numPages: number,
   exportRegions: Record<number, ExportRegion>,
   showMarkings: boolean,

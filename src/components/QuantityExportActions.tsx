@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import Icon from './Icon';
 import { useAppStore } from '../store/appStore';
+import { planForReport } from '../lib/reportTitle';
 import { buildReportCategoryTotals, buildRoomSummaries } from '../lib/quantities';
 import { exportQuantitiesToExcel } from '../lib/exportExcel';
 import { exportQuantitiesToPdf, getExportablePageNumbers } from '../lib/exportQuantitiesPdf';
@@ -15,6 +16,7 @@ import { exportQuantitiesToPdf, getExportablePageNumbers } from '../lib/exportQu
  */
 export default function QuantityExportActions({ variant, onPicked }: { variant: 'menu' | 'buttons'; onPicked?: () => void }) {
   const project = useAppStore((s) => s.project);
+  const projectName = useAppStore((s) => s.currentProject?.name);
   const currentPage = useAppStore((s) => s.currentPage);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
   const measurementsVisible = useAppStore((s) => s.measurementsVisible);
@@ -41,7 +43,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       const filteredAreaMeasurements = (project.measurements ?? []).filter(
         (m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number' && pageSet.has(m.pageNumber)
       );
-      await exportQuantitiesToExcel(project, filteredSummaries, filteredTotals, filteredAreaMeasurements);
+      await exportQuantitiesToExcel(planForReport(project, projectName), filteredSummaries, filteredTotals, filteredAreaMeasurements);
     } finally {
       setExportingExcel(false);
     }
@@ -63,7 +65,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       const pageSet = new Set(pageNumbers);
       const filteredSummaries = summaries.filter((s) => pageSet.has(roomPageById.get(s.roomId) ?? -1));
       const filteredTotals = buildReportCategoryTotals(project, filteredSummaries);
-      await exportQuantitiesToPdf(project, filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible);
+      await exportQuantitiesToPdf(planForReport(project, projectName), filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible);
     } finally {
       setExportingPdf(false);
     }

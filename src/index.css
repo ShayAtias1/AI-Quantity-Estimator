@@ -356,6 +356,64 @@ button:disabled,
   flex: none;
 }
 
+/* Project overview: plans, then the project-wide summary, as two home panels. */
+.project-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.plan-list {
+  margin-top: 0;
+  max-width: none;
+}
+.plan-status {
+  flex: none;
+  font: var(--t-label);
+  font-weight: 500;
+  padding: 2px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-subtle);
+  color: var(--muted);
+}
+.plan-status-ready {
+  color: var(--accent);
+}
+.plan-status-uncalibrated,
+.plan-status-partial {
+  color: #b45309;
+}
+.project-summary-table {
+  margin-top: var(--s-3);
+}
+.project-summary-row {
+  cursor: pointer;
+}
+.project-summary-row td:first-child {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-weight: 600;
+  color: var(--text-h);
+}
+.project-summary-plan td {
+  color: var(--muted);
+}
+.project-summary-plan td:first-child {
+  padding-inline-start: calc(var(--s-3) + 18px);
+}
+.project-summary-empty {
+  margin: var(--s-3) 0 0;
+}
+.breadcrumb-project {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.template-apply {
+  margin-bottom: var(--s-3);
+}
+
 /* Saved work: the compact row language used by the lists inside the workspaces. */
 .saved-list {
   list-style: none;
@@ -1546,6 +1604,70 @@ button:disabled,
   width: 72px;
   padding: 3px 6px;
   font: var(--t-meta);
+}
+/* Gross − openings = net, spelled out under the result so a deducted figure reads as one. */
+.wi-deduction {
+  margin: calc(-1 * var(--s-1)) 0 var(--s-2);
+  font: var(--t-label);
+  color: var(--muted);
+}
+.wi-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-1);
+  font: var(--t-label);
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+.wi-check input {
+  width: auto;
+}
+
+/* Openings: one compact row each — type, width, height, count, area. */
+.openings {
+  margin-bottom: var(--s-3);
+}
+.opening-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.opening-list li {
+  /* A grid whose input columns may shrink, so the row always fits the sidebar and the delete
+     button stays inside the card instead of being pushed past its edge. */
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)) auto auto;
+  align-items: end;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  background: var(--bg-subtle);
+}
+.opening-list select,
+.opening-list input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 3px 4px;
+  font: var(--t-meta);
+}
+.opening-list label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font: var(--t-label);
+  color: var(--muted);
+}
+.opening-area {
+  font: var(--t-meta);
+  color: var(--text-h);
+  white-space: nowrap;
+  padding-bottom: 4px;
 }
 
 /* ---------- bottom quantities panel ----------

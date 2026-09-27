@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
-import { buildReportCategoryTotals, buildRoomSummaries } from '../lib/quantities';
-import { NOT_CALIBRATED_LABEL, PANEL_HEIGHT_M, REPORT_CATEGORY_LABELS } from '../types';
+import { buildReportCategoryTotals, buildRoomSummaries, usedExtraCategories } from '../lib/quantities';
+import { projectWasteDefault, WORK_TYPE_DEFINITIONS } from '../lib/workTypes';
+import { EXTRA_REPORT_CATEGORIES, NOT_CALIBRATED_LABEL, PANEL_HEIGHT_M, REPORT_CATEGORY_LABELS } from '../types';
 import Icon from './Icon';
 
 const DASH = '—';
@@ -19,6 +20,8 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
 
   const summaries = useMemo(() => (project ? buildRoomSummaries(project) : []), [project]);
   const totals = useMemo(() => (project ? buildReportCategoryTotals(project, summaries) : []), [project, summaries]);
+  // Painting / plaster / waterproofing get columns only once a room uses them.
+  const extras = useMemo(() => usedExtraCategories(summaries), [summaries]);
 
   if (!project) return null;
 
@@ -98,6 +101,32 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
               onChange={(e) => updateProjectMeta({ defaultPanelsWastePercent: parseFloat(e.target.value) || 0 })}
             />
           </div>
+          <div className="form-row inline">
+            <label>גובה קיר לצבע/טיח (מ')</label>
+            <input
+              type="number"
+              step="0.05"
+              min="0"
+              value={project.wallHeightDefaultM}
+              onChange={(e) => updateProjectMeta({ wallHeightDefaultM: parseFloat(e.target.value) || 0 })}
+            />
+          </div>
+          {EXTRA_REPORT_CATEGORIES.map((c) => {
+            const def = WORK_TYPE_DEFINITIONS[c];
+            return (
+              <div className="form-row inline" key={c}>
+                <label>פחת {def.label} (%)</label>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={projectWasteDefault(def, project)}
+                  onChange={(e) => updateProjectMeta({ [def.wasteDefaultField]: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -128,6 +157,11 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                   <th colSpan={5} className="group-edge">
                     להזמנה (כולל פחת)
                   </th>
+                  {extras.map((c) => (
+                    <th key={c} colSpan={3} className="group-edge">
+                      {REPORT_CATEGORY_LABELS[c]}
+                    </th>
+                  ))}
                   <th className="group-edge" />
                 </tr>
                 <tr className="qty-col-row">
@@ -147,6 +181,11 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                   <th className="num">חיפוי</th>
                   <th className="num">אורך פנלים (מ"א)</th>
                   <th className="num">פנלים</th>
+                  {extras.map((c) => [
+                    <th key={`${c}-net`} className="num group-edge">נטו</th>,
+                    <th key={`${c}-waste`} className="num">%</th>,
+                    <th key={`${c}-order`} className="num">להזמנה</th>,
+                  ])}
                   <th className="group-edge">הערות</th>
                 </tr>
               </thead>
@@ -176,6 +215,14 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                       <td className="num order">{order(s.claddingOrderM2)}</td>
                       <td className="num order">{order(s.panelsOrderLengthM)}</td>
                       <td className="num order">{order(s.panelsOrderM2)}</td>
+                      {extras.map((c) => {
+                        const q = s.extra[c];
+                        return [
+                          <td key={`${c}-net`} className="num group-edge">{qty(q.areaM2)}</td>,
+                          <td key={`${c}-waste`} className="num">{q.wastePercent != null ? `${q.wastePercent}%` : DASH}</td>,
+                          <td key={`${c}-order`} className="num order">{order(q.orderM2)}</td>,
+                        ];
+                      })}
                       <td className="group-edge">{s.notes || DASH}</td>
                     </tr>
                   );

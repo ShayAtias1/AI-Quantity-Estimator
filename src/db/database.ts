@@ -1,18 +1,27 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { v4 as uuid } from 'uuid';
-import type { Project } from '../types';
+import type { Plan, Project } from '../types';
 import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Comparison, ComparisonPage, RevisionLayer } from '../types/compare';
 import { migrateComparePageOwnership } from '../lib/compareMigration';
 
 interface QtoDB extends DBSchema {
+  /**
+   * Plans. The store keeps its historical name: before projects existed every saved takeoff was a
+   * single plan document stored here, and keeping the name means no record ever has to move.
+   */
   projects: {
     key: string;
-    value: Project;
+    value: Plan;
   };
   pdfFiles: {
-    key: string; // projectId
+    key: string; // planId
     value: Blob;
+  };
+  /** Project folders (`Project`): a name plus the ordered ids of their plans. */
+  takeoffProjects: {
+    key: string;
+    value: Project;
   };
   comparisons: {
     key: string;
@@ -25,7 +34,7 @@ interface QtoDB extends DBSchema {
 }
 
 const DB_NAME = 'bettercalc-qto';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<QtoDB>> | null = null;
 
@@ -45,42 +54,150 @@ function getDb(): Promise<IDBPDatabase<QtoDB>> {
         if (!db.objectStoreNames.contains('comparePdfFiles')) {
           db.createObjectStore('comparePdfFiles');
         }
+        // v3: project folders. Existing plans are wrapped into them lazily (migrateLegacyPlans).
+        if (!db.objectStoreNames.contains('takeoffProjects')) {
+          db.createObjectStore('takeoffProjects', { keyPath: 'id' });
+        }
       },
     });
   }
   return dbPromise;
 }
 
-export async function saveProject(project: Project): Promise<void> {
+// ---------- plans ----------
+
+export async function savePlan(plan: Plan): Promise<void> {
   const db = await getDb();
-  await db.put('projects', project);
+  await db.put('projects', plan);
 }
 
-export async function savePdfBlob(projectId: string, blob: Blob): Promise<void> {
+export async function savePdfBlob(planId: string, blob: Blob): Promise<void> {
   const db = await getDb();
-  await db.put('pdfFiles', blob, projectId);
+  await db.put('pdfFiles', blob, planId);
 }
 
-export async function loadPdfBlob(projectId: string): Promise<Blob | undefined> {
+export async function loadPdfBlob(planId: string): Promise<Blob | undefined> {
   const db = await getDb();
-  return db.get('pdfFiles', projectId);
+  return db.get('pdfFiles', planId);
 }
 
-export async function listProjects(): Promise<Project[]> {
-  const db = await getDb();
-  const all = await db.getAll('projects');
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
-}
-
-export async function loadProject(id: string): Promise<Project | undefined> {
+export async function loadPlan(id: string): Promise<Plan | undefined> {
   const db = await getDb();
   return db.get('projects', id);
 }
 
-export async function deleteProject(id: string): Promise<void> {
+/** Deletes a plan with its PDF and takes it out of its project's plan list. */
+export async function deletePlan(planId: string): Promise<void> {
   const db = await getDb();
-  await db.delete('projects', id);
-  await db.delete('pdfFiles', id);
+  const tx = db.transaction(['projects', 'pdfFiles', 'takeoffProjects'], 'readwrite');
+  const plan = await tx.objectStore('projects').get(planId);
+  if (plan?.projectId) {
+    const project = await tx.objectStore('takeoffProjects').get(plan.projectId);
+    if (project) {
+      await tx.objectStore('takeoffProjects').put({
+        ...project,
+        planIds: project.planIds.filter((id) => id !== planId),
+        updatedAt: Date.now(),
+      });
+    }
+  }
+  await tx.objectStore('projects').delete(planId);
+  await tx.objectStore('pdfFiles').delete(planId);
+  await tx.done;
+}
+
+// ---------- projects ----------
+
+export interface ProjectWithPlans {
+  project: Project;
+  /** In the project's display order. */
+  plans: Plan[];
+}
+
+export async function saveProject(project: Project): Promise<void> {
+  const db = await getDb();
+  await db.put('takeoffProjects', project);
+}
+
+/** "קומה-3.pdf" → "קומה-3"; the name an old single-plan record's plan gets when it is wrapped. */
+function planNameFromFile(pdfFileName: string): string {
+  return pdfFileName.replace(/\.pdf$/i, '').trim() || 'תוכנית 1';
+}
+
+/**
+ * The one migration from the single-plan era. A saved plan with no project (every record saved
+ * before projects existed), or whose project record is missing, is wrapped into a project:
+ * the project takes the record's old name, the plan is renamed after its PDF file, and nothing
+ * else in the record — rooms, calibration, PDF blob key — is touched.
+ *
+ * Idempotent: the wrapping project's id is derived from the plan id, so a run interrupted between
+ * the two writes simply completes on the next load instead of creating a second project.
+ * Also self-heals a project's `planIds` if a plan points at it without being listed.
+ */
+async function migrateLegacyPlans(db: IDBPDatabase<QtoDB>): Promise<void> {
+  const [projects, plans] = await Promise.all([db.getAll('takeoffProjects'), db.getAll('projects')]);
+  const byId = new Map(projects.map((p) => [p.id, p]));
+  const changedProjects = new Set<string>();
+  const changedPlans: Plan[] = [];
+
+  for (const plan of plans) {
+    const projectId = plan.projectId ?? `legacy-${plan.id}`;
+    let project = byId.get(projectId);
+    if (!project) {
+      project = { id: projectId, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, planIds: [] };
+      byId.set(projectId, project);
+      changedProjects.add(projectId);
+    }
+    if (!project.planIds.includes(plan.id)) {
+      project.planIds = [...project.planIds, plan.id];
+      changedProjects.add(projectId);
+    }
+    if (!plan.projectId) changedPlans.push({ ...plan, projectId, name: planNameFromFile(plan.pdfFileName) });
+  }
+
+  if (changedProjects.size === 0 && changedPlans.length === 0) return;
+  const tx = db.transaction(['takeoffProjects', 'projects'], 'readwrite');
+  for (const id of changedProjects) await tx.objectStore('takeoffProjects').put(byId.get(id)!);
+  for (const plan of changedPlans) await tx.objectStore('projects').put(plan);
+  await tx.done;
+}
+
+function withOrderedPlans(project: Project, allPlans: Plan[]): ProjectWithPlans {
+  const own = allPlans.filter((p) => p.projectId === project.id);
+  const order = new Map(project.planIds.map((id, i) => [id, i]));
+  // Listed plans in list order; anything unlisted (should not happen after migration) after them.
+  own.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.createdAt - b.createdAt);
+  return { project, plans: own };
+}
+
+/** Every project with its plans, most recently worked-on first. Runs the legacy migration first. */
+export async function listProjects(): Promise<ProjectWithPlans[]> {
+  const db = await getDb();
+  await migrateLegacyPlans(db);
+  const [projects, plans] = await Promise.all([db.getAll('takeoffProjects'), db.getAll('projects')]);
+  const lastTouched = (x: ProjectWithPlans) => Math.max(x.project.updatedAt, ...x.plans.map((p) => p.updatedAt));
+  return projects.map((p) => withOrderedPlans(p, plans)).sort((a, b) => lastTouched(b) - lastTouched(a));
+}
+
+export async function loadProjectWithPlans(projectId: string): Promise<ProjectWithPlans | undefined> {
+  const db = await getDb();
+  await migrateLegacyPlans(db);
+  const project = await db.get('takeoffProjects', projectId);
+  if (!project) return undefined;
+  return withOrderedPlans(project, await db.getAll('projects'));
+}
+
+/** Deletes a project together with every one of its plans and their PDFs. */
+export async function deleteProject(projectId: string): Promise<void> {
+  const db = await getDb();
+  const plans = (await db.getAll('projects')).filter((p) => p.projectId === projectId);
+  const tx = db.transaction(['projects', 'pdfFiles', 'takeoffProjects'], 'readwrite');
+  for (const plan of plans) {
+    await tx.objectStore('projects').delete(plan.id);
+    await tx.objectStore('pdfFiles').delete(plan.id);
+  }
+  await tx.objectStore('takeoffProjects').delete(projectId);
+  await tx.done;
 }
 
 /**

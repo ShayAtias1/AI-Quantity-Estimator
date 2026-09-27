@@ -1,10 +1,10 @@
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
-import type { Project, ReportCategoryTotal, RoomQuantitySummary } from '../types';
+import type { Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
 import { DEFAULT_AREA_KIND_COLORS, REPORT_CATEGORY_LABELS } from '../types';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
-import { groupSummariesByApartment } from './quantities';
+import { groupSummariesByApartment, usedExtraCategories } from './quantities';
 import { polygonCentroid } from './geometry';
 import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
@@ -48,9 +48,10 @@ const DATA_HEADERS = [
 ];
 /**
  * Builds a summary row whose cells land under the matching data columns. Kept as one helper so the
- * totals stay aligned with DATA_HEADERS whenever a column is added.
+ * totals stay aligned with the headers whenever a column is added — the later work-type columns
+ * are inserted before notes, so these indices never move.
  */
-function totalsRow(cells: {
+function totalsRow(columnCount: number, cells: {
   label: string;
   length?: string;
   net?: string;
@@ -58,7 +59,7 @@ function totalsRow(cells: {
   order?: string;
   orderLength?: string;
 }): string[] {
-  const row = new Array<string>(DATA_HEADERS.length).fill('');
+  const row = new Array<string>(columnCount).fill('');
   row[0] = cells.label;
   row[2] = cells.net ?? '';
   row[5] = cells.length ?? '';
@@ -72,7 +73,7 @@ const DATA_WEIGHTS = [8, 18, 13, 12, 12, 12, 11, 10, 10, 10, 10, 12, 12, 11, 13,
 
 /** Renders one PDF-source page (the plan itself) with its rooms overlaid, as a standalone framed image. */
 async function renderFramedPlanPage(
-  project: Project,
+  project: Plan,
   pageNumber: number,
   mult: number,
   showMarkings: boolean,
@@ -171,15 +172,29 @@ async function renderFramedPlanPage(
 }
 
 /** Builds the printable quantities-table pages (one canvas per page) as PNG data URLs. */
-function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummary[], totals: ReportCategoryTotal[]): { dataUrl: string; width: number; height: number }[] {
+function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[], totals: ReportCategoryTotal[]): { dataUrl: string; width: number; height: number }[] {
   const PAGE_W = 1600;
   const PAGE_H = 1132;
   const MARGIN = 40;
   const HEADER_ROW_H = 40;
   const ROW_H = 32;
   const usableWidth = PAGE_W - MARGIN * 2;
-  const totalWeight = DATA_WEIGHTS.reduce((a, b) => a + b, 0);
-  const colWidths = DATA_WEIGHTS.map((w) => (usableWidth * w) / totalWeight);
+  // Painting / plaster / waterproofing columns (net · waste · order) only when the project uses them,
+  // inserted before notes so a project without them prints exactly the original table.
+  const extras = usedExtraCategories(summaries);
+  const notesIndex = DATA_HEADERS.length - 1;
+  const headers = [
+    ...DATA_HEADERS.slice(0, notesIndex),
+    ...extras.flatMap((c) => {
+      const label = REPORT_CATEGORY_LABELS[c];
+      return [`${label} נטו`, `פחת ${label} %`, `${label} להזמנה`];
+    }),
+    DATA_HEADERS[notesIndex],
+  ];
+  const weights = [...DATA_WEIGHTS.slice(0, notesIndex), ...extras.flatMap(() => [11, 9, 11]), DATA_WEIGHTS[notesIndex]];
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const colWidths = weights.map((w) => (usableWidth * w) / totalWeight);
+  const tRow = (cells: Parameters<typeof totalsRow>[1]) => totalsRow(headers.length, cells);
 
   const pages: { dataUrl: string; width: number; height: number }[] = [];
   let ctx: CanvasRenderingContext2D;
@@ -210,7 +225,7 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
     ctx.font = `bold 12.5px ${FONT}`;
     ctx.textAlign = 'center';
     let x = PAGE_W - MARGIN;
-    DATA_HEADERS.forEach((label, i) => {
+    headers.forEach((label, i) => {
       const w = colWidths[i];
       ctx.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, w - 6);
       x -= w;
@@ -280,6 +295,10 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
           qty(s, s.claddingOrderM2),
           qty(s, s.panelsOrderLengthM),
           qty(s, s.panelsOrderM2),
+          ...extras.flatMap((c) => {
+            const q = s.extra[c];
+            return [qty(s, q.areaM2), pct(q.wastePercent), qty(s, q.orderM2)];
+          }),
           s.notes || DASH,
         ],
         bg
@@ -297,12 +316,19 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
         len: group.rooms.reduce((a, s) => a + (s.panelsLengthM ?? 0), 0),
         ordLen: group.rooms.reduce((a, s) => a + (s.panelsOrderLengthM ?? 0), 0),
       },
+      ...extras.map((c) => ({
+        label: REPORT_CATEGORY_LABELS[c],
+        net: group.rooms.reduce((a, s) => a + (s.extra[c].areaM2 ?? 0), 0),
+        ord: group.rooms.reduce((a, s) => a + (s.extra[c].orderM2 ?? 0), 0),
+        len: null as number | null,
+        ordLen: null as number | null,
+      })),
     ];
     ensureRoom(2 + cats.length);
     y += ROW_H * 0.3;
-    drawRow(totalsRow({ label: `סה"כ דירה ${group.apartment || DASH}` }), C_TOTAL, { bold: true });
+    drawRow(tRow({ label: `סה"כ דירה ${group.apartment || DASH}` }), C_TOTAL, { bold: true });
     drawRow(
-      totalsRow({
+      tRow({
         label: 'פריט',
         length: 'אורך (מ"א)',
         net: 'כמות נטו (מ"ר)',
@@ -314,7 +340,7 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
     );
     for (const cat of cats) {
       drawRow(
-        totalsRow({
+        tRow({
           label: cat.label,
           length: cat.len == null ? '' : `${Math.round(cat.len * 100) / 100}`,
           net: `${Math.round(cat.net * 100) / 100}`,
@@ -329,9 +355,9 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
 
   // Grand-totals block.
   ensureRoom(2 + totals.length);
-  drawRow(totalsRow({ label: 'סה"כ כללי לפרויקט' }), C_GRAND, { bold: true });
+  drawRow(tRow({ label: 'סה"כ כללי לפרויקט' }), C_GRAND, { bold: true });
   drawRow(
-    totalsRow({
+    tRow({
       label: 'פריט',
       length: 'אורך (מ"א)',
       net: 'כמות נטו (מ"ר)',
@@ -344,7 +370,7 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
   );
   for (const t of totals) {
     drawRow(
-      totalsRow({
+      tRow({
         label: REPORT_CATEGORY_LABELS[t.category],
         length: t.lengthM == null ? '' : `${t.lengthM}`,
         net: `${t.quantityM2}`,
@@ -356,12 +382,34 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
     );
   }
 
+  // Gross − openings = net for wall-based work, only for rooms where openings were deducted — a
+  // project without openings prints no such block at all.
+  const deductions = summaries.flatMap((s) => s.openingDeductions.map((d) => ({ s, d })));
+  if (deductions.length > 0) {
+    const deductionRow = (cells: string[]) => {
+      const row = new Array<string>(headers.length).fill('');
+      cells.forEach((c, i) => (row[i] = c));
+      return row;
+    };
+    ensureRoom(3);
+    y += ROW_H * 0.3;
+    drawRow(deductionRow(['ניכוי פתחים']), C_TOTAL, { bold: true });
+    drawRow(deductionRow(['דירה', 'חדר', 'סוג עבודה', 'ברוטו (מ"ר)', 'ניכוי פתחים (מ"ר)', 'נטו (מ"ר)']), C_TOTAL_HDR, { bold: true });
+    deductions.forEach(({ s, d }, i) => {
+      ensureRoom(1);
+      drawRow(
+        deductionRow([s.apartmentNumber || DASH, s.roomName, REPORT_CATEGORY_LABELS[d.category], `${d.grossM2}`, `${d.deductedM2}`, `${d.netM2}`]),
+        i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B
+      );
+    });
+  }
+
   // Say plainly that rooms which could not be calculated are missing from those totals.
   const uncalibratedCount = summaries.filter((s) => !s.pageCalibrated).length;
   if (uncalibratedCount > 0) {
     ensureRoom(1);
     drawRow(
-      totalsRow({ label: `שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל` }),
+      tRow({ label: `שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל` }),
       C_TOTAL_HDR,
       { bold: true, color: '#92400e' }
     );
@@ -372,7 +420,7 @@ function buildQuantityTablePages(project: Project, summaries: RoomQuantitySummar
 }
 
 /** Page numbers with any exportable content (rooms, markups, or measurements), sorted ascending. */
-export function getExportablePageNumbers(project: Project): number[] {
+export function getExportablePageNumbers(project: Plan): number[] {
   return Array.from(
     new Set([
       ...project.rooms.map((r) => r.pageNumber),
@@ -383,7 +431,7 @@ export function getExportablePageNumbers(project: Project): number[] {
 }
 
 export async function exportQuantitiesToPdf(
-  project: Project,
+  project: Plan,
   summaries: RoomQuantitySummary[],
   totals: ReportCategoryTotal[],
   showRoomMarkings: boolean = true,

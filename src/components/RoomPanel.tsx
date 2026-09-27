@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store/appStore';
-import type { Project, TilingCategory, WorkType } from '../types';
+import type { Opening, OpeningType, Plan, TilingCategory, WorkType } from '../types';
 import {
+  AREA_UNIT,
   NOT_CALIBRATED_LABEL as NOT_CALIBRATED,
+  OPENING_TYPE_LABELS,
   PANEL_LENGTH_UNIT,
   TILING_CATEGORY_LABELS,
-  WORK_TYPE_LABELS,
-  WORK_TYPE_UNITS,
 } from '../types';
 import {
-  effectivePanelHeightM,
+  calculateWorkItem,
+  effectiveHeightM,
   effectiveWastePercent,
   isPageCalibrated,
-  itemLengthM,
-  itemQuantityM2,
+  itemDeductsOpenings,
+  openingAreaM2,
   roomMetrics,
 } from '../lib/quantities';
+import { WORK_TYPE_DEFINITIONS, WORK_TYPE_ORDER, workTypeDefinition } from '../lib/workTypes';
 import { ROOM_PROFILES, roomProfileLabel } from '../lib/roomProfiles';
 import {
   apartmentDuplicationWarnings,
@@ -26,7 +28,7 @@ import { round } from '../lib/geometry';
 import AutoDetectPanel, { DetectionReviewPanel } from './AutoDetectPanel';
 import Icon from './Icon';
 
-const WORK_TYPES: WorkType[] = ['tiling', 'cladding', 'panels'];
+const OPENING_TYPES: OpeningType[] = ['door', 'window', 'custom'];
 
 /**
  * Auto room detection is experimental and hidden from users for now. This flag gates only its entry
@@ -45,11 +47,17 @@ export default function RoomPanel() {
   const setToolMode = useAppStore((s) => s.setToolMode);
   const updateRoom = useAppStore((s) => s.updateRoom);
   const setRoomType = useAppStore((s) => s.setRoomType);
+  const applyRoomTemplate = useAppStore((s) => s.applyRoomTemplate);
+  const newRoomTemplate = useAppStore((s) => s.newRoomTemplate);
+  const setNewRoomTemplate = useAppStore((s) => s.setNewRoomTemplate);
   const duplicateRoom = useAppStore((s) => s.duplicateRoom);
   const deleteRoom = useAppStore((s) => s.deleteRoom);
   const addWorkItem = useAppStore((s) => s.addWorkItem);
   const updateWorkItem = useAppStore((s) => s.updateWorkItem);
   const removeWorkItem = useAppStore((s) => s.removeWorkItem);
+  const addOpening = useAppStore((s) => s.addOpening);
+  const updateOpening = useAppStore((s) => s.updateOpening);
+  const removeOpening = useAppStore((s) => s.removeOpening);
   const activeApartmentNumber = useAppStore((s) => s.activeApartmentNumber);
   const setActiveApartmentNumber = useAppStore((s) => s.setActiveApartmentNumber);
   const [apartmentDialogSource, setApartmentDialogSource] = useState<string | null>(null);
@@ -124,9 +132,13 @@ export default function RoomPanel() {
           calibration={project.pages[detailRoom.pageNumber]?.calibration ?? null}
           onUpdate={(patch) => updateRoom(detailRoom.id, patch)}
           onRoomTypeChange={(key) => setRoomType(detailRoom.id, key)}
+          onApplyTemplate={() => applyRoomTemplate(detailRoom.id)}
           onAddWorkItem={(type) => addWorkItem(detailRoom.id, type)}
           onUpdateWorkItem={(itemId, patch) => updateWorkItem(detailRoom.id, itemId, patch)}
           onRemoveWorkItem={(itemId) => removeWorkItem(detailRoom.id, itemId)}
+          onAddOpening={(type) => addOpening(detailRoom.id, type)}
+          onUpdateOpening={(openingId, patch) => updateOpening(detailRoom.id, openingId, patch)}
+          onRemoveOpening={(openingId) => removeOpening(detailRoom.id, openingId)}
         />
       </div>
     );
@@ -169,6 +181,25 @@ export default function RoomPanel() {
             <Icon name="scan" />
           </button>
         )}
+      </div>
+
+      {/* The template new rooms start from — work types included. A starting point only: every
+          room stays fully editable afterwards. */}
+      <div className="active-apartment-row">
+        <label htmlFor="new-room-template">תבנית לחדר חדש</label>
+        <select
+          id="new-room-template"
+          value={newRoomTemplate ?? ''}
+          title="חדרים שתסמן יקבלו את סוג החדר ואת סוגי העבודה של התבנית"
+          onChange={(e) => setNewRoomTemplate(e.target.value || null)}
+        >
+          <option value="">ללא תבנית</option>
+          {ROOM_PROFILES.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.displayName}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Workspace state, not a form field: this is the apartment being worked in, and the sentence
@@ -299,19 +330,27 @@ function RoomDetail({
   calibration,
   onUpdate,
   onRoomTypeChange,
+  onApplyTemplate,
   onAddWorkItem,
   onUpdateWorkItem,
   onRemoveWorkItem,
+  onAddOpening,
+  onUpdateOpening,
+  onRemoveOpening,
 }: {
   room: import('../types').Room;
   /** The whole project, so quantities and default waste come from the shared helpers in lib/quantities. */
-  project: Project;
+  project: Plan;
   calibration: import('../types').Calibration | null;
   onUpdate: (patch: Partial<import('../types').Room>) => void;
   onRoomTypeChange: (roomType: string | null) => 'created' | 'kept' | 'none';
+  onApplyTemplate: () => void;
   onAddWorkItem: (type: WorkType) => void;
   onUpdateWorkItem: (itemId: string, patch: Partial<import('../types').WorkItem>) => void;
   onRemoveWorkItem: (itemId: string) => void;
+  onAddOpening: (type: OpeningType) => void;
+  onUpdateOpening: (openingId: string, patch: Partial<Opening>) => void;
+  onRemoveOpening: (openingId: string) => void;
 }) {
   const { areaM2, perimeterM } = roomMetrics(room, calibration);
   // Same test the quantity code uses, so the warning and the numbers can never disagree.
@@ -321,7 +360,7 @@ function RoomDetail({
 
   const onSetRoomType = (key: string | null) => {
     const outcome = onRoomTypeChange(key);
-    setTypeNotice(outcome === 'kept' ? 'סוג החדר עודכן. פריטי העבודה הקיימים לא שונו.' : null);
+    setTypeNotice(outcome === 'kept' ? 'התבנית עודכנה. סוגי העבודה הקיימים לא שונו.' : null);
   };
 
   return (
@@ -363,7 +402,7 @@ function RoomDetail({
       </div>
       {/* Type is a classification, not the name: picking one never rewrites the name above. */}
       <div className="form-row">
-        <label>סוג חדר</label>
+        <label>תבנית / סוג חדר</label>
         <select value={room.roomType ?? ''} onChange={(e) => onSetRoomType(e.target.value || null)}>
           <option value="">ללא סיווג / מותאם אישית</option>
           {/* A saved type that is not in the catalogue keeps its own option, so opening the picker never silently drops it. */}
@@ -378,6 +417,20 @@ function RoomDetail({
         </select>
       </div>
       {typeNotice && <p className="muted">{typeNotice}</p>}
+      {/* Re-applying is explicit and replaces the list — picking a template never does it silently. */}
+      {room.roomType && ROOM_PROFILES.some((p) => p.key === room.roomType) && room.workItems.length > 0 && (
+        <button
+          className="btn-ghost small template-apply"
+          onClick={() => {
+            if (!confirm('להחליף את סוגי העבודה של החדר בסוגי העבודה של התבנית?')) return;
+            onApplyTemplate();
+            setTypeNotice(null);
+          }}
+        >
+          <Icon name="reset" size={13} />
+          החל את סוגי העבודה של התבנית
+        </button>
+      )}
       {!room.roomType && room.detectedType && (
         <p className="muted">זוהה אוטומטית כ"{roomProfileLabel(room.detectedType)}" — בחר סוג כדי לאשר.</p>
       )}
@@ -387,26 +440,48 @@ function RoomDetail({
         <textarea value={room.notes} onChange={(e) => onUpdate({ notes: e.target.value })} rows={2} />
       </div>
 
+      <OpeningsEditor
+        openings={room.openings ?? []}
+        onAdd={onAddOpening}
+        onUpdate={onUpdateOpening}
+        onRemove={onRemoveOpening}
+      />
+
       <span className="section-label">סוגי עבודה</span>
       <div className="work-item-add-row">
-        {WORK_TYPES.map((t) => (
+        {WORK_TYPE_ORDER.map((t) => (
           <button key={t} className="btn-secondary small" onClick={() => onAddWorkItem(t)}>
             <Icon name="plus" size={13} />
-            {WORK_TYPE_LABELS[t]}
+            {WORK_TYPE_DEFINITIONS[t].label}
           </button>
         ))}
       </div>
 
       <ul className="work-item-list">
         {room.workItems.map((item) => {
-          const qty = itemQuantityM2(item, areaM2, perimeterM, project);
-          const lengthM = itemLengthM(item, perimeterM);
+          const def = workTypeDefinition(item.type);
+          // A type this build does not know (saved by a newer version) is shown, counted as nothing, and removable.
+          if (!def) {
+            return (
+              <li key={item.id}>
+                <div className="work-item-header">
+                  <strong>{item.type}</strong>
+                  <button className="icon-btn danger" title="הסר סוג עבודה" onClick={() => onRemoveWorkItem(item.id)}>
+                    <Icon name="trash" />
+                  </button>
+                </div>
+              </li>
+            );
+          }
+          const calc = calculateWorkItem(item, room, areaM2, perimeterM, project);
           const waste = effectiveWastePercent(item, project);
-          const orderQty = qty * (1 + waste / 100);
+          const factor = 1 + waste / 100;
+          const canDeduct = def.deductedOpeningTypes.length > 0;
+          const deducts = itemDeductsOpenings(item);
           return (
             <li key={item.id}>
               <div className="work-item-header">
-                <strong>{WORK_TYPE_LABELS[item.type]}</strong>
+                <strong>{def.label}</strong>
                 <button className="icon-btn danger" title="הסר סוג עבודה" onClick={() => onRemoveWorkItem(item.id)}>
                   <Icon name="trash" />
                 </button>
@@ -417,38 +492,50 @@ function RoomDetail({
               {noCalibration ? (
                 <div className="work-item-result cal-missing">לא ניתן לחשב כמות עד לכיול העמוד</div>
               ) : (
-                <div className="wi-metrics">
-                  {/* Panels are read twice: running metres (the room perimeter) and m², each with
-                      the same waste applied. Other work types have no linear reading. */}
-                  {lengthM != null && (
-                    <>
-                      <span className="wi-metric">
-                        <span className="wi-metric-label">אורך</span>
-                        <span className="wi-metric-value">
-                          {round(lengthM, 2)} {PANEL_LENGTH_UNIT}
+                <>
+                  <div className="wi-metrics">
+                    {/* Panels are read twice: running metres (the room perimeter, less door widths)
+                        and m², each with the same waste applied. Other work types have no linear reading. */}
+                    {calc.lengthM != null && (
+                      <>
+                        <span className="wi-metric">
+                          <span className="wi-metric-label">אורך</span>
+                          <span className="wi-metric-value">
+                            {round(calc.lengthM, 2)} {PANEL_LENGTH_UNIT}
+                          </span>
                         </span>
-                      </span>
-                      <span className="wi-metric order">
-                        <span className="wi-metric-label">להזמנה</span>
-                        <span className="wi-metric-value">
-                          {round(lengthM * (1 + waste / 100), 2)} {PANEL_LENGTH_UNIT}
+                        <span className="wi-metric order">
+                          <span className="wi-metric-label">להזמנה</span>
+                          <span className="wi-metric-value">
+                            {round(calc.lengthM * factor, 2)} {PANEL_LENGTH_UNIT}
+                          </span>
                         </span>
+                      </>
+                    )}
+                    <span className="wi-metric">
+                      <span className="wi-metric-label">
+                        {calc.lengthM != null ? 'שטח' : canDeduct ? 'כמות נטו' : 'כמות'}
                       </span>
-                    </>
+                      <span className="wi-metric-value">
+                        {round(calc.netM2, 2)} {AREA_UNIT}
+                      </span>
+                    </span>
+                    <span className="wi-metric order">
+                      <span className="wi-metric-label">להזמנה</span>
+                      <span className="wi-metric-value">
+                        {round(calc.netM2 * factor, 2)} {AREA_UNIT}
+                      </span>
+                    </span>
+                  </div>
+                  {/* Says in words what was taken off, so a net figure is never mistaken for the gross one. */}
+                  {deducts && (calc.deductedM2 > 0 || (calc.deductedLengthM ?? 0) > 0) && (
+                    <p className="wi-deduction">
+                      {calc.lengthM != null && calc.grossLengthM != null && calc.deductedLengthM != null
+                        ? `היקף ${round(calc.grossLengthM, 2)} − דלתות ${round(calc.deductedLengthM, 2)} = ${round(calc.lengthM, 2)} ${PANEL_LENGTH_UNIT}`
+                        : `ברוטו ${round(calc.grossM2, 2)} − פתחים ${round(calc.deductedM2, 2)} = נטו ${round(calc.netM2, 2)} ${AREA_UNIT}`}
+                    </p>
                   )}
-                  <span className="wi-metric">
-                    <span className="wi-metric-label">{lengthM != null ? 'שטח' : 'כמות'}</span>
-                    <span className="wi-metric-value">
-                      {round(qty, 2)} {WORK_TYPE_UNITS[item.type]}
-                    </span>
-                  </span>
-                  <span className="wi-metric order">
-                    <span className="wi-metric-label">להזמנה</span>
-                    <span className="wi-metric-value">
-                      {round(orderQty, 2)} {WORK_TYPE_UNITS[item.type]}
-                    </span>
-                  </span>
-                </div>
+                </>
               )}
 
               <div className="wi-controls">
@@ -464,30 +551,30 @@ function RoomDetail({
                   </select>
                 </div>
               )}
-              {item.type === 'cladding' && (
+              {/* The item follows its type's project default height until a height is typed here, which overrides it for this item only. */}
+              {def.height && (
                 <div className="form-row inline">
-                  <label>גובה חיפוי (מ')</label>
-                  <input
-                    type="number"
-                    step="0.05"
-                    min="0"
-                    value={item.heightM ?? project.defaultCladdingHeightM}
-                    onChange={(e) => onUpdateWorkItem(item.id, { heightM: parseFloat(e.target.value) || 0 })}
-                  />
-                </div>
-              )}
-              {/* Panels follow the project default until a height is typed here, which overrides it for this item only. */}
-              {item.type === 'panels' && (
-                <div className="form-row inline">
-                  <label>גובה פנל (מ')</label>
+                  <label>{def.height.label}</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    value={effectivePanelHeightM(item, project)}
+                    value={effectiveHeightM(item, project)}
                     onChange={(e) => onUpdateWorkItem(item.id, { heightM: parseFloat(e.target.value) || 0 })}
                   />
                 </div>
+              )}
+              {canDeduct && (
+                <label className="wi-check">
+                  <input
+                    type="checkbox"
+                    checked={deducts}
+                    onChange={(e) => onUpdateWorkItem(item.id, { deductOpenings: e.target.checked })}
+                  />
+                  {def.deductedOpeningTypes.length === 1 && def.deductedOpeningTypes[0] === 'door'
+                    ? 'הפחת רוחב דלתות'
+                    : 'הפחת פתחים'}
+                </label>
               )}
               <div className="form-row inline">
                 <label>פחת %</label>
@@ -512,10 +599,92 @@ function RoomDetail({
         {room.workItems.length === 0 && (
           <div className="empty-state">
             <Icon name="wall" size={24} />
-            <p>הוסף סוג עבודה — ריצוף, חיפוי או פנלים — כדי לחשב את כמויות החדר.</p>
+            <p>הוסף סוג עבודה — ריצוף, חיפוי, פנלים, צבע, טיח או איטום — כדי לחשב את כמויות החדר.</p>
           </div>
         )}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Doors, windows and other openings of one room, entered by hand in metres. Wall-based work deducts
+ * them and skirting deducts door widths (see lib/workTypes); nothing here needs the page scale.
+ */
+function OpeningsEditor({
+  openings,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: {
+  openings: Opening[];
+  onAdd: (type: OpeningType) => void;
+  onUpdate: (openingId: string, patch: Partial<Opening>) => void;
+  onRemove: (openingId: string) => void;
+}) {
+  // A cleared field stores 0 rather than NaN, like the work-item height inputs.
+  const num = (value: string) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  };
+  const totalM2 = openings.reduce((sum, o) => sum + openingAreaM2(o), 0);
+
+  return (
+    <div className="openings">
+      <span className="section-label">
+        פתחים{openings.length > 0 ? ` (${round(totalM2, 2)} ${AREA_UNIT})` : ''}
+      </span>
+      <div className="work-item-add-row">
+        {OPENING_TYPES.map((t) => (
+          <button key={t} className="btn-secondary small" onClick={() => onAdd(t)}>
+            <Icon name="plus" size={13} />
+            {OPENING_TYPE_LABELS[t]}
+          </button>
+        ))}
+      </div>
+      {openings.length > 0 && (
+        <ul className="opening-list">
+          {openings.map((o) => (
+            <li key={o.id}>
+              <select
+                value={o.type}
+                aria-label="סוג פתח"
+                onChange={(e) => onUpdate(o.id, { type: e.target.value as OpeningType })}
+              >
+                {OPENING_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {OPENING_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+              <label>
+                <span>רוחב</span>
+                <input type="number" step="0.05" min="0" value={o.widthM} onChange={(e) => onUpdate(o.id, { widthM: num(e.target.value) })} />
+              </label>
+              <label>
+                <span>גובה</span>
+                <input type="number" step="0.05" min="0" value={o.heightM} onChange={(e) => onUpdate(o.id, { heightM: num(e.target.value) })} />
+              </label>
+              <label>
+                <span>כמות</span>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={o.quantity}
+                  onChange={(e) => onUpdate(o.id, { quantity: Math.round(num(e.target.value)) })}
+                />
+              </label>
+              <span className="opening-area">
+                {round(openingAreaM2(o), 2)} {AREA_UNIT}
+              </span>
+              <button className="icon-btn danger" title="מחק פתח" onClick={() => onRemove(o.id)}>
+                <Icon name="trash" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -530,7 +699,7 @@ function DuplicateApartmentDialog({
   sourceApartmentNumber,
   onClose,
 }: {
-  project: Project;
+  project: Plan;
   /** Pre-selected from the apartment group the user opened this from; still switchable here. */
   sourceApartmentNumber: string;
   onClose: () => void;

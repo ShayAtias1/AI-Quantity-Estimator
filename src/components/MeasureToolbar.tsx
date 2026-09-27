@@ -1,5 +1,6 @@
 import { useAppStore } from '../store/appStore';
 import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaCalcMode, type AreaKind, type AreaShape, type MeasureTool } from '../types';
+import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
 import { round } from '../lib/geometry';
 import { isPageCalibrated } from '../lib/quantities';
 import Icon, { type IconName } from './Icon';
@@ -40,7 +41,7 @@ export default function MeasureToolbar() {
   const hasCalibration = isPageCalibrated(project, currentPage);
   const pageMeasurements = (project.measurements ?? []).filter((m) => m.pageNumber === currentPage);
   const areaKindColors = project.areaKindColors ?? { demolition: '#eab308', construction: '#16a34a' };
-  const wallHeightDefaultM = project.wallHeightDefaultM ?? 2.5;
+  const wallHeightDefaultM = project.wallHeightDefaultM ?? MEASUREMENT_DEFAULTS.wallHeightM;
 
   const areaMeasurements = (project.measurements ?? []).filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number');
   const tallyByKind = (measurements: typeof areaMeasurements) => {

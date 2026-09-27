@@ -1,5 +1,7 @@
 // Core domain types for the quantity-takeoff app.
 
+import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
+
 export type TilingCategory = 'regular' | 'as';
 
 export const TILING_CATEGORY_LABELS: Record<TilingCategory, string> = {
@@ -7,23 +9,34 @@ export const TILING_CATEGORY_LABELS: Record<TilingCategory, string> = {
   as: 'ריצוף AS',
 };
 
-/** Addable work item types — the "+" buttons in the room panel. */
-export type WorkType = 'tiling' | 'cladding' | 'panels';
-
-export const WORK_TYPE_LABELS: Record<WorkType, string> = {
-  tiling: 'ריצוף',
-  cladding: 'חיפוי קירות',
-  panels: 'פנלים',
-};
+/**
+ * Addable work item types — the "+" buttons in the room panel. 'panels' is skirting (the id is kept
+ * so saved projects keep loading). Each type's label, unit, basis and defaults live in
+ * `lib/workTypes.ts`.
+ */
+export type WorkType = 'tiling' | 'cladding' | 'panels' | 'painting' | 'plaster' | 'waterproofing';
 
 /** Second unit, for work types that are also counted linearly. */
 export const PANEL_LENGTH_UNIT = 'מ"א';
+export const AREA_UNIT = 'מ"ר';
 
-export const WORK_TYPE_UNITS: Record<WorkType, string> = {
-  tiling: 'מ"ר',
-  cladding: 'מ"ר',
-  panels: 'מ"ר',
+/** A door, window or other opening in a room's walls, entered by hand in metres. */
+export type OpeningType = 'door' | 'window' | 'custom';
+
+export const OPENING_TYPE_LABELS: Record<OpeningType, string> = {
+  door: 'דלת',
+  window: 'חלון',
+  custom: 'פתח אחר',
 };
+
+export interface Opening {
+  id: string;
+  type: OpeningType;
+  widthM: number;
+  heightM: number;
+  /** How many identical openings this row stands for. */
+  quantity: number;
+}
 
 /**
  * Shown wherever a quantity or length would otherwise render as 0 only because the page has no
@@ -31,32 +44,48 @@ export const WORK_TYPE_UNITS: Record<WorkType, string> = {
  */
 export const NOT_CALIBRATED_LABEL = '— לא כויל';
 
-/** The 4 categories shown in quantity reports/totals (tiling is split by category). */
-export type ReportCategory = 'tiling_regular' | 'tiling_as' | 'cladding' | 'panels';
+/**
+ * Work types added after the original four report categories. Each reports as its own category, and
+ * reports only show their columns when a project actually uses them — so older projects export
+ * exactly as before.
+ */
+export const EXTRA_REPORT_CATEGORIES = ['painting', 'plaster', 'waterproofing'] as const;
+export type ExtraReportCategory = (typeof EXTRA_REPORT_CATEGORIES)[number];
+
+/** The categories shown in quantity reports/totals (tiling is split by category). */
+export type ReportCategory = 'tiling_regular' | 'tiling_as' | 'cladding' | 'panels' | ExtraReportCategory;
 
 export const REPORT_CATEGORY_LABELS: Record<ReportCategory, string> = {
   tiling_regular: 'ריצוף רגיל',
   tiling_as: 'ריצוף AS',
   cladding: 'חיפוי קירות',
   panels: 'פנלים',
+  painting: 'צבע',
+  plaster: 'טיח',
+  waterproofing: 'איטום',
 };
 
 /**
  * Panels (skirting) are a strip running along the room perimeter, this height (meters) tall.
  * This is the historical fallback only: the effective height is the work item's own `heightM`,
- * then the project's `defaultPanelHeightM`, then this (see `effectivePanelHeightM`).
+ * then the project's `defaultPanelHeightM`, then this (see `effectiveHeightM`).
  */
-export const PANEL_HEIGHT_M = 0.1;
+export const PANEL_HEIGHT_M = MEASUREMENT_DEFAULTS.panelHeightM;
 
 export interface WorkItem {
   id: string;
   type: WorkType;
   /** Only relevant for type 'tiling' — regular or AS (wet-area) tiling. Defaults to 'regular' if unset. */
   tilingCategory?: TilingCategory;
-  /** For 'cladding' and 'panels' — height in meters used to multiply the perimeter. Falls back to the project default. */
+  /** For every type but tiling — height in meters used to multiply the perimeter. Falls back to the project default. */
   heightM?: number;
   /** Waste percentage override (0-100). If undefined, the project's per-type default is used. */
   wastePercent?: number;
+  /**
+   * Whether the room's openings reduce this item. Undefined follows the work type's definition
+   * (`deductsOpenings` in lib/workTypes); only meaningful for types that list opening types to deduct.
+   */
+  deductOpenings?: boolean;
 }
 
 export interface Point {
@@ -74,6 +103,8 @@ export interface Room {
   apartmentNumber: string;
   notes: string;
   workItems: WorkItem[];
+  /** Doors, windows and other openings deducted from wall-based work. Absent on rooms saved before openings existed. */
+  openings?: Opening[];
   color: string;
   /**
    * The room type the *user* chose (a ROOM_PROFILES key), used for classification and defaults.
@@ -101,8 +132,31 @@ export interface PageData {
   calibration: Calibration | null;
 }
 
+/**
+ * A takeoff project: a named folder of plans. Kept deliberately thin — each plan is its own saved
+ * document (see `Plan`), so opening, saving or switching one plan never loads or rewrites the others.
+ */
 export interface Project {
   id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  /** The project's plans, in display order. Each id is a `Plan` stored on its own. */
+  planIds: string[];
+}
+
+/**
+ * One plan (PDF) inside a project, with everything measured on it: calibration, rooms, openings,
+ * work items, waste/height defaults, measurements and markups. Before projects existed this was the
+ * whole saved document (then called Project); old records are wrapped in a project on first load
+ * (`migrateLegacyPlans` in db/database.ts). Stored in the IndexedDB `projects` object store, PDF in
+ * `pdfFiles` under the plan id.
+ */
+export interface Plan {
+  id: string;
+  /** The owning project. Absent only on records saved before projects existed, until migrated. */
+  projectId?: string;
+  /** The plan's own name (e.g. "קומה 3"). */
   name: string;
   createdAt: number;
   updatedAt: number;
@@ -120,6 +174,10 @@ export interface Project {
   defaultTilingAsWastePercent?: number;
   defaultCladdingWastePercent: number;
   defaultPanelsWastePercent: number;
+  /** Waste % defaults for the later work types. Optional: absent on older projects, which fall back to the work type's own default. */
+  defaultPaintingWastePercent?: number;
+  defaultPlasterWastePercent?: number;
+  defaultWaterproofingWastePercent?: number;
   /** Customizable per project; defaults to DEFAULT_AREA_KIND_COLORS. */
   areaKindColors: Record<AreaKind, string>;
   /** Default wall height (meters) used to seed new 'wall' calc-mode area measurements; editable per-measurement afterward. */
@@ -254,7 +312,28 @@ export interface RoomQuantitySummary {
   tilingAsOrderM2: number | null;
   claddingOrderM2: number | null;
   panelsOrderM2: number | null;
+  /** The later work types, one entry each; every field is null when the room has no such item (or no scale). */
+  extra: Record<ExtraReportCategory, CategoryQuantity>;
+  /**
+   * Wall-based work (cladding, painting, plaster) that actually had openings taken off, one entry
+   * per category: gross − deducted = net. Empty when nothing was deducted or the page has no scale,
+   * so exports list only the rows where a deduction exists.
+   */
+  openingDeductions: OpeningDeductionSummary[];
   notes: string;
+}
+
+export interface OpeningDeductionSummary {
+  category: ReportCategory;
+  grossM2: number;
+  deductedM2: number;
+  netM2: number;
+}
+
+export interface CategoryQuantity {
+  areaM2: number | null;
+  wastePercent: number | null;
+  orderM2: number | null;
 }
 
 export interface ReportCategoryTotal {

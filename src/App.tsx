@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { useCompareStore } from './store/compareStore';
 import StartScreen from './components/StartScreen';
+import ProjectOverview from './components/ProjectOverview';
 import TopBar from './components/TopBar';
 import Toolbar from './components/Toolbar';
 import PdfViewer from './components/PdfViewer';
@@ -119,10 +120,13 @@ function useUnsavedChangesGuard() {
 }
 
 export default function App() {
-  const project = useAppStore((s) => s.project);
+  // `project` is the open plan; `currentProject` the project folder around it.
+  const plan = useAppStore((s) => s.project);
+  const currentProject = useAppStore((s) => s.currentProject);
   const comparison = useCompareStore((s) => s.comparison);
   useUnsavedChangesGuard();
-  if (project) return <Workspace />;
+  if (plan) return <Workspace />;
+  if (currentProject) return <ProjectOverview />;
   if (comparison) return <CompareWorkspace />;
   return <Home />;
 }

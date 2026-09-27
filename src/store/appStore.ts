@@ -1,14 +1,24 @@
 import { create } from 'zustand';
 import { v4 as uuid } from 'uuid';
-import type { AreaCalcMode, AreaKind, AreaShape, Calibration, ExportRegion, Markup, MarkupTool, Measurement, MeasureTool, Point, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
-import { DEFAULT_AREA_KIND_COLORS, PANEL_HEIGHT_M } from '../types';
-import { saveProject as dbSaveProject, loadPdfBlob } from '../db/database';
+import type { AreaCalcMode, AreaKind, AreaShape, Calibration, ExportRegion, Markup, MarkupTool, Measurement, MeasureTool, Opening, OpeningType, Point, Plan, Project, Room, ToolMode, WorkItem, WorkType } from '../types';
+import { DEFAULT_AREA_KIND_COLORS } from '../types';
+import { MEASUREMENT_DEFAULTS, OPENING_DEFAULT_SIZES } from '../config/measurementDefaults';
+import {
+  savePlan as dbSavePlan,
+  saveProject as dbSaveProject,
+  deletePlan as dbDeletePlan,
+  loadPdfBlob,
+  loadPlan,
+  loadProjectWithPlans,
+  savePdfBlob,
+} from '../db/database';
+import { clonePlanForDuplicate } from '../lib/planDuplication';
 import { createHistoryTracker } from '../lib/undoHistory';
 import { loadPdfPlanSource } from '../lib/planSource';
 import { runRoomDetection, type DetectionSummary } from '../lib/roomDetection';
 import { buildWorkItemsForProfile, getRoomProfile } from '../lib/roomProfiles';
 
-const historyTracker = createHistoryTracker<Project>();
+const historyTracker = createHistoryTracker<Plan>();
 
 /** How far a duplicated room is shifted from its source, in native page px, so the copy is visible. */
 const ROOM_DUPLICATE_OFFSET = 30;
@@ -19,10 +29,11 @@ function nextColor(existing: number): string {
   return ROOM_COLORS[existing % ROOM_COLORS.length];
 }
 
-export function createEmptyProject(name: string, pdfFileName: string): Project {
+export function createEmptyPlan(name: string, pdfFileName: string, projectId: string): Plan {
   const now = Date.now();
   return {
     id: uuid(),
+    projectId,
     name,
     createdAt: now,
     updatedAt: now,
@@ -31,21 +42,21 @@ export function createEmptyProject(name: string, pdfFileName: string): Project {
     rooms: [],
     measurements: [],
     markups: [],
-    defaultCladdingHeightM: 2.0,
-    defaultPanelHeightM: PANEL_HEIGHT_M,
+    defaultCladdingHeightM: MEASUREMENT_DEFAULTS.claddingHeightM,
+    defaultPanelHeightM: MEASUREMENT_DEFAULTS.panelHeightM,
     defaultTilingWastePercent: 0,
     defaultTilingAsWastePercent: 0,
     defaultCladdingWastePercent: 0,
     defaultPanelsWastePercent: 0,
     areaKindColors: { ...DEFAULT_AREA_KIND_COLORS },
-    wallHeightDefaultM: 2.5,
+    wallHeightDefaultM: MEASUREMENT_DEFAULTS.wallHeightM,
   };
 }
 
 /**
  * Deep clone of a room for any duplicate action (single room or whole apartment), so the two
  * paths can never drift apart on which fields they carry:
- * - new id for the room and for every work item;
+ * - new id for the room, for every work item and for every opening;
  * - fresh point objects and a fresh work-item array — nothing is shared with the source;
  * - work items copied verbatim (overrides included), never rebuilt from the room profile, so
  *   manual edits such as a deleted item survive;
@@ -59,6 +70,7 @@ function cloneRoomForDuplicate(source: Room, overrides: Partial<Room> & { color:
     id: uuid(),
     points: source.points.map((p) => ({ x: p.x, y: p.y })),
     workItems: source.workItems.map((wi) => ({ ...wi, id: uuid() })),
+    openings: source.openings?.map((o) => ({ ...o, id: uuid() })),
     roomType: source.roomType,
     detectedType: undefined,
     detectionConfidence: undefined,
@@ -67,7 +79,7 @@ function cloneRoomForDuplicate(source: Room, overrides: Partial<Room> & { color:
 }
 
 /**
- * A detection suggestion, held in session state only — never part of `Project`, never persisted,
+ * A detection suggestion, held in session state only — never part of `Plan`, never persisted,
  * never counted in quantities. Mirrors what the detection engine already returns (see DetectedRoom)
  * plus the page it was found on and an id for the review list.
  */
@@ -88,7 +100,7 @@ export interface DetectionCandidate {
  * way; `detectedType`/`detectionConfidence` are only metadata about where it came from, while
  * `roomType` records that the user confirmed that classification by accepting.
  */
-function roomFromCandidate(candidate: DetectionCandidate, project: Project, seed: number, apartmentNumber: string): Room {
+function roomFromCandidate(candidate: DetectionCandidate, project: Plan, seed: number, apartmentNumber: string): Room {
   const profile = getRoomProfile(candidate.roomTypeKey);
   return {
     id: uuid(),
@@ -112,23 +124,40 @@ function roomFromCandidate(candidate: DetectionCandidate, project: Project, seed
   };
 }
 
-function newRoom(project: Project, pageNumber: number, points: Point[], apartmentNumber: string): Room {
+/**
+ * A hand-drawn room. With a room template chosen for new rooms, the room starts classified and
+ * with that template's work items (from the one shared profile builder) — a starting point the user
+ * edits like any other room.
+ */
+function newRoom(project: Plan, pageNumber: number, points: Point[], apartmentNumber: string, templateKey: string | null): Room {
+  const profile = getRoomProfile(templateKey);
   return {
     id: uuid(),
     pageNumber,
     points,
     closed: true,
-    name: `חדר ${project.rooms.length + 1}`,
+    name: `${profile?.displayName ?? 'חדר'} ${project.rooms.length + 1}`,
     // Stamped from the apartment the user is working in; still editable per room afterwards.
     apartmentNumber,
     notes: '',
-    workItems: [],
+    workItems: profile ? buildWorkItemsForProfile(profile, project) : [],
+    roomType: profile?.key,
     color: nextColor(project.rooms.length),
   };
 }
 
 interface AppState {
-  project: Project | null;
+  /**
+   * The open plan — the document every viewer, tool and export works on. (The key predates
+   * projects, when the open document was the whole project.) null on the project overview/home.
+   */
+  project: Plan | null;
+  /** The open project folder; null on the home screen. */
+  currentProject: Project | null;
+  /** Snapshot of the open project's plans for the overview and the plan switcher; the open plan itself is `project`. */
+  projectPlans: Plan[];
+  /** Room template (ROOM_PROFILES key) applied to newly drawn rooms; null = plain room. Session UI state. */
+  newRoomTemplate: string | null;
   currentPage: number;
   numPages: number;
   toolMode: ToolMode;
@@ -173,8 +202,8 @@ interface AppState {
   setExportRegion: (pageNumber: number, region: ExportRegion | null) => void;
 
   /** Undo/redo stacks of past/future project snapshots. Not persisted — reset whenever the project changes. */
-  history: Project[];
-  future: Project[];
+  history: Plan[];
+  future: Plan[];
   undo: () => void;
   redo: () => void;
 
@@ -183,7 +212,7 @@ interface AppState {
   detectionProgress: number; // 0..1
   detectionLabel: string;
   detectionSummary: DetectionSummary | null;
-  /** Detection suggestions awaiting review. Session state — not in Project, not persisted, not in history. */
+  /** Detection suggestions awaiting review. Session state — not in Plan, not persisted, not in history. */
   detectionCandidates: DetectionCandidate[];
   /** Page the pending candidates belong to; they are dropped when the user leaves it. */
   detectionCandidatesPage: number | null;
@@ -199,7 +228,28 @@ interface AppState {
   autoCalculateQuantities: () => number;
   clearDetectionSummary: () => void;
 
-  setProject: (p: Project | null) => void;
+  setProject: (p: Plan | null) => void;
+
+  /** Loads a project folder and shows its overview. */
+  openProject: (projectId: string) => Promise<void>;
+  /** Saves the open plan and returns to the home screen. False when the save failed (nothing is dropped). */
+  closeProject: () => Promise<boolean>;
+  /** Creates a project, optionally with a first plan from a PDF (which is then opened). */
+  createProject: (name: string, firstPlan?: { file: File; name: string }) => Promise<void>;
+  renameProject: (name: string) => void;
+  /** Re-reads the open project's plans from disk (after the open plan was saved or plans changed). */
+  refreshProjectPlans: () => Promise<void>;
+  /** Opens (or switches to) a plan; the previous plan is saved first and never left in memory. */
+  openPlan: (planId: string) => Promise<boolean>;
+  /** Saves the open plan and goes back to the project overview. */
+  closePlan: () => Promise<boolean>;
+  addPlan: (file: File, name: string) => Promise<Plan | null>;
+  duplicatePlan: (planId: string) => Promise<Plan | null>;
+  deletePlan: (planId: string) => Promise<void>;
+  renamePlan: (planId: string, name: string) => Promise<void>;
+  setNewRoomTemplate: (key: string | null) => void;
+  /** Replaces a room's work items with its template's — the explicit "reset to template" action. */
+  applyRoomTemplate: (roomId: string) => void;
   setCurrentPage: (n: number) => void;
   setNumPages: (n: number) => void;
   setToolMode: (m: ToolMode) => void;
@@ -285,13 +335,17 @@ interface AppState {
   addWorkItem: (roomId: string, type: WorkType) => void;
   updateWorkItem: (roomId: string, itemId: string, patch: Partial<WorkItem>) => void;
   removeWorkItem: (roomId: string, itemId: string) => void;
+  addOpening: (roomId: string, type: OpeningType) => void;
+  /** Debounced into one undo step per burst, like typing in a work item. */
+  updateOpening: (roomId: string, openingId: string, patch: Partial<Opening>) => void;
+  removeOpening: (roomId: string, openingId: string) => void;
   moveRoomPoint: (roomId: string, pointIndex: number, p: Point) => void;
   deleteRoomPoint: (roomId: string, pointIndex: number) => void;
 
   updateProjectMeta: (
     patch: Partial<
       Pick<
-        Project,
+        Plan,
         | 'name'
         | 'defaultCladdingHeightM'
         | 'defaultPanelHeightM'
@@ -299,6 +353,9 @@ interface AppState {
         | 'defaultTilingAsWastePercent'
         | 'defaultCladdingWastePercent'
         | 'defaultPanelsWastePercent'
+        | 'defaultPaintingWastePercent'
+        | 'defaultPlasterWastePercent'
+        | 'defaultWaterproofingWastePercent'
         | 'wallHeightDefaultM'
       >
     >
@@ -338,6 +395,9 @@ export function selectSaveState(s: AppState): SaveState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   project: null,
+  currentProject: null,
+  projectPlans: [],
+  newRoomTemplate: null,
   currentPage: 1,
   numPages: 1,
   toolMode: 'select',
@@ -410,6 +470,126 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   clearDetectionSummary: () => set({ detectionSummary: null }),
+
+  // ---------- projects & plans ----------
+  // Each plan is its own saved document. Only one is ever in memory (`project`); leaving it — to
+  // another plan, the overview or home — always saves it first, so plans can never mix.
+
+  openProject: async (projectId) => {
+    const loaded = await loadProjectWithPlans(projectId);
+    if (!loaded) return;
+    get().setProject(null);
+    set({ currentProject: loaded.project, projectPlans: loaded.plans });
+  },
+  closeProject: async () => {
+    if (get().project && !(await get().closePlan())) return false;
+    set({ currentProject: null, projectPlans: [] });
+    return true;
+  },
+  createProject: async (name, firstPlan) => {
+    const now = Date.now();
+    const project: Project = { id: uuid(), name, createdAt: now, updatedAt: now, planIds: [] };
+    await dbSaveProject(project);
+    await get().openProject(project.id);
+    if (firstPlan) {
+      const plan = await get().addPlan(firstPlan.file, firstPlan.name);
+      if (plan) await get().openPlan(plan.id);
+    }
+  },
+  renameProject: (name) => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    const updated = { ...currentProject, name, updatedAt: Date.now() };
+    set({ currentProject: updated });
+    void dbSaveProject(updated);
+  },
+  refreshProjectPlans: async () => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    const loaded = await loadProjectWithPlans(currentProject.id);
+    if (loaded) set({ currentProject: loaded.project, projectPlans: loaded.plans });
+  },
+  openPlan: async (planId) => {
+    const { project } = get();
+    if (project?.id === planId) return true;
+    if (project) {
+      await get().persist();
+      // A failed save keeps the current plan open rather than dropping its unsaved work.
+      if (get().saveError) return false;
+    }
+    const plan = await loadPlan(planId);
+    if (!plan) return false;
+    get().setProject(plan);
+    void get().refreshProjectPlans();
+    return true;
+  },
+  closePlan: async () => {
+    if (get().project) {
+      await get().persist();
+      if (get().saveError) return false;
+    }
+    get().setProject(null);
+    await get().refreshProjectPlans();
+    return true;
+  },
+  addPlan: async (file, name) => {
+    const { currentProject } = get();
+    if (!currentProject) return null;
+    const plan = createEmptyPlan(name, file.name, currentProject.id);
+    await savePdfBlob(plan.id, file);
+    await dbSavePlan(plan);
+    await dbSaveProject({ ...currentProject, planIds: [...currentProject.planIds, plan.id], updatedAt: Date.now() });
+    await get().refreshProjectPlans();
+    return plan;
+  },
+  duplicatePlan: async (planId) => {
+    const { currentProject, project } = get();
+    if (!currentProject) return null;
+    // Copy what the user sees: an open plan is saved first so the copy includes its latest edits.
+    if (project?.id === planId) {
+      await get().persist();
+      if (get().saveError) return null;
+    }
+    const [source, blob] = await Promise.all([loadPlan(planId), loadPdfBlob(planId)]);
+    if (!source) return null;
+    const copy = clonePlanForDuplicate(source, `${source.name} (עותק)`);
+    if (blob) await savePdfBlob(copy.id, blob);
+    await dbSavePlan(copy);
+    const planIds = [...currentProject.planIds];
+    const at = planIds.indexOf(planId);
+    planIds.splice(at < 0 ? planIds.length : at + 1, 0, copy.id);
+    await dbSaveProject({ ...currentProject, planIds, updatedAt: Date.now() });
+    await get().refreshProjectPlans();
+    return copy;
+  },
+  deletePlan: async (planId) => {
+    if (get().project?.id === planId) get().setProject(null);
+    await dbDeletePlan(planId);
+    await get().refreshProjectPlans();
+  },
+  renamePlan: async (planId, name) => {
+    if (get().project?.id === planId) {
+      get().updateProjectMeta({ name });
+      return;
+    }
+    const plan = await loadPlan(planId);
+    if (!plan) return;
+    await dbSavePlan({ ...plan, name, updatedAt: Date.now() });
+    await get().refreshProjectPlans();
+  },
+  setNewRoomTemplate: (key) => set({ newRoomTemplate: key }),
+  applyRoomTemplate: (roomId) => {
+    const { project } = get();
+    if (!project) return;
+    const room = project.rooms.find((r) => r.id === roomId);
+    const profile = getRoomProfile(room?.roomType);
+    if (!room || !profile) return;
+    historyTracker.push(get, set, project);
+    const rooms = project.rooms.map((r) => (r.id === roomId ? { ...r, workItems: buildWorkItemsForProfile(profile, project) } : r));
+    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    scheduleSave(get, set);
+  },
+
   detectRooms: async () => {
     const { project, currentPage, detecting } = get();
     if (!project || detecting) return;
@@ -597,7 +777,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     historyTracker.push(get, set, project);
-    const room = newRoom(project, currentPage, drawingPoints, activeApartmentNumber);
+    const room = newRoom(project, currentPage, drawingPoints, activeApartmentNumber, get().newRoomTemplate);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, manuallyCreatedRoomId: room.id, toolMode: 'select' });
     scheduleSave(get, set);
@@ -607,7 +787,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!project) return;
     historyTracker.push(get, set, project);
     const points: Point[] = [p1, { x: p2.x, y: p1.y }, p2, { x: p1.x, y: p2.y }];
-    const room = newRoom(project, currentPage, points, activeApartmentNumber);
+    const room = newRoom(project, currentPage, points, activeApartmentNumber, get().newRoomTemplate);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, manuallyCreatedRoomId: room.id, toolMode: 'select' });
     scheduleSave(get, set);
@@ -851,6 +1031,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ project: { ...project, rooms, updatedAt: Date.now() } });
     scheduleSave(get, set);
   },
+  addOpening: (roomId, type) => {
+    const { project } = get();
+    if (!project) return;
+    historyTracker.push(get, set, project);
+    const opening: Opening = { id: uuid(), type, ...OPENING_DEFAULT_SIZES[type], quantity: 1 };
+    const rooms = project.rooms.map((r) => (r.id === roomId ? { ...r, openings: [...(r.openings ?? []), opening] } : r));
+    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    scheduleSave(get, set);
+  },
+  updateOpening: (roomId, openingId, patch) => {
+    const { project } = get();
+    if (!project) return;
+    historyTracker.pushDebounced(get, set, project);
+    const rooms = project.rooms.map((r) => {
+      if (r.id !== roomId) return r;
+      return { ...r, openings: (r.openings ?? []).map((o) => (o.id === openingId ? { ...o, ...patch } : o)) };
+    });
+    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    scheduleSave(get, set);
+  },
+  removeOpening: (roomId, openingId) => {
+    const { project } = get();
+    if (!project) return;
+    historyTracker.push(get, set, project);
+    const rooms = project.rooms.map((r) => {
+      if (r.id !== roomId) return r;
+      return { ...r, openings: (r.openings ?? []).filter((o) => o.id !== openingId) };
+    });
+    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    scheduleSave(get, set);
+  },
   moveRoomPoint: (roomId, pointIndex, p) => {
     const { project } = get();
     if (!project) return;
@@ -894,7 +1105,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ saving: true });
     try {
-      await dbSaveProject(project);
+      await dbSavePlan(project);
       // Only clear the flag if nothing was edited while the write was in flight — otherwise those
       // newer edits are still unsaved.
       if (get().project === project) set({ dirty: false });

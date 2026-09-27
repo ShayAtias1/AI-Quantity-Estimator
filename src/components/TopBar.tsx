@@ -5,15 +5,19 @@ import TopBarMenu, { type MenuId } from './TopBarMenu';
 import Icon, { type IconName } from './Icon';
 import BrandLogo from './BrandLogo';
 import { exportAllPlanPagesToPdf, exportPlanPageToPdf } from '../lib/exportRegionPdf';
+import { planForReport } from '../lib/reportTitle';
 
 export default function TopBar() {
   const project = useAppStore((s) => s.project);
-  const setProject = useAppStore((s) => s.setProject);
+  const currentProject = useAppStore((s) => s.currentProject);
+  const projectPlans = useAppStore((s) => s.projectPlans);
+  const openPlan = useAppStore((s) => s.openPlan);
+  const closePlan = useAppStore((s) => s.closePlan);
+  const duplicatePlan = useAppStore((s) => s.duplicatePlan);
   const currentPage = useAppStore((s) => s.currentPage);
   const numPages = useAppStore((s) => s.numPages);
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const updateProjectMeta = useAppStore((s) => s.updateProjectMeta);
-  const persist = useAppStore((s) => s.persist);
   const saveState = useAppStore(selectSaveState);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
   const toggleAnnotationsVisible = useAppStore((s) => s.toggleAnnotationsVisible);
@@ -60,7 +64,7 @@ export default function TopBar() {
     setOpenMenu(null);
     setExportingPage(true);
     try {
-      await exportPlanPageToPdf(project, currentPage, exportRegion, annotationsVisible, measurementsVisible);
+      await exportPlanPageToPdf(planForReport(project, currentProject?.name), currentPage, exportRegion, annotationsVisible, measurementsVisible);
     } finally {
       setExportingPage(false);
     }
@@ -71,17 +75,23 @@ export default function TopBar() {
     setOpenMenu(null);
     setExportingAllPages(true);
     try {
-      await exportAllPlanPagesToPdf(project, numPages, exportRegions, annotationsVisible, measurementsVisible);
+      await exportAllPlanPagesToPdf(planForReport(project, currentProject?.name), numPages, exportRegions, annotationsVisible, measurementsVisible);
     } finally {
       setExportingAllPages(false);
     }
   };
 
-  const closeProject = async () => {
-    await persist();
-    // If the save failed the work is still only in memory — stay in the project rather than drop it.
-    if (useAppStore.getState().saveError) return;
-    setProject(null);
+  // Leaving a plan always saves it first; if the save failed the work is still only in memory, so
+  // the store keeps the plan open rather than dropping it.
+  const backToOverview = () => void closePlan();
+  const switchPlan = (planId: string) => {
+    setOpenMenu(null);
+    void openPlan(planId);
+  };
+  const duplicateThisPlan = async () => {
+    setOpenMenu(null);
+    const copy = await duplicatePlan(project.id);
+    if (copy) await openPlan(copy.id);
   };
 
   // The save state was already tracked; it is shown in the bar, but quietly — it is a status,
@@ -95,22 +105,61 @@ export default function TopBar() {
 
   return (
     <div className="top-bar" data-save-state={saveState}>
-      {/* Group 1 — identity. Compressed to the mark plus the project name: the workspace itself
-          says which mode we are in, so the subtitle no longer spends space here. */}
+      {/* Group 1 — identity: where we are. Project (back to its overview) › plan (editable name). */}
       <div className="top-bar-group identity">
         <div className="app-brand" title="BetterCalc — חישוב כמויות">
           <BrandLogo />
         </div>
+        {currentProject && (
+          <>
+            <button className="btn-ghost small breadcrumb-project" onClick={backToOverview} title="שמירה וחזרה לסקירת הפרויקט">
+              {currentProject.name || 'פרויקט ללא שם'}
+            </button>
+            <Icon name="chevron-left" size={13} />
+          </>
+        )}
         <input
           className="project-name-input"
           value={project.name}
           onChange={(e) => updateProjectMeta({ name: e.target.value })}
-          title="שם הפרויקט"
+          title="שם התוכנית"
         />
       </div>
 
       {/* Group 2 — the document: where we are in it, and moving through its history. */}
       <div className="top-bar-group grow">
+        {/* Plan switcher heads the document group — the identity group clips overflow, so its
+            dropdown would be cut off there. */}
+        <TopBarMenu id="plans" openId={openMenu} setOpenId={setOpenMenu} icon="layers" label="תוכניות" variant="ghost" title="מעבר בין תוכניות הפרויקט">
+          {projectPlans.map((p) => (
+            <button key={p.id} className={`menu-item ${p.id === project.id ? 'active' : ''}`} onClick={() => switchPlan(p.id)}>
+              <span className="menu-check">{p.id === project.id && <Icon name="check" size={13} />}</span>
+              {p.id === project.id ? project.name : p.name}
+            </button>
+          ))}
+          <div className="menu-divider" />
+          <button className="menu-item" onClick={() => void duplicateThisPlan()}>
+            <span className="menu-check">
+              <Icon name="copy" size={13} />
+            </span>
+            שכפול התוכנית הזו
+          </button>
+          <button
+            className="menu-item"
+            onClick={() => {
+              setOpenMenu(null);
+              backToOverview();
+            }}
+          >
+            <span className="menu-check">
+              <Icon name="home" size={13} />
+            </span>
+            סקירת הפרויקט
+          </button>
+        </TopBarMenu>
+
+        <span className="top-bar-sep" />
+
         {/* The page is dir="rtl", so previous sits on the right and next on the left. */}
         <div className="page-nav">
           <button disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title="עמוד קודם">
@@ -236,9 +285,9 @@ export default function TopBar() {
           </p>
         </TopBarMenu>
 
-        <button className="btn-ghost small" onClick={closeProject} title="שמירה ויציאה לרשימת הפרויקטים">
+        <button className="btn-ghost small" onClick={backToOverview} title="שמירה וחזרה לסקירת הפרויקט">
           <Icon name="exit" />
-          <span className="btn-label">פרויקטים</span>
+          <span className="btn-label">סקירת פרויקט</span>
         </button>
       </div>
     </div>

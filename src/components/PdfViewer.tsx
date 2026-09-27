@@ -4,6 +4,7 @@ import { loadPdfPlanSource, type PdfPlanSource } from '../lib/planSource';
 import { useAppStore } from '../store/appStore';
 import type { ExportRegion, Markup, Point } from '../types';
 import { DEFAULT_AREA_KIND_COLORS } from '../types';
+import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
 import {
   arrowHeadPoints,
   cloudPath,
@@ -287,7 +288,7 @@ export default function PdfViewer() {
       label = `${round(m, 2)} מ'`;
     } else if (measureTool === 'area' && areaCalcMode === 'wall') {
       wallLengthM = round(pxToMeters(longestEdgePx(points), metersPerPixel), 2);
-      wallHeightM = project?.wallHeightDefaultM ?? 2.5;
+      wallHeightM = project?.wallHeightDefaultM ?? MEASUREMENT_DEFAULTS.wallHeightM;
       areaM2 = round(wallLengthM * wallHeightM, 2);
       label = `${areaM2} מ"ר`;
     } else if (measureTool === 'area') {

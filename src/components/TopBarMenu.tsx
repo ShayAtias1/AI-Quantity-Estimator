@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import Icon, { type IconName } from './Icon';
 
 /** Ids of the top-bar dropdowns; both apps' bars pick the ones they use. */
-export type MenuId = 'view' | 'export' | 'settings';
+export type MenuId = 'view' | 'export' | 'settings' | 'plans';
 
 /**
  * A top-bar button with a popover menu under it. Only the menu whose id matches `openId` is shown,
