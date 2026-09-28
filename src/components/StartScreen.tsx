@@ -5,13 +5,15 @@ import SavedItemList, { type SavedItem } from './SavedItemList';
 import Icon from './Icon';
 
 /** What the row says about a project: its plans and rooms, and when it was last touched. */
-function projectMeta({ project, plans }: ProjectWithPlans): string {
-  const lastTouched = Math.max(project.updatedAt, ...plans.map((p) => p.updatedAt));
+function projectMeta({ project, plans, comparisons }: ProjectWithPlans): string {
+  const lastTouched = Math.max(project.updatedAt, ...plans.map((p) => p.updatedAt), ...comparisons.map((c) => c.updatedAt));
   const updated = `עודכן ${new Date(lastTouched).toLocaleDateString('he-IL')}`;
-  if (plans.length === 0) return `אין עדיין תוכניות · ${updated}`;
+  if (plans.length === 0 && comparisons.length === 0) return `עדיין ריק · ${updated}`;
   const rooms = plans.reduce((n, p) => n + p.rooms.length, 0);
-  const parts = [plans.length === 1 ? 'תוכנית אחת' : `${plans.length} תוכניות`];
+  const parts: string[] = [];
+  if (plans.length > 0) parts.push(plans.length === 1 ? 'תוכנית אחת' : `${plans.length} תוכניות`);
   if (rooms > 0) parts.push(`${rooms} חדרים`);
+  if (comparisons.length > 0) parts.push(comparisons.length === 1 ? 'השוואה אחת' : `${comparisons.length} השוואות`);
   parts.push(updated);
   return parts.join(' · ');
 }
@@ -36,8 +38,8 @@ export default function StartScreen() {
 
   const handleDelete = async (id: string) => {
     const entry = projects.find((p) => p.project.id === id);
-    const planCount = entry?.plans.length ?? 0;
-    if (!confirm(`למחוק את הפרויקט${planCount > 0 ? ` ואת ${planCount} התוכניות שבו` : ''}? הפעולה בלתי הפיכה.`)) return;
+    const count = (entry?.plans.length ?? 0) + (entry?.comparisons.length ?? 0);
+    if (!confirm(`למחוק את הפרויקט${count > 0 ? ' ואת כל התוכניות וההשוואות שבו' : ''}? הפעולה בלתי הפיכה.`)) return;
     await deleteProject(id);
     refresh();
   };
@@ -75,8 +77,8 @@ export default function StartScreen() {
     <div className="home-panel">
       <div className="home-panel-head">
         <div className="home-panel-text">
-          <h2>חישוב כמויות</h2>
-          <p className="muted">פרויקט מרכז את כל התוכניות שלו — מדידה בכל תוכנית, וכתב כמויות אחד לכל הפרויקט.</p>
+          <h2>פרויקטים</h2>
+          <p className="muted">פרויקט מרכז את תוכניות הכמויות ואת השוואות הגרסאות שלו — וכתב כמויות אחד לכל הפרויקט.</p>
         </div>
         <button className="btn-primary" onClick={() => setCreating(true)}>
           <Icon name="plus" />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { selectCompareSaveState, useCompareStore } from '../../store/compareStore';
+import { useAppStore } from '../../store/appStore';
 import TopBarMenu, { type MenuId } from '../TopBarMenu';
 import Icon, { type IconName } from '../Icon';
 import BrandLogo from '../BrandLogo';
@@ -16,6 +17,7 @@ export default function CompareTopBar({
   const setComparison = useCompareStore((s) => s.setComparison);
   const updateComparisonMeta = useCompareStore((s) => s.updateComparisonMeta);
   const persist = useCompareStore((s) => s.persist);
+  const currentProject = useAppStore((s) => s.currentProject);
   const toolMode = useCompareStore((s) => s.toolMode);
   const setToolMode = useCompareStore((s) => s.setToolMode);
   const currentPageKey = useCompareStore((s) => s.currentPageKey);
@@ -70,6 +72,7 @@ export default function CompareTopBar({
     error: { text: 'שגיאה בשמירה', title: 'השמירה נכשלה — העבודה לא נשמרה', icon: 'alert' },
   };
 
+  // Leaving saves first; closing drops back to the project overview (or home, with no project open).
   const close = async () => {
     await persist();
     // If the save failed the work is still only in memory — stay in the comparison.
@@ -90,6 +93,14 @@ export default function CompareTopBar({
         <div className="app-brand" title="BetterCalc — השוואת תוכניות">
           <BrandLogo />
         </div>
+        {currentProject && (
+          <>
+            <button className="btn-ghost small breadcrumb-project" onClick={() => void close()} title="שמירה וחזרה לסקירת הפרויקט">
+              {currentProject.name || 'פרויקט ללא שם'}
+            </button>
+            <Icon name="chevron-left" size={13} />
+          </>
+        )}
         <input
           className="project-name-input"
           value={comparison.name}
@@ -273,9 +284,9 @@ export default function CompareTopBar({
           </p>
         </TopBarMenu>
 
-        <button className="btn-ghost small" onClick={close} title="שמירה ויציאה לרשימת ההשוואות">
+        <button className="btn-ghost small" onClick={close} title={currentProject ? 'שמירה וחזרה לסקירת הפרויקט' : 'שמירה ויציאה'}>
           <Icon name="exit" />
-          <span className="btn-label">השוואות</span>
+          <span className="btn-label">{currentProject ? 'סקירת פרויקט' : 'יציאה'}</span>
         </button>
       </div>
     </div>

@@ -39,6 +39,11 @@ projects existed). Only one plan is in memory: the store key `project` is the op
 home) always persists it first. Project totals come from `src/lib/projectQuantities.ts`, which only
 sums each plan's own `buildRoomSummaries` — never re-implement work-type logic there.
 
+Revision Compare comparisons also belong to a project (`Comparison.projectId`, ordered
+`Project.comparisonIds`), but stay their own documents in their own store, opened in the unchanged
+Compare workspace. Projects are the only entrance: home lists projects; the overview lists quantity
+plans and revision comparisons separately.
+
 `types/compare.ts` deliberately re-declares `Markup`, `Measurement`, `AreaKind`, etc. rather than
 importing them from `types/index.ts` — the two features are allowed to diverge. When you change a
 markup or measurement field, decide explicitly whether both sides need it, and expect to touch
@@ -81,7 +86,8 @@ history).
 name kept so no record had to move), `pdfFiles` (Blob keyed by planId), `takeoffProjects` (project
 folders), `comparisons`, `comparePdfFiles` (Blob keyed by `${comparisonId}:original` or
 `${comparisonId}:revision:${revisionId}`). `migrateLegacyPlans` wraps any plan without a project
-(pre-v3 data) into project `legacy-${planId}` on load — idempotent.
+(pre-v3 data) into project `legacy-${planId}` on load, and `migrateLegacyComparisons` does the same
+for comparisons (`legacy-cmp-${comparisonId}`) — both idempotent.
 
 Schema changes to saved documents are handled by **lazy migrations on load**, not by the IndexedDB
 `upgrade` callback: `migrateComparison` converts the old single-`revised*`-layer shape into the
@@ -109,18 +115,24 @@ renderers need there. `orderMarkups` must be applied in both paths so `mask` mar
 
 ## PDF export and Hebrew
 
-pdf-lib's standard fonts cannot encode Hebrew, so **no text is drawn with pdf-lib**. Every page —
-plan, report table, area breakdown — is drawn to a `<canvas>` and embedded as a PNG image:
+pdf-lib's standard fonts cannot encode Hebrew. Report text and tables are drawn as **vector PDF
+content** through `src/lib/pdfText.ts`: an embedded Noto Sans Hebrew (Hebrew + Latin subsets), each
+string reordered with bidi-js on an RTL base, and a canvas-like `PdfPainter` (top-left coordinates,
+`fillText` with `textAlign`/`maxWidth` condensing). fontkit reverses Hebrew runs itself, which is why
+`fontRuns` hands them over in logical order. Only real images stay raster:
 
-- `src/lib/exportRegionPdf.ts` — plan page(s), optionally cropped to an `ExportRegion`.
-- `src/lib/exportQuantitiesPdf.ts` — the full contractor report (plan pages + tables).
-- `src/lib/areaMeasurementTable.ts` — demolition/construction breakdown, shared by both apps.
-- `src/lib/exportComparePdf.ts` — wraps the composite raster `CompareCanvas` already produced.
-- `src/lib/exportExcel.ts` — the one exception; ExcelJS handles Hebrew natively.
+- `src/lib/exportQuantitiesPdf.ts` — the contractor report: plan pages are a raster of the plan and
+  its annotations with a vector header; all tables are vector.
+- `src/lib/exportProjectPdf.ts` — the project report, vector throughout.
+- `src/lib/areaMeasurementTable.ts` — demolition/construction breakdown (vector), shared by both apps.
+- `src/lib/exportRegionPdf.ts` — plan page(s), optionally cropped to an `ExportRegion` (raster).
+- `src/lib/exportComparePdf.ts` — wraps the composite raster `CompareCanvas` produced, plus vector
+  change tables.
+- `src/lib/exportExcel.ts` — ExcelJS handles Hebrew natively.
 
-When rasterizing text, set `ctx.direction = 'rtl'` and mind text alignment: SVG's default
-`text-anchor="start"` under RTL anchors at the text's *right* edge, so the canvas equivalent is
-`textAlign = 'right'`.
+When rasterizing text on a canvas (plan annotations), set `ctx.direction = 'rtl'` and mind text
+alignment: SVG's default `text-anchor="start"` under RTL anchors at the text's *right* edge, so the
+canvas equivalent is `textAlign = 'right'`.
 
 ## Quantities model
 

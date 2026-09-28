@@ -303,24 +303,6 @@ button:disabled,
   padding: var(--s-5) var(--s-4) var(--s-5);
   gap: var(--s-4);
 }
-/* The two products, as the primary navigation. Centred, and wide enough to read as a choice. */
-.home-tabs {
-  width: 100%;
-  max-width: 720px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  flex: none;
-}
-.home-tabs button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: var(--s-3) var(--s-2);
-  border-bottom-width: 2px;
-}
 .home-content {
   width: 100%;
   max-width: 720px;
@@ -405,6 +387,8 @@ button:disabled,
   margin: var(--s-3) 0 0;
 }
 .breadcrumb-project {
+  flex: 0 1 auto;
+  min-width: 48px;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -621,8 +605,14 @@ button:disabled,
   white-space: nowrap;
 }
 .top-bar .project-name-input {
-  flex: 0 1 auto;
+  /* The basis is the field's own cap. With `auto`, an <input>'s intrinsic width is wider than its
+     max-width, so the flex algorithm treated it as already clamped and never shrank it — every
+     pixel of squeeze landed on the compare context chip instead, clipping its revision name. */
+  flex: 0 1 220px;
   min-width: 70px;
+}
+.top-bar .apt-input {
+  flex-basis: 120px;
 }
 /* Compare adds a third identity item; the group shrinks as a whole so the view-mode control and
    the page navigation keep their full labels. */
@@ -2199,8 +2189,8 @@ html[dir='rtl'] .qty-table .col-room {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 0 1 auto;
-  min-width: 0;
+  /* Never narrower than its content: the name fields give way first (see .project-name-input). */
+  flex: none;
   padding: 3px var(--s-2);
   border-radius: var(--r-pill);
   background: var(--bg-subtle);
@@ -2635,6 +2625,10 @@ html[dir='rtl'] .qty-table .col-room {
   }
   .top-bar .project-name-input {
     max-width: 150px;
+    flex-basis: 150px;
+  }
+  .top-bar .apt-input {
+    flex-basis: 120px;
   }
 }
 

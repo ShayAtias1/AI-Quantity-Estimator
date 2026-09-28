@@ -143,6 +143,11 @@ export interface Project {
   updatedAt: number;
   /** The project's plans, in display order. Each id is a `Plan` stored on its own. */
   planIds: string[];
+  /**
+   * The project's revision comparisons, in display order. Each id is a Revision Compare
+   * `Comparison`, stored on its own like a plan. Absent on projects saved before comparisons joined.
+   */
+  comparisonIds?: string[];
 }
 
 /**

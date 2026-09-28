@@ -1,4 +1,6 @@
+import type { PDFDocument } from 'pdf-lib';
 import { round } from './geometry';
+import { drawLogo, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { numberAreaMeasurements, type AreaMeasurementLike } from './areaMeasurements';
 import { changeTotals } from './changeMeasurements';
 
@@ -19,6 +21,8 @@ export interface AreaTableOptions {
   numbering?: Map<string, number>;
   /** Adds a source-page column — for multi-page comparisons, where the page matters. */
   showPage?: boolean;
+  /** Puts the BetterCalc logo in the page header, as the quantity report does on all its pages. */
+  showLogo?: boolean;
 }
 
 const AREA_KIND_LABELS: Record<'demolition' | 'construction', string> = {
@@ -27,7 +31,6 @@ const AREA_KIND_LABELS: Record<'demolition' | 'construction', string> = {
 };
 
 const DASH = '—';
-const FONT = "'Segoe UI', sans-serif";
 
 const C_HEADER = '#1F4E79';
 const C_ZEBRA_A = '#EBF5FB';
@@ -42,15 +45,18 @@ const HEADERS_WITH_PAGE = ['#', 'סוג', 'עמוד', 'אופן חישוב', "א
 const WEIGHTS_WITH_PAGE = [7, 20, 10, 21, 14, 14, 24];
 
 /**
- * Builds the printable demolition/construction area breakdown (one canvas per page) as PNG data
- * URLs — one row per marked area/wall (with the same numbering as the on-canvas wall labels), plus
- * per-kind and grand totals. Shared by both the quantity-takeoff and Revision Compare PDF exports.
+ * Appends the printable demolition/construction area breakdown to `doc` as vector pages (real text
+ * and table lines) — one row per marked area/wall (with the same numbering as the on-canvas wall
+ * labels), plus per-kind and grand totals. Shared by both the quantity-takeoff and Revision Compare
+ * PDF exports.
  */
-export function buildAreaMeasurementTablePages<T extends WallMeasurementLike>(
+export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
+  doc: PDFDocument,
+  fonts: ReportFonts,
   title: string,
   measurements: T[],
   options: AreaTableOptions = {}
-): { dataUrl: string; width: number; height: number }[] {
+): void {
   const showPage = !!options.showPage;
   const headers = showPage ? HEADERS_WITH_PAGE : HEADERS;
   const weights = showPage ? WEIGHTS_WITH_PAGE : WEIGHTS;
@@ -63,74 +69,44 @@ export function buildAreaMeasurementTablePages<T extends WallMeasurementLike>(
   const totalWeight = weights.reduce((a, b) => a + b, 0);
   const colWidths = weights.map((w) => (usableWidth * w) / totalWeight);
 
-  const pages: { dataUrl: string; width: number; height: number }[] = [];
-  let ctx: CanvasRenderingContext2D;
+  let pt: PdfPainter;
   let y = 0;
 
   const drawRow = (cells: string[], bg: string, opts?: { bold?: boolean }) => {
-    ctx.fillStyle = bg;
-    ctx.fillRect(MARGIN, y, usableWidth, ROW_H);
-    ctx.strokeStyle = C_BORDER;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(MARGIN, y, usableWidth, ROW_H);
-    ctx.fillStyle = '#1e293b';
-    ctx.font = `${opts?.bold ? 'bold ' : ''}12px ${FONT}`;
-    ctx.textAlign = 'center';
+    pt.fillRect(MARGIN, y, usableWidth, ROW_H, bg);
+    pt.strokeRect(MARGIN, y, usableWidth, ROW_H, C_BORDER);
     let x = PAGE_W - MARGIN;
     cells.forEach((cell, i) => {
       const w = colWidths[i] ?? 0;
-      ctx.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, w - 6);
+      pt.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, { size: 12, bold: opts?.bold, align: 'center', maxWidth: w - 6 });
       x -= w;
     });
     y += ROW_H;
   };
 
   const drawColumnHeader = () => {
-    ctx.fillStyle = C_HEADER;
-    ctx.fillRect(MARGIN, y, usableWidth, HEADER_ROW_H);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold 12.5px ${FONT}`;
-    ctx.textAlign = 'center';
+    pt.fillRect(MARGIN, y, usableWidth, HEADER_ROW_H, C_HEADER);
     let x = PAGE_W - MARGIN;
     headers.forEach((label, i) => {
       const w = colWidths[i];
-      ctx.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, w - 6);
+      pt.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 6 });
       x -= w;
     });
     y += HEADER_ROW_H;
   };
 
   const newPage = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = PAGE_W;
-    canvas.height = PAGE_H;
-    const c = canvas.getContext('2d');
-    if (!c) throw new Error('2D context unavailable');
-    ctx = c;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, PAGE_W, PAGE_H);
-    ctx.direction = 'rtl';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 20px ${FONT}`;
-    ctx.fillText(`טבלת שטחי הריסה ובנייה — ${title}`, PAGE_W - MARGIN, 40);
-    ctx.fillStyle = '#8b8f99';
-    ctx.font = `12px ${FONT}`;
-    ctx.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60);
+    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
+    pt.fillText(`טבלת שטחי הריסה ובנייה — ${title}`, PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
+    pt.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
+    if (options.showLogo) drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
     y = 84;
     drawColumnHeader();
-    pages.push({ dataUrl: '', width: PAGE_W, height: PAGE_H });
   };
 
   const remainingRows = () => Math.floor((PAGE_H - MARGIN - y) / ROW_H);
-  const finalizeCurrentPage = () => {
-    pages[pages.length - 1] = { dataUrl: (ctx.canvas as HTMLCanvasElement).toDataURL('image/png'), width: PAGE_W, height: PAGE_H };
-  };
   const ensureRoom = (rows: number) => {
-    if (remainingRows() < rows) {
-      finalizeCurrentPage();
-      newPage();
-    }
+    if (remainingRows() < rows) newPage();
   };
 
   newPage();
@@ -180,7 +156,4 @@ export function buildAreaMeasurementTablePages<T extends WallMeasurementLike>(
     C_GRAND,
     { bold: true }
   );
-
-  finalizeCurrentPage();
-  return pages;
 }

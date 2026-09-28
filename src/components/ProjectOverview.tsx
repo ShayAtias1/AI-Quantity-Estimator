@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { buildProjectQuantities, PLAN_STATUS_LABELS, type CategoryAmount } from '../lib/projectQuantities';
 import { exportProjectToExcel } from '../lib/exportProjectExcel';
@@ -6,6 +6,17 @@ import { exportProjectToPdf } from '../lib/exportProjectPdf';
 import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
 import Icon from './Icon';
 import BrandLogo from './BrandLogo';
+import NewComparisonDialog from './compare/NewComparisonDialog';
+import type { Comparison } from '../types/compare';
+
+/** What a comparison row says: which flat, how many revised plans, when it was last touched. */
+function comparisonMeta(c: Comparison): string {
+  const parts: string[] = [];
+  if (c.apartmentNumber) parts.push(`דירה ${c.apartmentNumber}`);
+  parts.push(c.revisions.length === 0 ? 'אין עדיין גרסה' : c.revisions.length === 1 ? 'גרסה אחת' : `${c.revisions.length} גרסאות`);
+  parts.push(`עודכן ${new Date(c.updatedAt).toLocaleDateString('he-IL')}`);
+  return parts.join(' · ');
+}
 
 const DASH = '—';
 const fmt = (v: number | null) => (v == null ? DASH : v.toLocaleString('he-IL', { maximumFractionDigits: 2 }));
@@ -33,6 +44,18 @@ export default function ProjectOverview() {
   const duplicatePlan = useAppStore((s) => s.duplicatePlan);
   const deletePlan = useAppStore((s) => s.deletePlan);
   const renamePlan = useAppStore((s) => s.renamePlan);
+  const refreshProjectPlans = useAppStore((s) => s.refreshProjectPlans);
+  const comparisons = useAppStore((s) => s.projectComparisons);
+  const createComparison = useAppStore((s) => s.createComparison);
+  const openComparison = useAppStore((s) => s.openComparison);
+  const renameComparison = useAppStore((s) => s.renameComparison);
+  const deleteComparison = useAppStore((s) => s.deleteComparison);
+  const [addingComparison, setAddingComparison] = useState(false);
+
+  // Coming back from a plan or a comparison always shows what was just saved there.
+  useEffect(() => {
+    void refreshProjectPlans();
+  }, [refreshProjectPlans]);
 
   const quantities = useMemo(() => buildProjectQuantities(plans), [plans]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -66,6 +89,16 @@ export default function ProjectOverview() {
   const onDelete = (planId: string, name: string) => {
     if (!confirm(`למחוק את התוכנית "${name}" ואת כל המדידות שבה? הפעולה בלתי הפיכה.`)) return;
     void deletePlan(planId);
+  };
+
+  const onRenameComparison = (comparisonId: string, current: string) => {
+    const next = window.prompt('שם ההשוואה:', current);
+    if (next && next.trim() && next.trim() !== current) void renameComparison(comparisonId, next.trim());
+  };
+
+  const onDeleteComparison = (comparisonId: string, name: string) => {
+    if (!confirm(`למחוק את ההשוואה "${name}" עם כל הגרסאות והסימונים שבה? הפעולה בלתי הפיכה.`)) return;
+    void deleteComparison(comparisonId);
   };
 
   return (
@@ -114,7 +147,7 @@ export default function ProjectOverview() {
           <div className="home-panel">
             <div className="home-panel-head">
               <div className="home-panel-text">
-                <h2>תוכניות</h2>
+                <h2>תוכניות כמויות</h2>
                 <p className="muted">כל תוכנית נמדדת בנפרד — קנה מידה, חדרים ופתחים משלה.</p>
               </div>
               <button className="btn-primary" onClick={() => setAdding(true)} disabled={!!busy}>
@@ -154,6 +187,49 @@ export default function ProjectOverview() {
                         <Icon name="copy" />
                       </button>
                       <button className="icon-btn danger" title="מחק תוכנית" onClick={() => onDelete(r.plan.id, r.plan.name)}>
+                        <Icon name="trash" />
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="home-panel">
+            <div className="home-panel-head">
+              <div className="home-panel-text">
+                <h2>השוואות גרסאות</h2>
+                <p className="muted">תוכנית מקור מול גרסאות מעודכנות — יישור, שכבות, וסימון הריסה ובנייה חדשה.</p>
+              </div>
+              <button className="btn-primary" onClick={() => setAddingComparison(true)} disabled={!!busy}>
+                <Icon name="plus" />
+                השוואה חדשה
+              </button>
+            </div>
+
+            {comparisons.length === 0 ? (
+              <div className="empty-state">
+                <Icon name="layers" size={24} />
+                <p>אין עדיין השוואות בפרויקט. צור השוואה מתוכנית מקור ומגרסה מעודכנת.</p>
+              </div>
+            ) : (
+              <ul className="saved-list plan-list">
+                {comparisons.map((c) => (
+                  <li key={c.id} onClick={() => void openComparison(c.id)} title="פתח את ההשוואה">
+                    <Icon name="layers" />
+                    <span className="saved-list-text">
+                      <span className="saved-list-name">{c.name}</span>
+                      <span className="saved-list-meta">{comparisonMeta(c)}</span>
+                    </span>
+                    {/* TODO: "Move to Project" for comparisons — reassign `projectId` and move the id between the
+                        two projects' `comparisonIds`. Also the way to fold legacy comparisons, which the
+                        migration wrapped into one project each (`legacy-cmp-*`), into their real project. */}
+                    <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
+                      <button className="icon-btn" title="שינוי שם" onClick={() => onRenameComparison(c.id, c.name)}>
+                        <Icon name="text" />
+                      </button>
+                      <button className="icon-btn danger" title="מחק השוואה" onClick={() => onDeleteComparison(c.id, c.name)}>
                         <Icon name="trash" />
                       </button>
                     </span>
@@ -215,6 +291,9 @@ export default function ProjectOverview() {
         </div>
       </div>
 
+      {addingComparison && (
+        <NewComparisonDialog onClose={() => setAddingComparison(false)} onCreate={(input) => run('comparison', () => createComparison(input))} />
+      )}
       {adding && <AddPlanDialog onClose={() => setAdding(false)} onAdd={(file, name) => run('add', () => addPlan(file, name))} />}
     </div>
   );

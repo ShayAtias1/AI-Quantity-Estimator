@@ -1,4 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
+import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
 import { DEFAULT_AREA_KIND_COLORS, REPORT_CATEGORY_LABELS } from '../types';
@@ -9,7 +10,7 @@ import { polygonCentroid } from './geometry';
 import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
 import { numberAreaMeasurements } from './areaMeasurements';
-import { buildAreaMeasurementTablePages } from './areaMeasurementTable';
+import { drawAreaMeasurementTable } from './areaMeasurementTable';
 
 const DASH = '—';
 /** Printed in quantity cells of a room whose page has no scale, so 0 is never implied. */
@@ -71,7 +72,11 @@ function totalsRow(columnCount: number, cells: {
 
 const DATA_WEIGHTS = [8, 18, 13, 12, 12, 12, 11, 10, 10, 10, 10, 12, 12, 11, 13, 11, 17];
 
-/** Renders one PDF-source page (the plan itself) with its rooms overlaid, as a standalone framed image. */
+/**
+ * Renders one PDF-source page (the plan itself) with its rooms overlaid, as a standalone framed
+ * image. The header band on top is left blank: its title and date are drawn as vector text by the
+ * caller, so only the plan and its annotations are raster.
+ */
 async function renderFramedPlanPage(
   project: Plan,
   pageNumber: number,
@@ -79,7 +84,7 @@ async function renderFramedPlanPage(
   showMarkings: boolean,
   showMeasurements: boolean,
   areaNumbers: Map<string, number>
-): Promise<{ dataUrl: string; width: number; height: number } | null> {
+): Promise<{ dataUrl: string; width: number; height: number; headerH: number } | null> {
   let source;
   try {
     ({ source } = await loadPdfPlanSource(project.id, () => loadPdfBlob(project.id), pageNumber));
@@ -101,12 +106,6 @@ async function renderFramedPlanPage(
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.direction = 'rtl';
   ctx.textAlign = 'right';
-  ctx.fillStyle = '#0f172a';
-  ctx.font = `bold ${18 * mult}px ${FONT}`;
-  ctx.fillText(project.name, canvas.width - 16 * mult, 26 * mult);
-  ctx.fillStyle = '#8b8f99';
-  ctx.font = `${12 * mult}px ${FONT}`;
-  ctx.fillText(`עמוד תוכנית ${pageNumber} · ${new Date().toLocaleDateString('he-IL')}`, canvas.width - 16 * mult, 46 * mult);
 
   ctx.drawImage(planCanvas, 0, headerH);
 
@@ -168,11 +167,17 @@ async function renderFramedPlanPage(
     }
   }
 
-  return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
+  return { dataUrl: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height, headerH };
 }
 
-/** Builds the printable quantities-table pages (one canvas per page) as PNG data URLs. */
-function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[], totals: ReportCategoryTotal[]): { dataUrl: string; width: number; height: number }[] {
+/** Appends the printable quantities-table pages to `doc` as vector pages (real text and table lines). */
+function drawQuantityTablePages(
+  doc: PDFDocument,
+  fonts: ReportFonts,
+  project: Plan,
+  summaries: RoomQuantitySummary[],
+  totals: ReportCategoryTotal[]
+): void {
   const PAGE_W = 1600;
   const PAGE_H = 1132;
   const MARGIN = 40;
@@ -196,26 +201,19 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
   const colWidths = weights.map((w) => (usableWidth * w) / totalWeight);
   const tRow = (cells: Parameters<typeof totalsRow>[1]) => totalsRow(headers.length, cells);
 
-  const pages: { dataUrl: string; width: number; height: number }[] = [];
-  let ctx: CanvasRenderingContext2D;
+  let pt: PdfPainter;
   let y = 0;
 
   // `spanLabel`: the first cell also takes the (empty) room column beside it. Used by the totals
   // rows, whose category labels would otherwise be squeezed into the narrow apartment column.
   const drawRow = (cells: string[], bg: string, opts?: { bold?: boolean; color?: string; spanLabel?: boolean }) => {
-    ctx.fillStyle = bg;
-    ctx.fillRect(MARGIN, y, usableWidth, ROW_H);
-    ctx.strokeStyle = C_BORDER;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(MARGIN, y, usableWidth, ROW_H);
-    ctx.fillStyle = opts?.color ?? '#1e293b';
-    ctx.font = `${opts?.bold ? 'bold ' : ''}12px ${FONT}`;
-    ctx.textAlign = 'center';
+    pt.fillRect(MARGIN, y, usableWidth, ROW_H, bg);
+    pt.strokeRect(MARGIN, y, usableWidth, ROW_H, C_BORDER);
     let x = PAGE_W - MARGIN;
     cells.forEach((cell, i) => {
       if (opts?.spanLabel && i === 1) return; // already covered by the spanned label
       const w = opts?.spanLabel && i === 0 ? (colWidths[0] ?? 0) + (colWidths[1] ?? 0) : (colWidths[i] ?? 0);
-      ctx.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, w - 6);
+      pt.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, { size: 12, bold: opts?.bold, color: opts?.color, align: 'center', maxWidth: w - 6 });
       x -= w;
     });
     y += ROW_H;
@@ -224,51 +222,28 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
     drawRow(cells, bg, { ...opts, spanLabel: true });
 
   const drawColumnHeader = () => {
-    ctx.fillStyle = C_HEADER;
-    ctx.fillRect(MARGIN, y, usableWidth, HEADER_ROW_H);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold 12.5px ${FONT}`;
-    ctx.textAlign = 'center';
+    pt.fillRect(MARGIN, y, usableWidth, HEADER_ROW_H, C_HEADER);
     let x = PAGE_W - MARGIN;
     headers.forEach((label, i) => {
       const w = colWidths[i];
-      ctx.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, w - 6);
+      pt.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 6 });
       x -= w;
     });
     y += HEADER_ROW_H;
   };
 
   const newPage = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = PAGE_W;
-    canvas.height = PAGE_H;
-    const c = canvas.getContext('2d');
-    if (!c) throw new Error('2D context unavailable');
-    ctx = c;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, PAGE_W, PAGE_H);
-    ctx.direction = 'rtl';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 20px ${FONT}`;
-    ctx.fillText(`כתב כמויות — ${project.name}`, PAGE_W - MARGIN, 40);
-    ctx.fillStyle = '#8b8f99';
-    ctx.font = `12px ${FONT}`;
-    ctx.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60);
+    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
+    pt.fillText(`כתב כמויות — ${project.name}`, PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
+    drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
+    pt.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
     y = 84;
     drawColumnHeader();
-    pages.push({ dataUrl: '', width: PAGE_W, height: PAGE_H });
   };
 
   const remainingRows = () => Math.floor((PAGE_H - MARGIN - y) / ROW_H);
-  const finalizeCurrentPage = () => {
-    pages[pages.length - 1] = { dataUrl: (ctx.canvas as HTMLCanvasElement).toDataURL('image/png'), width: PAGE_W, height: PAGE_H };
-  };
   const ensureRoom = (rows: number) => {
-    if (remainingRows() < rows) {
-      finalizeCurrentPage();
-      newPage();
-    }
+    if (remainingRows() < rows) newPage();
   };
 
   const num = (v: number | null) => (v == null ? DASH : `${v}`);
@@ -419,9 +394,6 @@ function buildQuantityTablePages(project: Plan, summaries: RoomQuantitySummary[]
       { bold: true, color: '#92400e' }
     );
   }
-
-  finalizeCurrentPage();
-  return pages;
 }
 
 /** Page numbers with any exportable content (rooms, markups, or measurements), sorted ascending. */
@@ -444,6 +416,7 @@ export async function exportQuantitiesToPdf(
   showMeasurements: boolean = true
 ) {
   const pdfDoc = await PDFDocument.create();
+  const fonts = await embedReportFonts(pdfDoc);
   const mult = 2;
 
   const allAreaMeasurements = (project.measurements ?? []).filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number');
@@ -461,26 +434,23 @@ export async function exportQuantitiesToPdf(
       const pngImage = await pdfDoc.embedPng(pngBytes);
       const page = pdfDoc.addPage([framed.width, framed.height]);
       page.drawImage(pngImage, { x: 0, y: 0, width: framed.width, height: framed.height });
+      // The header band's text, as real text over the image's blank band (same place and sizes the
+      // raster header used).
+      const pt = new PdfPainter(page, fonts);
+      pt.fillText(project.name, framed.width - 16 * mult, 26 * mult, { size: 18 * mult, bold: true, color: '#0f172a' });
+      pt.fillText(`עמוד תוכנית ${pageNumber} · ${new Date().toLocaleDateString('he-IL')}`, framed.width - 16 * mult, 46 * mult, {
+        size: 12 * mult,
+        color: '#8b8f99',
+      });
+      drawLogo(pt, 16 * mult, 14 * mult, REPORT_LOGO_HEIGHT * mult);
     }
 
     if (showMeasurements && pageAreaMeasurements.length > 0) {
-      const areaTablePages = buildAreaMeasurementTablePages(`${project.name} — עמוד ${pageNumber}`, pageAreaMeasurements);
-      for (const tp of areaTablePages) {
-        const pngBytes = await fetch(tp.dataUrl).then((r) => r.arrayBuffer());
-        const pngImage = await pdfDoc.embedPng(pngBytes);
-        const page = pdfDoc.addPage([tp.width, tp.height]);
-        page.drawImage(pngImage, { x: 0, y: 0, width: tp.width, height: tp.height });
-      }
+      drawAreaMeasurementTable(pdfDoc, fonts, `${project.name} — עמוד ${pageNumber}`, pageAreaMeasurements, { showLogo: true });
     }
   }
 
-  const tablePages = summaries.length > 0 ? buildQuantityTablePages(project, summaries, totals) : [];
-  for (const tp of tablePages) {
-    const pngBytes = await fetch(tp.dataUrl).then((r) => r.arrayBuffer());
-    const pngImage = await pdfDoc.embedPng(pngBytes);
-    const page = pdfDoc.addPage([tp.width, tp.height]);
-    page.drawImage(pngImage, { x: 0, y: 0, width: tp.width, height: tp.height });
-  }
+  if (summaries.length > 0) drawQuantityTablePages(pdfDoc, fonts, project, summaries, totals);
 
   const bytes = await pdfDoc.save();
   const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {

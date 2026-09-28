@@ -1,7 +1,8 @@
 import { PDFDocument } from 'pdf-lib';
 import { saveAs } from 'file-saver';
 import type { Measurement } from '../types/compare';
-import { buildAreaMeasurementTablePages } from './areaMeasurementTable';
+import { drawAreaMeasurementTable } from './areaMeasurementTable';
+import { embedReportFonts } from './pdfText';
 
 /**
  * One demolition/new-construction table to append after the plan pages. Each carries its own
@@ -49,18 +50,14 @@ export async function exportCompositesAsPdf(
 
   // One table per revision, in the same order as the rasters above, each titled with the revision
   // it belongs to.
-  for (const table of changeTables) {
-    if (table.measurements.length === 0) continue;
-    const tablePages = buildAreaMeasurementTablePages(table.title, table.measurements, {
+  const tables = changeTables.filter((t) => t.measurements.length > 0);
+  // Fonts are embedded only when a table is actually printed; the tables are vector text.
+  const fonts = tables.length > 0 ? await embedReportFonts(pdfDoc) : null;
+  for (const table of tables) {
+    drawAreaMeasurementTable(pdfDoc, fonts!, table.title, table.measurements, {
       numbering: table.numbering,
       showPage: true,
     });
-    for (const tp of tablePages) {
-      const bytes = await fetch(tp.dataUrl).then((r) => r.arrayBuffer());
-      const img = await pdfDoc.embedPng(bytes);
-      const tablePage = pdfDoc.addPage([tp.width, tp.height]);
-      tablePage.drawImage(img, { x: 0, y: 0, width: tp.width, height: tp.height });
-    }
   }
 
   const bytes = await pdfDoc.save();

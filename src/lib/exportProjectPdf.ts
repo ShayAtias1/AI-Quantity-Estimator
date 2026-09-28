@@ -1,20 +1,20 @@
 import { PDFDocument } from 'pdf-lib';
+import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, Project } from '../types';
 import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
 import { buildProjectQuantities, PLAN_STATUS_LABELS, roomCategoryQuantity, type CategoryAmount } from './projectQuantities';
 
 /*
- * The project quantity report. Like every BetterCalc PDF, pages are drawn on a canvas and embedded
- * as images — pdf-lib's standard fonts cannot encode Hebrew. Tables only: the marked-up plan images
- * stay in each plan's own report.
+ * The project quantity report: vector text and table lines throughout (see lib/pdfText — Hebrew is
+ * drawn as real text in an embedded font). Tables only: the marked-up plan images stay in each
+ * plan's own report.
  */
 
 const PAGE_W = 1600;
 const PAGE_H = 1132;
 const MARGIN = 40;
 const ROW_H = 30;
-const FONT = "'Segoe UI', sans-serif";
 const DASH = '—';
 
 // Same palette as the other exports.
@@ -32,39 +32,29 @@ interface TableRow {
 
 const fmt = (v: number | null | undefined) => (v == null ? DASH : v.toLocaleString('he-IL', { maximumFractionDigits: 2 }));
 
-/** Paginated canvas writer: section titles and tables, a new page whenever one fills up. */
-class ReportCanvas {
-  pages: HTMLCanvasElement[] = [];
-  private ctx!: CanvasRenderingContext2D;
+/** Paginated vector writer: section titles and tables, a new page whenever one fills up. */
+class ReportWriter {
+  private pt!: PdfPainter;
   private y = 0;
+  private doc: PDFDocument;
+  private fonts: ReportFonts;
   private title: string;
   private subtitle: string;
 
-  constructor(title: string, subtitle: string) {
+  constructor(doc: PDFDocument, fonts: ReportFonts, title: string, subtitle: string) {
+    this.doc = doc;
+    this.fonts = fonts;
     this.title = title;
     this.subtitle = subtitle;
     this.newPage();
   }
 
   private newPage() {
-    const canvas = document.createElement('canvas');
-    canvas.width = PAGE_W;
-    canvas.height = PAGE_H;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('2D context unavailable');
-    this.ctx = ctx;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, PAGE_W, PAGE_H);
-    ctx.direction = 'rtl';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `bold 20px ${FONT}`;
-    ctx.fillText(this.title, PAGE_W - MARGIN, 40);
-    ctx.fillStyle = '#8b8f99';
-    ctx.font = `12px ${FONT}`;
-    ctx.fillText(this.subtitle, PAGE_W - MARGIN, 60);
+    this.pt = new PdfPainter(this.doc.addPage([PAGE_W, PAGE_H]), this.fonts);
+    this.pt.fillText(this.title, PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
+    this.pt.fillText(this.subtitle, PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
+    drawLogo(this.pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
     this.y = 84;
-    this.pages.push(canvas);
   }
 
   private ensure(rows: number) {
@@ -72,20 +62,13 @@ class ReportCanvas {
   }
 
   private drawCells(cells: string[], widths: number[], bg: string, color: string, bold: boolean) {
-    const ctx = this.ctx;
     const usable = PAGE_W - MARGIN * 2;
-    ctx.fillStyle = bg;
-    ctx.fillRect(MARGIN, this.y, usable, ROW_H);
-    ctx.strokeStyle = C_BORDER;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(MARGIN, this.y, usable, ROW_H);
-    ctx.fillStyle = color;
-    ctx.font = `${bold ? 'bold ' : ''}12px ${FONT}`;
-    ctx.textAlign = 'center';
+    this.pt.fillRect(MARGIN, this.y, usable, ROW_H, bg);
+    this.pt.strokeRect(MARGIN, this.y, usable, ROW_H, C_BORDER);
     let x = PAGE_W - MARGIN;
     cells.forEach((cell, i) => {
       const w = widths[i] ?? 0;
-      ctx.fillText(cell, x - w / 2, this.y + ROW_H / 2 + 4, w - 6);
+      this.pt.fillText(cell, x - w / 2, this.y + ROW_H / 2 + 4, { size: 12, bold, color, align: 'center', maxWidth: w - 6 });
       x -= w;
     });
     this.y += ROW_H;
@@ -94,10 +77,7 @@ class ReportCanvas {
   section(title: string) {
     this.ensure(3);
     this.y += 10;
-    this.ctx.fillStyle = '#0f172a';
-    this.ctx.font = `bold 15px ${FONT}`;
-    this.ctx.textAlign = 'right';
-    this.ctx.fillText(title, PAGE_W - MARGIN, this.y + 16);
+    this.pt.fillText(title, PAGE_W - MARGIN, this.y + 16, { size: 15, bold: true, color: '#0f172a' });
     this.y += 26;
   }
 
@@ -120,10 +100,7 @@ class ReportCanvas {
 
   note(text: string) {
     this.ensure(1);
-    this.ctx.fillStyle = '#92400e';
-    this.ctx.font = `bold 12px ${FONT}`;
-    this.ctx.textAlign = 'right';
-    this.ctx.fillText(text, PAGE_W - MARGIN, this.y + 16);
+    this.pt.fillText(text, PAGE_W - MARGIN, this.y + 16, { size: 12, bold: true, color: '#92400e' });
     this.y += ROW_H;
   }
 }
@@ -134,7 +111,9 @@ const amountCells = (a: CategoryAmount) => [fmt(a.quantityM2), fmt(a.orderM2), f
 export async function exportProjectToPdf(project: Project, plans: Plan[]) {
   const q = buildProjectQuantities(plans);
   const date = new Date().toLocaleDateString('he-IL');
-  const report = new ReportCanvas(`כתב כמויות לפרויקט — ${project.name}`, `${plans.length} תוכניות · ${date}`);
+  const pdfDoc = await PDFDocument.create();
+  const fonts = await embedReportFonts(pdfDoc);
+  const report = new ReportWriter(pdfDoc, fonts, `כתב כמויות לפרויקט — ${project.name}`, `${plans.length} תוכניות · ${date}`);
 
   report.section('סיכום כמויות');
   if (q.totals.length === 0) {
@@ -185,11 +164,6 @@ export async function exportProjectToPdf(project: Project, plans: Plan[]) {
     );
   }
 
-  const pdfDoc = await PDFDocument.create();
-  for (const canvas of report.pages) {
-    const png = await pdfDoc.embedPng(await fetch(canvas.toDataURL('image/png')).then((r) => r.arrayBuffer()));
-    pdfDoc.addPage([PAGE_W, PAGE_H]).drawImage(png, { x: 0, y: 0, width: PAGE_W, height: PAGE_H });
-  }
   const bytes = await pdfDoc.save();
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
   saveAs(

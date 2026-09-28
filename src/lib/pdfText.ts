@@ -1,0 +1,246 @@
+/**
+ * Real (vector) text and table graphics for BetterCalc's PDF reports.
+ *
+ * pdf-lib's standard fonts cannot encode Hebrew, so reports used to draw every page on a <canvas>
+ * and embed it as a PNG — bitmap text that goes soft on zoom and in print. This module draws text as
+ * selectable PDF text instead, in an embedded Noto Sans Hebrew (subset to the glyphs used):
+ *
+ * - Hebrew needs no glyph shaping, only visual reordering. Each string is reordered with the Unicode
+ *   bidi algorithm (bidi-js) on an RTL base — the same result the canvas gave with
+ *   `ctx.direction = 'rtl'` — and drawn left to right, glyph runs split between the font's Hebrew
+ *   and Latin subsets.
+ * - `PdfPainter` exposes a canvas-like API (top-left origin, fillRect/strokeRect/fillText with
+ *   textAlign and maxWidth) so table layouts written for the canvas carry over unchanged.
+ *
+ * Only real images (the rendered plan pages) stay raster.
+ */
+
+import {
+  concatTransformationMatrix,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  type PDFDocument,
+  type PDFFont,
+  type PDFPage,
+} from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import bidiFactory from 'bidi-js';
+import hebrewRegularUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff?url';
+import hebrewBoldUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-700-normal.woff?url';
+import latinRegularUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-latin-400-normal.woff?url';
+import latinBoldUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-latin-700-normal.woff?url';
+import logoSvg from '../assets/logo/bettercalc-logo.svg?raw';
+
+interface FontPair {
+  hebrew: PDFFont;
+  latin: PDFFont;
+}
+
+export interface ReportFonts {
+  regular: FontPair;
+  bold: FontPair;
+}
+
+/** Embeds the report fonts into a document (subset, so only glyphs actually drawn are stored). */
+export async function embedReportFonts(doc: PDFDocument): Promise<ReportFonts> {
+  doc.registerFontkit(fontkit);
+  const embed = async (url: string) => doc.embedFont(await fetch(url).then((r) => r.arrayBuffer()), { subset: true });
+  const [hr, hb, lr, lb] = await Promise.all([hebrewRegularUrl, hebrewBoldUrl, latinRegularUrl, latinBoldUrl].map(embed));
+  return { regular: { hebrew: hr, latin: lr }, bold: { hebrew: hb, latin: lb } };
+}
+
+const bidi = bidiFactory();
+
+/** Logical → visual order for an RTL paragraph (mirrors brackets too), ready to draw left to right. */
+function visualOrder(text: string): string {
+  const levels = bidi.getEmbeddingLevels(text, 'rtl');
+  return bidi.getReorderedString(text, levels);
+}
+
+const isHebrew = (ch: string) => {
+  const c = ch.codePointAt(0)!;
+  return (c >= 0x0590 && c <= 0x05ff) || (c >= 0xfb1d && c <= 0xfb4f) || c === 0x20aa;
+};
+
+/**
+ * Splits a visual-order string into runs that each use one font subset. fontkit (pdf-lib's font
+ * engine) recognises Hebrew as an RTL script and reverses a Hebrew run's glyphs itself, so each
+ * Hebrew run is handed over in logical order — its reversal then lands on the visual order.
+ */
+function fontRuns(visual: string, pair: FontPair): { text: string; font: PDFFont }[] {
+  const runs: { text: string; font: PDFFont }[] = [];
+  for (const ch of visual) {
+    const font = isHebrew(ch) ? pair.hebrew : pair.latin;
+    const last = runs[runs.length - 1];
+    if (last && last.font === font) last.text += ch;
+    else runs.push({ text: ch, font });
+  }
+  for (const run of runs) if (run.font === pair.hebrew) run.text = Array.from(run.text).reverse().join('');
+  return runs;
+}
+
+/** '#1F4E79' → pdf-lib colour. */
+export function hex(color: string) {
+  const n = parseInt(color.replace('#', ''), 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+}
+
+export interface TextStyle {
+  size: number;
+  bold?: boolean;
+  color?: string;
+  /** Like canvas `textAlign`: which point of the text `x` names. Defaults to 'right' (RTL start). */
+  align?: 'left' | 'right' | 'center';
+  /**
+   * Like canvas `fillText`'s maxWidth: text wider than this is condensed horizontally to fit, at
+   * its full height — the same thing the canvas did, so layouts look as they always have.
+   */
+  maxWidth?: number;
+}
+
+/**
+ * Canvas-like drawing on one PDF page. Coordinates are top-left based, in PDF points, exactly as the
+ * canvas layouts were in pixels; `y` for text is the baseline.
+ */
+export class PdfPainter {
+  readonly page: PDFPage;
+  private fonts: ReportFonts;
+  private height: number;
+
+  constructor(page: PDFPage, fonts: ReportFonts) {
+    this.page = page;
+    this.fonts = fonts;
+    this.height = page.getHeight();
+  }
+
+  fillRect(x: number, y: number, w: number, h: number, color: string) {
+    this.page.drawRectangle({ x, y: this.height - y - h, width: w, height: h, color: hex(color) });
+  }
+
+  strokeRect(x: number, y: number, w: number, h: number, color: string, lineWidth = 1) {
+    this.page.drawRectangle({ x, y: this.height - y - h, width: w, height: h, borderColor: hex(color), borderWidth: lineWidth });
+  }
+
+  /** Width of `text` at `size` as it would be drawn (after bidi reordering). */
+  measure(text: string, size: number, bold = false): number {
+    const pair = bold ? this.fonts.bold : this.fonts.regular;
+    return fontRuns(visualOrder(text), pair).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
+  }
+
+  fillText(text: string, x: number, y: number, style: TextStyle) {
+    if (!text) return;
+    const pair = style.bold ? this.fonts.bold : this.fonts.regular;
+    const runs = fontRuns(visualOrder(text), pair);
+    const size = style.size;
+    const natural = runs.reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
+    const condense = style.maxWidth != null && natural > style.maxWidth && natural > 0 ? Math.max(style.maxWidth, 1) / natural : 1;
+    const width = natural * condense;
+    const align = style.align ?? 'right';
+    const startX = align === 'right' ? x - width : align === 'center' ? x - width / 2 : x;
+    const color = hex(style.color ?? '#1e293b');
+    // Runs are laid out at their natural widths in a local space whose x axis is scaled by
+    // `condense` — one transform for the whole line, so the runs stay butted together.
+    this.page.pushOperators(pushGraphicsState(), concatTransformationMatrix(condense, 0, 0, 1, startX, this.height - y));
+    let cx = 0;
+    for (const run of runs) {
+      this.page.drawText(run.text, { x: cx, y: 0, size, font: run.font, color });
+      cx += run.font.widthOfTextAtSize(run.text, size);
+    }
+    this.page.pushOperators(popGraphicsState());
+  }
+}
+
+// ---------- logo ----------
+
+interface LogoPath {
+  d: string;
+  color: string;
+}
+
+/**
+ * Rewrites an even-odd polygon path so pdf-lib's nonzero fill draws it the same: every subpath
+ * nested inside another gets the opposite winding, which turns it into a hole. Only straight-edge
+ * paths (absolute M/H/V/L/Z) are rewritten; anything else is returned as is.
+ */
+function evenOddToNonZero(d: string): string {
+  if (/[^MHVLZ0-9.,\s-]/i.test(d) || /[hvlmz]/.test(d)) return d;
+  const polys: [number, number][][] = [];
+  const tokens = d.match(/[MHVLZ]|-?\d*\.?\d+/g) ?? [];
+  let cmd = '';
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < tokens.length; ) {
+    const t = tokens[i];
+    if (/[MHVLZ]/.test(t)) {
+      cmd = t;
+      i++;
+      if (cmd === 'Z') cmd = '';
+      continue;
+    }
+    if (cmd === 'M') {
+      x = +tokens[i++];
+      y = +tokens[i++];
+      polys.push([[x, y]]);
+      cmd = 'L';
+      continue;
+    }
+    if (cmd === 'H') x = +tokens[i++];
+    else if (cmd === 'V') y = +tokens[i++];
+    else if (cmd === 'L') {
+      x = +tokens[i++];
+      y = +tokens[i++];
+    } else return d;
+    polys[polys.length - 1].push([x, y]);
+  }
+  const area = (p: [number, number][]) => p.reduce((a, [x1, y1], i) => { const [x2, y2] = p[(i + 1) % p.length]; return a + x1 * y2 - x2 * y1; }, 0);
+  const inside = ([px, py]: [number, number], p: [number, number][]) => {
+    let c = false;
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      const [xi, yi] = p[i];
+      const [xj, yj] = p[j];
+      if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  return polys
+    .map((p, i) => {
+      const depth = polys.filter((q, j) => j !== i && inside(p[0], q)).length;
+      const wantPositive = depth % 2 === 0;
+      const pts = area(p) > 0 === wantPositive ? p : [...p].reverse();
+      return `M${pts.map(([px, py]) => `${px} ${py}`).join('L')}Z`;
+    })
+    .join('');
+}
+
+/** Report-header logo size, in points: small, on the empty (left, RTL end) side of the title line. */
+export const REPORT_LOGO_HEIGHT = 12;
+
+/** The app's own BetterCalc lockup (src/assets/logo), read once as vector paths. */
+const LOGO: { paths: LogoPath[]; minX: number; minY: number; width: number; height: number } = (() => {
+  const doc = new DOMParser().parseFromString(logoSvg, 'image/svg+xml');
+  const [minX, minY, width, height] = (doc.documentElement.getAttribute('viewBox') ?? '0 0 1 1').split(/[\s,]+/).map(Number);
+  const paths = Array.from(doc.querySelectorAll('path')).map((el) => {
+    const d = el.getAttribute('d') ?? '';
+    return { d: el.getAttribute('fill-rule') === 'evenodd' ? evenOddToNonZero(d) : d, color: el.getAttribute('fill') ?? '#172033' };
+  });
+  return { paths, minX, minY, width, height };
+})();
+
+/**
+ * Draws the BetterCalc logo as vector paths with its top-left corner at (x, y) — top-left page
+ * coordinates, like the rest of PdfPainter — `height` points tall. Returns the drawn width.
+ */
+export function drawLogo(painter: PdfPainter, x: number, y: number, height: number): number {
+  const scale = height / LOGO.height;
+  const pageH = painter.page.getHeight();
+  for (const path of LOGO.paths) {
+    painter.page.drawSvgPath(path.d, {
+      x: x - LOGO.minX * scale,
+      y: pageH - y + LOGO.minY * scale,
+      scale,
+      color: hex(path.color),
+    });
+  }
+  return LOGO.width * scale;
+}

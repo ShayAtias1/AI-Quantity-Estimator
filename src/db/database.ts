@@ -112,6 +112,8 @@ export interface ProjectWithPlans {
   project: Project;
   /** In the project's display order. */
   plans: Plan[];
+  /** The project's revision comparisons, in display order. */
+  comparisons: Comparison[];
 }
 
 export async function saveProject(project: Project): Promise<void> {
@@ -162,34 +164,85 @@ async function migrateLegacyPlans(db: IDBPDatabase<QtoDB>): Promise<void> {
   await tx.done;
 }
 
-function withOrderedPlans(project: Project, allPlans: Plan[]): ProjectWithPlans {
-  const own = allPlans.filter((p) => p.projectId === project.id);
-  const order = new Map(project.planIds.map((id, i) => [id, i]));
-  // Listed plans in list order; anything unlisted (should not happen after migration) after them.
-  own.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.createdAt - b.createdAt);
-  return { project, plans: own };
+/**
+ * The same wrapping for Revision Compare. A comparison saved before projects held comparisons
+ * becomes its own project, named after the comparison — the comparison record itself only gains
+ * `projectId`; its revisions, alignment, markings and PDF blobs are untouched. Idempotent (the
+ * project id is derived from the comparison id), and self-heals `comparisonIds` like `planIds`.
+ */
+async function migrateLegacyComparisons(db: IDBPDatabase<QtoDB>): Promise<void> {
+  const [projects, comparisons] = await Promise.all([db.getAll('takeoffProjects'), db.getAll('comparisons')]);
+  const byId = new Map(projects.map((p) => [p.id, p]));
+  const changedProjects = new Set<string>();
+  const changedComparisons: Comparison[] = [];
+
+  for (const comparison of comparisons) {
+    const projectId = comparison.projectId ?? `legacy-cmp-${comparison.id}`;
+    let project = byId.get(projectId);
+    if (!project) {
+      project = { id: projectId, name: comparison.name, createdAt: comparison.createdAt, updatedAt: comparison.updatedAt, planIds: [] };
+      byId.set(projectId, project);
+      changedProjects.add(projectId);
+    }
+    const ids = project.comparisonIds ?? [];
+    if (!ids.includes(comparison.id)) {
+      project.comparisonIds = [...ids, comparison.id];
+      changedProjects.add(projectId);
+    }
+    if (!comparison.projectId) changedComparisons.push({ ...comparison, projectId });
+  }
+
+  if (changedProjects.size === 0 && changedComparisons.length === 0) return;
+  const tx = db.transaction(['takeoffProjects', 'comparisons'], 'readwrite');
+  for (const id of changedProjects) await tx.objectStore('takeoffProjects').put(byId.get(id)!);
+  for (const comparison of changedComparisons) await tx.objectStore('comparisons').put(comparison);
+  await tx.done;
 }
 
-/** Every project with its plans, most recently worked-on first. Runs the legacy migration first. */
+async function migrateLegacyDocuments(db: IDBPDatabase<QtoDB>): Promise<void> {
+  await migrateLegacyPlans(db);
+  await migrateLegacyComparisons(db);
+}
+
+/** Orders a project's documents by its id list; anything unlisted (should not happen after migration) goes last. */
+function byListOrder<T extends { id: string; createdAt: number }>(items: T[], ids: string[]): T[] {
+  const order = new Map(ids.map((id, i) => [id, i]));
+  return [...items].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.createdAt - b.createdAt);
+}
+
+function withOrderedPlans(project: Project, allPlans: Plan[], allComparisons: Comparison[]): ProjectWithPlans {
+  return {
+    project,
+    plans: byListOrder(allPlans.filter((p) => p.projectId === project.id), project.planIds),
+    comparisons: byListOrder(allComparisons.filter((c) => c.projectId === project.id), project.comparisonIds ?? []),
+  };
+}
+
+/** Every project with its plans and comparisons, most recently worked-on first. Runs the legacy migrations first. */
 export async function listProjects(): Promise<ProjectWithPlans[]> {
   const db = await getDb();
-  await migrateLegacyPlans(db);
-  const [projects, plans] = await Promise.all([db.getAll('takeoffProjects'), db.getAll('projects')]);
-  const lastTouched = (x: ProjectWithPlans) => Math.max(x.project.updatedAt, ...x.plans.map((p) => p.updatedAt));
-  return projects.map((p) => withOrderedPlans(p, plans)).sort((a, b) => lastTouched(b) - lastTouched(a));
+  await migrateLegacyDocuments(db);
+  const [projects, plans, comparisons] = await Promise.all([db.getAll('takeoffProjects'), db.getAll('projects'), listComparisons()]);
+  const lastTouched = (x: ProjectWithPlans) =>
+    Math.max(x.project.updatedAt, ...x.plans.map((p) => p.updatedAt), ...x.comparisons.map((c) => c.updatedAt));
+  return projects.map((p) => withOrderedPlans(p, plans, comparisons)).sort((a, b) => lastTouched(b) - lastTouched(a));
 }
 
 export async function loadProjectWithPlans(projectId: string): Promise<ProjectWithPlans | undefined> {
   const db = await getDb();
-  await migrateLegacyPlans(db);
+  await migrateLegacyDocuments(db);
   const project = await db.get('takeoffProjects', projectId);
   if (!project) return undefined;
-  return withOrderedPlans(project, await db.getAll('projects'));
+  const [plans, comparisons] = await Promise.all([db.getAll('projects'), listComparisons()]);
+  return withOrderedPlans(project, plans, comparisons);
 }
 
-/** Deletes a project together with every one of its plans and their PDFs. */
+/** Deletes a project together with every one of its plans and comparisons, and all their PDFs. */
 export async function deleteProject(projectId: string): Promise<void> {
   const db = await getDb();
+  for (const comparison of (await db.getAll('comparisons')).filter((c) => c.projectId === projectId)) {
+    await deleteComparison(comparison.id);
+  }
   const plans = (await db.getAll('projects')).filter((p) => p.projectId === projectId);
   const tx = db.transaction(['projects', 'pdfFiles', 'takeoffProjects'], 'readwrite');
   for (const plan of plans) {
@@ -323,9 +376,20 @@ export async function loadComparison(id: string): Promise<Comparison | undefined
   return migrateComparison(db, raw);
 }
 
+/** Deletes a comparison with all its PDFs, and takes it out of its project's comparison list. */
 export async function deleteComparison(id: string): Promise<void> {
   const db = await getDb();
   const existing = await db.get('comparisons', id);
+  if (existing?.projectId) {
+    const project = await db.get('takeoffProjects', existing.projectId);
+    if (project) {
+      await db.put('takeoffProjects', {
+        ...project,
+        comparisonIds: (project.comparisonIds ?? []).filter((c) => c !== id),
+        updatedAt: Date.now(),
+      });
+    }
+  }
   await db.delete('comparisons', id);
   await db.delete('comparePdfFiles', `${id}:original`);
   await db.delete('comparePdfFiles', `${id}:revised`);

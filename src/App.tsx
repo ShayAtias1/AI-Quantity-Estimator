@@ -12,14 +12,11 @@ import QuantitiesPanel from './components/QuantitiesPanel';
 import PageStatusBar from './components/PageStatusBar';
 import MeasureToolbar from './components/MeasureToolbar';
 import MarkupToolbar from './components/MarkupToolbar';
-import CompareStartScreen from './components/compare/CompareStartScreen';
 import CompareWorkspace from './components/compare/CompareWorkspace';
-import Icon from './components/Icon';
 import BrandLogo from './components/BrandLogo';
 
 /** Quantities is no longer one of these — it has the full-width bottom panel instead. */
 type SidebarTab = 'rooms' | 'measure' | 'markup';
-type HomeMode = 'takeoff' | 'compare';
 
 function Workspace() {
   const [tab, setTab] = useState<SidebarTab>('rooms');
@@ -63,7 +60,6 @@ function Workspace() {
 }
 
 function Home() {
-  const [mode, setMode] = useState<HomeMode>('takeoff');
   return (
     <div className="workspace home">
       {/* The same bar as the two workspaces, so the entrance and the rooms behind it are
@@ -80,19 +76,11 @@ function Home() {
         </div>
       </div>
 
-      {/* The two products are the primary navigation — the same tab language as the sidebars. */}
+      {/* Projects are the one entrance: quantity plans and revision comparisons both live inside them. */}
       <div className="home-body">
-        <div className="home-tabs sidebar-tabs">
-          <button className={mode === 'takeoff' ? 'active' : ''} onClick={() => setMode('takeoff')}>
-            <Icon name="map" />
-            חישוב כמויות
-          </button>
-          <button className={mode === 'compare' ? 'active' : ''} onClick={() => setMode('compare')}>
-            <Icon name="layers" />
-            השוואת תוכניות
-          </button>
+        <div className="home-content">
+          <StartScreen />
         </div>
-        <div className="home-content">{mode === 'takeoff' ? <StartScreen /> : <CompareStartScreen />}</div>
       </div>
     </div>
   );
@@ -126,7 +114,7 @@ export default function App() {
   const comparison = useCompareStore((s) => s.comparison);
   useUnsavedChangesGuard();
   if (plan) return <Workspace />;
-  if (currentProject) return <ProjectOverview />;
   if (comparison) return <CompareWorkspace />;
+  if (currentProject) return <ProjectOverview />;
   return <Home />;
 }

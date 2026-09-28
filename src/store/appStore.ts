@@ -4,6 +4,10 @@ import type { AreaCalcMode, AreaKind, AreaShape, Calibration, ExportRegion, Mark
 import { DEFAULT_AREA_KIND_COLORS } from '../types';
 import { MEASUREMENT_DEFAULTS, OPENING_DEFAULT_SIZES } from '../config/measurementDefaults';
 import {
+  deleteComparison as dbDeleteComparison,
+  loadComparison,
+  saveComparePdfBlob,
+  saveComparison as dbSaveComparison,
   savePlan as dbSavePlan,
   saveProject as dbSaveProject,
   deletePlan as dbDeletePlan,
@@ -13,6 +17,8 @@ import {
   savePdfBlob,
 } from '../db/database';
 import { clonePlanForDuplicate } from '../lib/planDuplication';
+import { createEmptyComparison, useCompareStore } from './compareStore';
+import type { Comparison } from '../types/compare';
 import { createHistoryTracker } from '../lib/undoHistory';
 import { loadPdfPlanSource } from '../lib/planSource';
 import { runRoomDetection, type DetectionSummary } from '../lib/roomDetection';
@@ -156,6 +162,8 @@ interface AppState {
   currentProject: Project | null;
   /** Snapshot of the open project's plans for the overview and the plan switcher; the open plan itself is `project`. */
   projectPlans: Plan[];
+  /** Snapshot of the open project's revision comparisons, for the overview. The open one lives in compareStore. */
+  projectComparisons: Comparison[];
   /** Room template (ROOM_PROFILES key) applied to newly drawn rooms; null = plain room. Session UI state. */
   newRoomTemplate: string | null;
   currentPage: number;
@@ -247,6 +255,14 @@ interface AppState {
   duplicatePlan: (planId: string) => Promise<Plan | null>;
   deletePlan: (planId: string) => Promise<void>;
   renamePlan: (planId: string, name: string) => Promise<void>;
+  /**
+   * Revision comparisons of the open project. Each is a Revision Compare `Comparison` document; the
+   * Compare workspace and its store are unchanged — these only file it under the project.
+   */
+  createComparison: (input: { name: string; apartmentNumber: string; original: File; revised: File[] }) => Promise<void>;
+  openComparison: (comparisonId: string) => Promise<void>;
+  renameComparison: (comparisonId: string, name: string) => Promise<void>;
+  deleteComparison: (comparisonId: string) => Promise<void>;
   setNewRoomTemplate: (key: string | null) => void;
   /** Replaces a room's work items with its template's — the explicit "reset to template" action. */
   applyRoomTemplate: (roomId: string) => void;
@@ -397,6 +413,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   project: null,
   currentProject: null,
   projectPlans: [],
+  projectComparisons: [],
   newRoomTemplate: null,
   currentPage: 1,
   numPages: 1,
@@ -479,11 +496,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const loaded = await loadProjectWithPlans(projectId);
     if (!loaded) return;
     get().setProject(null);
-    set({ currentProject: loaded.project, projectPlans: loaded.plans });
+    set({ currentProject: loaded.project, projectPlans: loaded.plans, projectComparisons: loaded.comparisons });
   },
   closeProject: async () => {
     if (get().project && !(await get().closePlan())) return false;
-    set({ currentProject: null, projectPlans: [] });
+    set({ currentProject: null, projectPlans: [], projectComparisons: [] });
     return true;
   },
   createProject: async (name, firstPlan) => {
@@ -507,7 +524,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { currentProject } = get();
     if (!currentProject) return;
     const loaded = await loadProjectWithPlans(currentProject.id);
-    if (loaded) set({ currentProject: loaded.project, projectPlans: loaded.plans });
+    if (loaded) set({ currentProject: loaded.project, projectPlans: loaded.plans, projectComparisons: loaded.comparisons });
   },
   openPlan: async (planId) => {
     const { project } = get();
@@ -575,6 +592,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     const plan = await loadPlan(planId);
     if (!plan) return;
     await dbSavePlan({ ...plan, name, updatedAt: Date.now() });
+    await get().refreshProjectPlans();
+  },
+  createComparison: async ({ name, apartmentNumber, original, revised }) => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+    // Same document and PDF layout the Compare start screen always created, plus its project.
+    const comparison: Comparison = {
+      ...createEmptyComparison(name, apartmentNumber, original.name, revised.map((f) => f.name)),
+      projectId: currentProject.id,
+    };
+    await saveComparePdfBlob(comparison.id, 'original', original);
+    await Promise.all(comparison.revisions.map((rev, i) => saveComparePdfBlob(comparison.id, `revision:${rev.id}`, revised[i])));
+    await dbSaveComparison(comparison);
+    await dbSaveProject({
+      ...currentProject,
+      comparisonIds: [...(currentProject.comparisonIds ?? []), comparison.id],
+      updatedAt: Date.now(),
+    });
+    await get().refreshProjectPlans();
+    useCompareStore.getState().setComparison(comparison);
+  },
+  openComparison: async (comparisonId) => {
+    // Only reachable from the overview, where no plan is open — nothing of the takeoff is left in memory.
+    const comparison = await loadComparison(comparisonId);
+    if (comparison) useCompareStore.getState().setComparison(comparison);
+  },
+  renameComparison: async (comparisonId, name) => {
+    const comparison = await loadComparison(comparisonId);
+    if (!comparison) return;
+    await dbSaveComparison({ ...comparison, name, updatedAt: Date.now() });
+    await get().refreshProjectPlans();
+  },
+  deleteComparison: async (comparisonId) => {
+    await dbDeleteComparison(comparisonId);
     await get().refreshProjectPlans();
   },
   setNewRoomTemplate: (key) => set({ newRoomTemplate: key }),

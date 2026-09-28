@@ -182,6 +182,11 @@ export interface ComparisonPage {
 
 export interface Comparison {
   id: string;
+  /**
+   * The takeoff project this comparison belongs to (types/index.ts `Project`). Absent only on
+   * comparisons saved before projects held comparisons, until migrated on load.
+   */
+  projectId?: string;
   name: string;
   apartmentNumber: string;
   notes: string;
