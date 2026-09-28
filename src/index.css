@@ -774,6 +774,9 @@ button:disabled,
   flex: 1;
   display: flex;
   min-height: 0;
+  /* When the quantities panel is maximized this row shrinks to almost nothing; its content (the
+     tool rail's icons) must be clipped here, not painted over the panel below. */
+  overflow: hidden;
 }
 
 /* ---------- tool rail ---------- */

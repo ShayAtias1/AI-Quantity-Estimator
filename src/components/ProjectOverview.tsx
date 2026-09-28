@@ -135,7 +135,7 @@ export default function ProjectOverview() {
               {/* The project exports cover the quantity plans only, so they live in this panel. */}
               <div className="panel-head-actions">
                 <button
-                  className="btn-secondary small"
+                  className="btn-secondary"
                   disabled={!!busy || plans.length === 0}
                   onClick={() => void run('excel', () => exportProjectToExcel(project, plans))}
                   title="כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד"
@@ -144,7 +144,7 @@ export default function ProjectOverview() {
                   {busy === 'excel' ? 'מייצא…' : 'Excel'}
                 </button>
                 <button
-                  className="btn-secondary small"
+                  className="btn-secondary"
                   disabled={!!busy || plans.length === 0}
                   onClick={() => void run('pdf', () => exportProjectToPdf(project, plans))}
                   title="דוח כמויות PDF לכל תוכניות הפרויקט"
