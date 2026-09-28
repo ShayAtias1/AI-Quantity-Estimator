@@ -163,22 +163,25 @@ export default function RoomPanel() {
         >
           + סימון חדר
         </button>
-        <button
-          className={`btn-secondary small ${toolMode === 'draw' ? 'active' : ''}`}
-          onClick={() => setToolMode(toolMode === 'draw' ? 'select' : 'draw')}
-          title="סימון חדר כפוליגון"
-          aria-label="סימון חדר כפוליגון"
-        >
-          <Icon name="polygon" />
-        </button>
-        <button
-          className={`btn-secondary small ${toolMode === 'draw-rect' ? 'active' : ''}`}
-          onClick={() => setToolMode(toolMode === 'draw-rect' ? 'select' : 'draw-rect')}
-          title="סימון חדר כמלבן"
-          aria-label="סימון חדר כמלבן"
-        >
-          <Icon name="rectangle" />
-        </button>
+        {/* The two drawing shapes, in the same grey segmented tray as the markup tools. */}
+        <div className="segmented room-shape-tools">
+          <button
+            className={`tool-btn ${toolMode === 'draw' ? 'active' : ''}`}
+            onClick={() => setToolMode(toolMode === 'draw' ? 'select' : 'draw')}
+            title="סימון חדר כפוליגון"
+            aria-label="סימון חדר כפוליגון"
+          >
+            <Icon name="polygon" />
+          </button>
+          <button
+            className={`tool-btn ${toolMode === 'draw-rect' ? 'active' : ''}`}
+            onClick={() => setToolMode(toolMode === 'draw-rect' ? 'select' : 'draw-rect')}
+            title="סימון חדר כמלבן"
+            aria-label="סימון חדר כמלבן"
+          >
+            <Icon name="rectangle" />
+          </button>
+        </div>
         {SHOW_AUTO_DETECT && (
           <button
             className={`btn-secondary small ${showDetection ? 'active' : ''}`}

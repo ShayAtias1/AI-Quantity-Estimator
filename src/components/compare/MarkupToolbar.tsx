@@ -85,6 +85,8 @@ export default function MarkupToolbar() {
     <div className="markup-toolbar">
       <div className="markup-color-row" title={selectedMarkup ? 'משנה את הצבע של הסימון שנבחר' : 'צבע לסימונים חדשים — בחר סימון קיים כדי לשנות את הצבע שלו'}>
         <span className="section-label">{selectedMarkup ? 'צבע הסימון' : 'צבע'}</span>
+        {/* The swatches sit on their own line, in the same grey tray as the tool groups. */}
+        <div className="markup-color-tray">
         <div className="tint-swatches">
           {MARKUP_COLORS.map((c) => (
             <button
@@ -103,6 +105,7 @@ export default function MarkupToolbar() {
           onChange={(e) => applyColor(e.target.value)}
           title="צבע חופשי"
         />
+        </div>
       </div>
 
       <span className="section-label">כלי סימון</span>

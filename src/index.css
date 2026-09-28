@@ -2253,6 +2253,10 @@ html[dir='rtl'] .qty-table .col-room {
 /* ---------- compare: demolition / new construction ----------
    Semantic colour on the two change actions and on their summary — an accent and an edge, never
    a red/green interface. */
+/* Breathing room between the demolition / new-construction switch and the button under it. */
+.changes-panel-open {
+  margin-top: var(--s-2);
+}
 .change-kinds .tool-btn.change-kind {
   flex-direction: row;
   gap: 6px;
@@ -2501,9 +2505,27 @@ html[dir='rtl'] .qty-table .col-room {
 
 .markup-color-row {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-1);
+  margin-bottom: 6px;
+}
+/* Same grey tray as .segmented: the swatches and the free-colour picker on one line under the label. */
+.markup-color-tray {
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: var(--bg-subtle);
+  border-radius: var(--r-md);
+}
+.room-shape-tools {
+  flex: none;
+}
+.room-shape-tools .tool-btn {
+  flex: none;
+  width: 36px;
+  justify-content: center;
 }
 
 .area-summary {

@@ -105,7 +105,7 @@ export default function MeasureToolbar() {
           </p>
         )}
 
-        <button className="btn-ghost small full-width" onClick={() => setChangesOpen(true)}>
+        <button className="btn-ghost small full-width changes-panel-open" onClick={() => setChangesOpen(true)}>
           <Icon name="table" />
           חלונית השינויים{pageChangeCount > 0 ? ` · ${pageChangeCount} בעמוד זה` : ''}
         </button>
