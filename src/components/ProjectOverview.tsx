@@ -117,24 +117,6 @@ export default function ProjectOverview() {
         </div>
         <div className="top-bar-group grow" />
         <div className="top-bar-group output">
-          <button
-            className="btn-secondary small"
-            disabled={!!busy || plans.length === 0}
-            onClick={() => void run('excel', () => exportProjectToExcel(project, plans))}
-            title="כל תוכניות הפרויקט בקובץ Excel אחד"
-          >
-            <Icon name="sheet" />
-            {busy === 'excel' ? 'מייצא…' : 'Excel לפרויקט'}
-          </button>
-          <button
-            className="btn-primary small"
-            disabled={!!busy || plans.length === 0}
-            onClick={() => void run('pdf', () => exportProjectToPdf(project, plans))}
-            title="דוח כמויות PDF לכל הפרויקט"
-          >
-            <Icon name="download" />
-            {busy === 'pdf' ? 'מייצא…' : 'PDF לפרויקט'}
-          </button>
           <button className="btn-ghost small" onClick={() => void closeProject()} title="חזרה לרשימת הפרויקטים">
             <Icon name="exit" />
             <span className="btn-label">פרויקטים</span>
@@ -147,13 +129,34 @@ export default function ProjectOverview() {
           <div className="home-panel">
             <div className="home-panel-head">
               <div className="home-panel-text">
-                <h2>תוכניות כמויות</h2>
+                <h2>חישוב כמויות</h2>
                 <p className="muted">כל תוכנית נמדדת בנפרד — קנה מידה, חדרים ופתחים משלה.</p>
               </div>
-              <button className="btn-primary" onClick={() => setAdding(true)} disabled={!!busy}>
-                <Icon name="plus" />
-                הוספת תוכנית
-              </button>
+              {/* The project exports cover the quantity plans only, so they live in this panel. */}
+              <div className="panel-head-actions">
+                <button
+                  className="btn-secondary small"
+                  disabled={!!busy || plans.length === 0}
+                  onClick={() => void run('excel', () => exportProjectToExcel(project, plans))}
+                  title="כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד"
+                >
+                  <Icon name="sheet" />
+                  {busy === 'excel' ? 'מייצא…' : 'Excel'}
+                </button>
+                <button
+                  className="btn-secondary small"
+                  disabled={!!busy || plans.length === 0}
+                  onClick={() => void run('pdf', () => exportProjectToPdf(project, plans))}
+                  title="דוח כמויות PDF לכל תוכניות הפרויקט"
+                >
+                  <Icon name="download" />
+                  {busy === 'pdf' ? 'מייצא…' : 'PDF'}
+                </button>
+                <button className="btn-primary" onClick={() => setAdding(true)} disabled={!!busy}>
+                  <Icon name="plus" />
+                  הוספת תוכנית
+                </button>
+              </div>
             </div>
 
             {plans.length === 0 ? (
@@ -199,7 +202,7 @@ export default function ProjectOverview() {
           <div className="home-panel">
             <div className="home-panel-head">
               <div className="home-panel-text">
-                <h2>השוואות גרסאות</h2>
+                <h2>השוואת תוכניות</h2>
                 <p className="muted">תוכנית מקור מול גרסאות מעודכנות — יישור, שכבות, וסימון הריסה ובנייה חדשה.</p>
               </div>
               <button className="btn-primary" onClick={() => setAddingComparison(true)} disabled={!!busy}>

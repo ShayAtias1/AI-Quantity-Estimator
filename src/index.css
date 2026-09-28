@@ -337,6 +337,12 @@ button:disabled,
 .home-panel-head .btn-primary {
   flex: none;
 }
+.panel-head-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
 
 /* Project overview: plans, then the project-wide summary, as two home panels. */
 .project-overview {
