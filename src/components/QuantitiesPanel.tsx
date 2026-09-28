@@ -93,7 +93,7 @@ export default function QuantitiesPanel() {
 
   return (
     <section
-      className={`qty-panel ${resizing ? 'resizing' : ''}`}
+      className={`qty-panel ${resizing ? 'resizing' : ''} ${maximized ? 'maximized' : ''}`}
       style={{ height: effectiveHeight }}
       aria-label="כתב כמויות"
     >

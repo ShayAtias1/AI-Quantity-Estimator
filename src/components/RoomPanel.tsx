@@ -164,6 +164,14 @@ export default function RoomPanel() {
           + סימון חדר
         </button>
         <button
+          className={`btn-secondary small ${toolMode === 'draw' ? 'active' : ''}`}
+          onClick={() => setToolMode(toolMode === 'draw' ? 'select' : 'draw')}
+          title="סימון חדר כפוליגון"
+          aria-label="סימון חדר כפוליגון"
+        >
+          <Icon name="polygon" />
+        </button>
+        <button
           className={`btn-secondary small ${toolMode === 'draw-rect' ? 'active' : ''}`}
           onClick={() => setToolMode(toolMode === 'draw-rect' ? 'select' : 'draw-rect')}
           title="סימון חדר כמלבן"

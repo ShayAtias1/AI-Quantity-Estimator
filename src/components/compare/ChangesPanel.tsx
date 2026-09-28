@@ -106,7 +106,7 @@ export default function ChangesPanel() {
   }
 
   return (
-    <section className={`qty-panel changes-panel ${resizing ? 'resizing' : ''}`} style={{ height: effectiveHeight }} aria-label="שינויים">
+    <section className={`qty-panel changes-panel ${resizing ? 'resizing' : ''} ${maximized ? 'maximized' : ''}`} style={{ height: effectiveHeight }} aria-label="שינויים">
       <button
         className="qty-panel-resizer"
         onPointerDown={onPointerDown}
