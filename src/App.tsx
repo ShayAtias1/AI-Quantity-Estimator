@@ -72,7 +72,9 @@ function Home() {
         </div>
         <div className="top-bar-group grow" />
         <div className="top-bar-group output">
-          <span className="muted home-top-note">כל העבודה נשמרת במחשב הזה</span>
+          {/* Two separate claims, both true: plan and project data never leave this browser;
+              anonymous usage statistics (no plan content) may be sent — see docs/ANALYTICS.md. */}
+          <span className="muted home-top-note">התוכניות והפרויקטים נשמרים רק במחשב הזה · ייתכן איסוף סטטיסטיקת שימוש אנונימית</span>
         </div>
       </div>
 

@@ -8,15 +8,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev      # Vite dev server on :5173 (also defined in .claude/launch.json as "dev")
 npm run build    # tsc -b && vite build — this is the typecheck; run it after every change
 npm run lint     # oxlint
+npm test         # node:test — analytics privacy/ledger/milestone tests only (tests/)
 ```
 
-There is no test suite. The build is the only automated check, and `tsconfig.app.json` sets
+The build is the main automated check, and `tsconfig.app.json` sets
 `noUnusedLocals`/`noUnusedParameters`, so leftover imports or variables fail it.
 
 ## What this is
 
 A browser-only quantity-takeoff tool for Israeli finishing contractors. Everything runs client-side:
-PDFs and project data live in IndexedDB, there is no server, no auth, no network calls. The UI is
+PDFs and project data live in IndexedDB, there is no server, no auth. The only network traffic is
+anonymous product analytics (PostHog), which goes exclusively through `src/lib/analytics.ts` and
+never carries plan content — read `docs/ANALYTICS.md` before adding or changing an event. The UI is
 Hebrew and the document is `dir="rtl"` (`index.html`) — user-facing strings are written inline in
 the components, not in a translation file.
 

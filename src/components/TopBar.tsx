@@ -6,6 +6,8 @@ import Icon, { type IconName } from './Icon';
 import BrandLogo from './BrandLogo';
 import { exportAllPlanPagesToPdf, exportPlanPageToPdf } from '../lib/exportRegionPdf';
 import { planForReport } from '../lib/reportTitle';
+import { trackedExport } from '../lib/analytics';
+import { notifyExportFailed } from '../lib/exportFailure';
 
 export default function TopBar() {
   const project = useAppStore((s) => s.project);
@@ -64,7 +66,20 @@ export default function TopBar() {
     setOpenMenu(null);
     setExportingPage(true);
     try {
-      await exportPlanPageToPdf(planForReport(project, currentProject?.name), currentPage, exportRegion, annotationsVisible, measurementsVisible);
+      await trackedExport(
+        {
+          export_kind: 'plan_page_pdf',
+          surface: 'topbar_menu',
+          plan_id: project.id,
+          project_id: project.projectId,
+          pages_count: 1,
+          page_scope: 'current',
+          region_cropped: !!exportRegion,
+        },
+        () => exportPlanPageToPdf(planForReport(project, currentProject?.name), currentPage, exportRegion, annotationsVisible, measurementsVisible)
+      );
+    } catch (err) {
+      notifyExportFailed(err);
     } finally {
       setExportingPage(false);
     }
@@ -75,7 +90,20 @@ export default function TopBar() {
     setOpenMenu(null);
     setExportingAllPages(true);
     try {
-      await exportAllPlanPagesToPdf(planForReport(project, currentProject?.name), numPages, exportRegions, annotationsVisible, measurementsVisible);
+      await trackedExport(
+        {
+          export_kind: 'plan_all_pages_pdf',
+          surface: 'topbar_menu',
+          plan_id: project.id,
+          project_id: project.projectId,
+          pages_count: numPages,
+          page_scope: 'all',
+          region_cropped: Object.keys(exportRegions).length > 0,
+        },
+        () => exportAllPlanPagesToPdf(planForReport(project, currentProject?.name), numPages, exportRegions, annotationsVisible, measurementsVisible)
+      );
+    } catch (err) {
+      notifyExportFailed(err);
     } finally {
       setExportingAllPages(false);
     }

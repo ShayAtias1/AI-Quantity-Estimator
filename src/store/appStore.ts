@@ -23,6 +23,19 @@ import { createHistoryTracker } from '../lib/undoHistory';
 import { loadPdfPlanSource } from '../lib/planSource';
 import { runRoomDetection, type DetectionSummary } from '../lib/roomDetection';
 import { buildWorkItemsForProfile, getRoomProfile } from '../lib/roomProfiles';
+import {
+  notePlanLoaded,
+  notePlanSaved,
+  trackCalibrationCompleted,
+  trackComparisonCreated,
+  trackComparisonOpened,
+  trackError,
+  trackPlanCreated,
+  trackProjectCreated,
+  trackRoomDrawn,
+  trackRoomsCreated,
+  trackWorkItemsAdded,
+} from '../lib/analytics';
 
 const historyTracker = createHistoryTracker<Plan>();
 
@@ -463,6 +476,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setProject: (p) => {
     historyTracker.discard();
+    if (p) notePlanLoaded(p);
     // A project is always saved before it is opened (and on close), so a fresh switch starts clean.
     if (saveTimer) {
       clearTimeout(saveTimer);
@@ -507,6 +521,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const now = Date.now();
     const project: Project = { id: uuid(), name, createdAt: now, updatedAt: now, planIds: [] };
     await dbSaveProject(project);
+    trackProjectCreated(project.id, !!firstPlan);
     await get().openProject(project.id);
     if (firstPlan) {
       const plan = await get().addPlan(firstPlan.file, firstPlan.name);
@@ -556,6 +571,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await savePdfBlob(plan.id, file);
     await dbSavePlan(plan);
     await dbSaveProject({ ...currentProject, planIds: [...currentProject.planIds, plan.id], updatedAt: Date.now() });
+    trackPlanCreated(plan, 'upload', file.size, currentProject.planIds.length + 1);
     await get().refreshProjectPlans();
     return plan;
   },
@@ -576,6 +592,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const at = planIds.indexOf(planId);
     planIds.splice(at < 0 ? planIds.length : at + 1, 0, copy.id);
     await dbSaveProject({ ...currentProject, planIds, updatedAt: Date.now() });
+    trackPlanCreated(copy, 'duplicate', blob?.size, planIds.indexOf(copy.id) + 1);
     await get().refreshProjectPlans();
     return copy;
   },
@@ -610,13 +627,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       comparisonIds: [...(currentProject.comparisonIds ?? []), comparison.id],
       updatedAt: Date.now(),
     });
+    trackComparisonCreated(comparison);
     await get().refreshProjectPlans();
     useCompareStore.getState().setComparison(comparison);
   },
   openComparison: async (comparisonId) => {
     // Only reachable from the overview, where no plan is open — nothing of the takeoff is left in memory.
     const comparison = await loadComparison(comparisonId);
-    if (comparison) useCompareStore.getState().setComparison(comparison);
+    if (!comparison) return;
+    trackComparisonOpened(comparison);
+    useCompareStore.getState().setComparison(comparison);
   },
   renameComparison: async (comparisonId, name) => {
     const comparison = await loadComparison(comparisonId);
@@ -636,8 +656,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const profile = getRoomProfile(room?.roomType);
     if (!room || !profile) return;
     historyTracker.push(get, set, project);
-    const rooms = project.rooms.map((r) => (r.id === roomId ? { ...r, workItems: buildWorkItemsForProfile(profile, project) } : r));
-    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    const workItems = buildWorkItemsForProfile(profile, project);
+    const rooms = project.rooms.map((r) => (r.id === roomId ? { ...r, workItems } : r));
+    const updated = { ...project, rooms, updatedAt: Date.now() };
+    set({ project: updated });
+    trackWorkItemsAdded(updated, workItems, 'apply_template');
     scheduleSave(get, set);
   },
 
@@ -816,6 +839,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     historyTracker.push(get, set, project);
     const updated = { ...project, pages, updatedAt: Date.now() };
     set({ project: updated, calibrationPoints: [], toolMode: 'select' });
+    trackCalibrationCompleted(updated, !!project.pages[currentPage]?.calibration, get().numPages);
     scheduleSave(get, set);
   },
 
@@ -831,6 +855,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const room = newRoom(project, currentPage, drawingPoints, activeApartmentNumber, get().newRoomTemplate);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, manuallyCreatedRoomId: room.id, toolMode: 'select' });
+    trackRoomDrawn(updated, room, 'polygon');
     scheduleSave(get, set);
   },
   finishRectangle: (p1, p2) => {
@@ -841,6 +866,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const room = newRoom(project, currentPage, points, activeApartmentNumber, get().newRoomTemplate);
     const updated = { ...project, rooms: [...project.rooms, room], updatedAt: Date.now() };
     set({ project: updated, drawingPoints: [], selectedRoomId: room.id, manuallyCreatedRoomId: room.id, toolMode: 'select' });
+    trackRoomDrawn(updated, room, 'rectangle');
     scheduleSave(get, set);
   },
 
@@ -981,7 +1007,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const rooms = project.rooms.map((r) =>
       r.id === roomId ? { ...r, roomType, ...(seeded ? { workItems: seeded } : {}) } : r
     );
-    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    const updated = { ...project, rooms, updatedAt: Date.now() };
+    set({ project: updated });
+    if (seeded) trackWorkItemsAdded(updated, seeded, 'room_type');
     scheduleSave(get, set);
     return outcome;
   },
@@ -1002,7 +1030,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       color: nextColor(project.rooms.length),
     });
 
-    set({ project: { ...project, rooms: [...project.rooms, copy], updatedAt: Date.now() }, selectedRoomId: copy.id });
+    const updated = { ...project, rooms: [...project.rooms, copy], updatedAt: Date.now() };
+    set({ project: updated, selectedRoomId: copy.id });
+    trackRoomsCreated(updated, 'duplicate', [copy]);
     scheduleSave(get, set);
     return copy.id;
   },
@@ -1024,10 +1054,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       })
     );
 
-    set({
-      project: { ...project, rooms: [...project.rooms, ...copies], updatedAt: Date.now() },
-      selectedRoomId: copies[0].id,
-    });
+    const updated = { ...project, rooms: [...project.rooms, ...copies], updatedAt: Date.now() };
+    set({ project: updated, selectedRoomId: copies[0].id });
+    trackRoomsCreated(updated, 'apartment_duplicate', copies);
     scheduleSave(get, set);
     return copies.length;
   },
@@ -1045,18 +1074,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   addWorkItem: (roomId, type) => {
     const { project } = get();
     if (!project) return;
+    if (!project.rooms.some((r) => r.id === roomId)) return;
     historyTracker.push(get, set, project);
-    const rooms = project.rooms.map((r) => {
-      if (r.id !== roomId) return r;
-      const item: WorkItem = {
-        id: uuid(),
-        type,
-        heightM: type === 'cladding' ? project.defaultCladdingHeightM : undefined,
-        tilingCategory: type === 'tiling' ? 'regular' : undefined,
-      };
-      return { ...r, workItems: [...r.workItems, item] };
-    });
-    set({ project: { ...project, rooms, updatedAt: Date.now() } });
+    const item: WorkItem = {
+      id: uuid(),
+      type,
+      heightM: type === 'cladding' ? project.defaultCladdingHeightM : undefined,
+      tilingCategory: type === 'tiling' ? 'regular' : undefined,
+    };
+    const rooms = project.rooms.map((r) => (r.id === roomId ? { ...r, workItems: [...r.workItems, item] } : r));
+    const updated = { ...project, rooms, updatedAt: Date.now() };
+    set({ project: updated });
+    trackWorkItemsAdded(updated, [item], 'manual');
     scheduleSave(get, set);
   },
   updateWorkItem: (roomId, itemId, patch) => {
@@ -1161,10 +1190,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       // newer edits are still unsaved.
       if (get().project === project) set({ dirty: false });
       set({ saveError: null });
+      // Derived activation (`quantities_ready`) is checked against what is actually on disk.
+      notePlanSaved(project);
     } catch (err) {
       // Stays dirty: the work is not on disk, and the beforeunload guard must keep warning.
       set({ saveError: err instanceof Error ? err.message : 'שמירה נכשלה' });
       console.error('Failed to save project', err);
+      trackError('save_plan', err);
     } finally {
       set({ saving: false });
     }

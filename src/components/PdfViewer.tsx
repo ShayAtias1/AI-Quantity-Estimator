@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../lib/planSource';
 import { useAppStore } from '../store/appStore';
+import { notePlanRendered, trackError } from '../lib/analytics';
 import type { ExportRegion, Markup, Point } from '../types';
 import { DEFAULT_AREA_KIND_COLORS } from '../types';
 import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
@@ -226,7 +227,9 @@ export default function PdfViewer() {
         setPlanSource(source);
       })
       .catch((err) => {
-        if (!cancelled) setLoadError(err.message || 'שגיאה בטעינת ה-PDF');
+        if (cancelled) return;
+        setLoadError(err.message || 'שגיאה בטעינת ה-PDF');
+        trackError('pdf_load', err);
       });
     return () => {
       cancelled = true;
@@ -246,7 +249,15 @@ export default function PdfViewer() {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     const handle = planSource.render(canvas, RENDER_SCALE);
+    let cancelled = false;
+    // The plan counts as opened once a page has actually been drawn (the render promise settles
+    // on cancel too, hence the flag). The analytics side fires only once per load of the plan.
+    void handle.promise.then(() => {
+      const { project, numPages } = useAppStore.getState();
+      if (!cancelled && project) notePlanRendered(project, numPages);
+    });
     return () => {
+      cancelled = true;
       handle.cancel();
     };
   }, [planSource]);

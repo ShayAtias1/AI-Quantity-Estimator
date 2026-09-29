@@ -228,6 +228,13 @@ export async function listProjects(): Promise<ProjectWithPlans[]> {
   return projects.map((p) => withOrderedPlans(p, plans, comparisons)).sort((a, b) => lastTouched(b) - lastTouched(a));
 }
 
+/** Record counts only, for anonymous analytics (`app_opened`) — never reads a document's contents. */
+export async function countLocalDocuments(): Promise<{ projects: number; plans: number; comparisons: number }> {
+  const db = await getDb();
+  const [projects, plans, comparisons] = await Promise.all([db.count('takeoffProjects'), db.count('projects'), db.count('comparisons')]);
+  return { projects, plans, comparisons };
+}
+
 export async function loadProjectWithPlans(projectId: string): Promise<ProjectWithPlans | undefined> {
   const db = await getDb();
   await migrateLegacyDocuments(db);

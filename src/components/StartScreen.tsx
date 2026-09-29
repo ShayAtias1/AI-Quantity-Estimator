@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { deleteProject, listProjects, type ProjectWithPlans } from '../db/database';
+import { trackProjectOpened } from '../lib/analytics';
 import SavedItemList, { type SavedItem } from './SavedItemList';
 import Icon from './Icon';
 
@@ -92,7 +93,11 @@ export default function StartScreen() {
         icon="map"
         loading={loading}
         emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש והוסף לו תוכניות PDF."
-        onOpen={(id) => void openProject(id)}
+        onOpen={(id) => {
+          const entry = projects.find((p) => p.project.id === id);
+          if (entry) trackProjectOpened(entry);
+          void openProject(id);
+        }}
         onDelete={(id) => void handleDelete(id)}
         openTitle="פתח את הפרויקט"
         deleteTitle="מחק פרויקט"

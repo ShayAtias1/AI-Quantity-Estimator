@@ -5,6 +5,8 @@ import { planForReport } from '../lib/reportTitle';
 import { buildReportCategoryTotals, buildRoomSummaries } from '../lib/quantities';
 import { exportQuantitiesToExcel } from '../lib/exportExcel';
 import { exportQuantitiesToPdf, getExportablePageNumbers } from '../lib/exportQuantitiesPdf';
+import { quantityExportDetails, trackedExport } from '../lib/analytics';
+import { notifyExportFailed } from '../lib/exportFailure';
 
 /**
  * The two actions that produce BetterCalc's main deliverable — the quantity report — plus their
@@ -32,6 +34,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
   const hasAreaMeasurements = (project.measurements ?? []).some((m) => m.tool === 'area' && m.areaKind);
   const canExport = summaries.length > 0 || hasAreaMeasurements;
   const exportablePages = getExportablePageNumbers(project);
+  const surface = variant === 'menu' ? 'topbar_menu' : 'quantities_panel';
 
   const runExportExcel = async (pageNumbers: number[]) => {
     setExportingExcel(true);
@@ -43,7 +46,12 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       const filteredAreaMeasurements = (project.measurements ?? []).filter(
         (m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number' && pageSet.has(m.pageNumber)
       );
-      await exportQuantitiesToExcel(planForReport(project, projectName), filteredSummaries, filteredTotals, filteredAreaMeasurements);
+      await trackedExport(
+        { export_kind: 'quantity_excel', surface, ...quantityExportDetails(project, filteredSummaries, pageNumbers, exportablePages.length) },
+        () => exportQuantitiesToExcel(planForReport(project, projectName), filteredSummaries, filteredTotals, filteredAreaMeasurements)
+      );
+    } catch (err) {
+      notifyExportFailed(err);
     } finally {
       setExportingExcel(false);
     }
@@ -65,7 +73,12 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       const pageSet = new Set(pageNumbers);
       const filteredSummaries = summaries.filter((s) => pageSet.has(roomPageById.get(s.roomId) ?? -1));
       const filteredTotals = buildReportCategoryTotals(project, filteredSummaries);
-      await exportQuantitiesToPdf(planForReport(project, projectName), filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible);
+      await trackedExport(
+        { export_kind: 'quantity_pdf', surface, ...quantityExportDetails(project, filteredSummaries, pageNumbers, exportablePages.length) },
+        () => exportQuantitiesToPdf(planForReport(project, projectName), filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible)
+      );
+    } catch (err) {
+      notifyExportFailed(err);
     } finally {
       setExportingPdf(false);
     }

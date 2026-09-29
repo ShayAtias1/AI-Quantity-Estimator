@@ -12,6 +12,8 @@ import Icon from '../Icon';
 import { useCompareStore } from '../../store/compareStore';
 import { exportCompositesAsPdf, type ChangeTable, type CompositeImage } from '../../lib/exportComparePdf';
 import { changeTableFor, planCompareExport } from '../../lib/compareExportPlan';
+import { trackedExport } from '../../lib/analytics';
+import { notifyExportFailed } from '../../lib/exportFailure';
 
 type SidebarTab = 'layers' | 'measure' | 'markup';
 
@@ -59,8 +61,8 @@ export default function CompareWorkspace() {
     const restorePageKey = currentPageKey;
     const pairs = planCompareExport(comparison, { revisionScope, pageScope, currentPageKey, originalNumPages });
 
-    setExporting(true);
-    try {
+    // Walks the planned pairs and writes the PDF; returns null when nothing could be exported.
+    const exportPairs = async () => {
       const composites: CompositeImage[] = [];
       const tables: ChangeTable[] = [];
       const skipped: string[] = [];
@@ -93,13 +95,34 @@ export default function CompareWorkspace() {
 
       if (composites.length === 0) {
         alert(`לא נמצא שילוב עמוד/גרסה שניתן לייצא${skipped.length > 0 ? `: ${skipped.join(', ')}` : '.'}`);
-        return;
+        return null;
       }
       if (skipped.length > 0) {
         alert(`השילובים הבאים אינם קיימים ולא נכללו בייצוא: ${skipped.join(', ')}`);
       }
       const scopeName = pageScope === 'all' ? 'כל-העמודים' : `עמוד-${restorePageKey}`;
       await exportCompositesAsPdf(composites, `${comparison.name}-${scopeName}`, tables);
+      return { pages_count: composites.length };
+    };
+
+    const exportRegions = useCompareStore.getState().exportRegions;
+    setExporting(true);
+    try {
+      await trackedExport(
+        {
+          export_kind: 'compare_pdf',
+          surface: 'compare',
+          comparison_id: comparison.id,
+          project_id: comparison.projectId,
+          page_scope: pageScope,
+          revision_scope: revisionScope,
+          revision_count: comparison.revisions.length,
+          region_cropped: pageScope === 'current' ? !!exportRegions[restorePageKey] : Object.keys(exportRegions).length > 0,
+        },
+        exportPairs
+      );
+    } catch (err) {
+      notifyExportFailed(err);
     } finally {
       if (restoreRevisionId) setActiveRevisionId(restoreRevisionId);
       setCurrentPageKey(restorePageKey);

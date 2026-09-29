@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, 
 import { v4 as uuid } from 'uuid';
 import { loadPdfPlanSource, type PdfPlanSource } from '../../lib/planSource';
 import { loadComparePdfBlob } from '../../db/database';
+import { noteAlignment, trackError } from '../../lib/analytics';
 import { useCompareStore } from '../../store/compareStore';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
 import { AREA_KIND_LABELS, IDENTITY_TRANSFORM } from '../../types/compare';
@@ -140,8 +141,9 @@ function useLayerRender(
         onNumPages(numPages);
         setSource(s);
       })
-      .catch(() => {
+      .catch((err) => {
         /* surfaced via layer staying blank; comparison-level error handling can be added later */
+        if (!cancelled) trackError('compare_pdf_load', err);
       });
     return () => {
       cancelled = true;
@@ -591,8 +593,11 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       markupDrag.current = null;
     }
     if (alignDrag.current) {
+      const moved = alignment.offsetX !== alignDrag.current.startOffsetX || alignment.offsetY !== alignDrag.current.startOffsetY;
       alignDrag.current = null;
       void persist();
+      // Counted once the drag ends (and settles), never per mouse move.
+      if (moved && comparison) noteAlignment(comparison, currentPageKey, 'manual');
     }
     if (regionDragStart.current) {
       regionDragStart.current = null;

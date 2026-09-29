@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useCompareStore } from '../../store/compareStore';
 import { deleteComparePdfBlob, saveComparePdfBlob } from '../../db/database';
+import { trackRevisionAdded } from '../../lib/analytics';
 import Icon from '../Icon';
 
 const TINT_PRESETS = ['#9ca3af', '#6b7280', '#ef4444', '#2563eb', '#16a34a', '#f59e0b', '#9333ea'];
@@ -88,7 +89,9 @@ export default function LayerPanel() {
     if (!files || files.length === 0) return;
     for (const file of Array.from(files)) {
       const id = addRevision(file.name);
-      if (id) await saveComparePdfBlob(comparison.id, `revision:${id}`, file);
+      if (!id) continue;
+      await saveComparePdfBlob(comparison.id, `revision:${id}`, file);
+      trackRevisionAdded(comparison.id, useCompareStore.getState().comparison?.revisions.length ?? 0);
     }
   };
 

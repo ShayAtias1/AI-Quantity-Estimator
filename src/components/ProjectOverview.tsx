@@ -3,6 +3,8 @@ import { useAppStore } from '../store/appStore';
 import { buildProjectQuantities, PLAN_STATUS_LABELS, type CategoryAmount } from '../lib/projectQuantities';
 import { exportProjectToExcel } from '../lib/exportProjectExcel';
 import { exportProjectToPdf } from '../lib/exportProjectPdf';
+import { projectExportDetails, trackedExport } from '../lib/analytics';
+import { notifyExportFailed } from '../lib/exportFailure';
 import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
 import Icon from './Icon';
 import BrandLogo from './BrandLogo';
@@ -81,6 +83,16 @@ export default function ProjectOverview() {
     }
   };
 
+  // A failed project export is reported to the user (and to analytics by trackedExport) — `run`
+  // itself only manages the busy state.
+  const runProjectExport = async (kind: 'project_excel' | 'project_pdf', exportFn: () => Promise<void>) => {
+    try {
+      await trackedExport({ export_kind: kind, surface: 'overview', ...projectExportDetails(project.id, plans) }, exportFn);
+    } catch (err) {
+      notifyExportFailed(err);
+    }
+  };
+
   const onRename = (planId: string, current: string) => {
     const next = window.prompt('שם התוכנית:', current);
     if (next && next.trim() && next.trim() !== current) void renamePlan(planId, next.trim());
@@ -137,7 +149,7 @@ export default function ProjectOverview() {
                 <button
                   className="btn-secondary"
                   disabled={!!busy || plans.length === 0}
-                  onClick={() => void run('excel', () => exportProjectToExcel(project, plans))}
+                  onClick={() => void run('excel', () => runProjectExport('project_excel', () => exportProjectToExcel(project, plans)))}
                   title="כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד"
                 >
                   <Icon name="sheet" />
@@ -146,7 +158,7 @@ export default function ProjectOverview() {
                 <button
                   className="btn-secondary"
                   disabled={!!busy || plans.length === 0}
-                  onClick={() => void run('pdf', () => exportProjectToPdf(project, plans))}
+                  onClick={() => void run('pdf', () => runProjectExport('project_pdf', () => exportProjectToPdf(project, plans)))}
                   title="דוח כמויות PDF לכל תוכניות הפרויקט"
                 >
                   <Icon name="download" />

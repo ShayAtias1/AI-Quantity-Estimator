@@ -23,6 +23,7 @@ import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Point } from '../types';
 import { saveComparison as dbSaveComparison } from '../db/database';
 import { createHistoryTracker } from '../lib/undoHistory';
+import { noteAlignment, trackChangeMarked, trackError } from '../lib/analytics';
 import { resolveAlignmentStatus, resolveCompareScale, type AlignmentStatus, type ResolvedScale } from '../lib/compareScale';
 
 const historyTracker = createHistoryTracker<Comparison>();
@@ -663,6 +664,9 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const { comparison } = get();
     if (comparison) historyTracker.pushDebounced(get, set, comparison);
     get().updateActiveRevisionPage(pageKey, { alignment: transform, alignmentMethod: method });
+    // Point pairs count at once; slider bursts only once they settle (see noteAlignment).
+    const updated = get().comparison;
+    if (updated) noteAlignment(updated, pageKey, method);
   },
   setRevisedPageNumber: (pageKey, revisedPageNumber) => {
     const { comparison } = get();
@@ -735,6 +739,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const owned: Measurement = { ...measurement, pageNumber: currentPageKey };
     const revisions = updateActiveRevision(comparison, (r) => ({ ...r, measurements: [...r.measurements, owned] }));
     set({ comparison: touch({ ...comparison, revisions }), measurePoints: [] });
+    trackChangeMarked(comparison.id, owned, get().areaShape);
     scheduleSave(get, set);
   },
   updateMeasurement: (id, patch) => {
@@ -862,6 +867,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       // Stays dirty: the work is not on disk, and the unload guard must keep warning.
       set({ saveError: err instanceof Error ? err.message : 'שמירה נכשלה' });
       console.error('Failed to save comparison', err);
+      trackError('save_comparison', err);
     } finally {
       set({ saving: false });
     }
