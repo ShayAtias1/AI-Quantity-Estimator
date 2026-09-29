@@ -256,7 +256,8 @@ interface AppState {
   /** Saves the open plan and returns to the home screen. False when the save failed (nothing is dropped). */
   closeProject: () => Promise<boolean>;
   /** Creates a project, optionally with a first plan from a PDF (which is then opened). */
-  createProject: (name: string, firstPlan?: { file: File; name: string }) => Promise<void>;
+  /** Creates an empty project and opens its overview — no plan, no workspace; the user picks the next step there. */
+  createProject: (name: string) => Promise<void>;
   renameProject: (name: string) => void;
   /** Re-reads the open project's plans from disk (after the open plan was saved or plans changed). */
   refreshProjectPlans: () => Promise<void>;
@@ -517,16 +518,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ currentProject: null, projectPlans: [], projectComparisons: [] });
     return true;
   },
-  createProject: async (name, firstPlan) => {
+  createProject: async (name) => {
     const now = Date.now();
     const project: Project = { id: uuid(), name, createdAt: now, updatedAt: now, planIds: [] };
     await dbSaveProject(project);
-    trackProjectCreated(project.id, !!firstPlan);
+    trackProjectCreated(project.id);
     await get().openProject(project.id);
-    if (firstPlan) {
-      const plan = await get().addPlan(firstPlan.file, firstPlan.name);
-      if (plan) await get().openPlan(plan.id);
-    }
   },
   renameProject: (name) => {
     const { currentProject } = get();

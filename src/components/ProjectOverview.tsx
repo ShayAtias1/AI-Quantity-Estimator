@@ -66,6 +66,8 @@ export default function ProjectOverview() {
 
   if (!project) return null;
 
+  const isEmpty = plans.length === 0 && comparisons.length === 0;
+
   const toggle = (category: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -137,173 +139,197 @@ export default function ProjectOverview() {
       </div>
 
       <div className="home-body">
-        <div className="home-content project-overview">
-          <div className="home-panel">
-            <div className="home-panel-head">
+        {isEmpty ? (
+          // A new project holds nothing yet: the user explicitly picks which workflow to start.
+          <div className="home-content project-overview">
+            <div className="home-panel project-start">
               <div className="home-panel-text">
-                <h2>חישוב כמויות</h2>
-                <p className="muted">כל תוכנית נמדדת בנפרד — קנה מידה, חדרים ופתחים משלה.</p>
+                <h2>מה תרצה להוסיף לפרויקט?</h2>
+                <p className="muted">פרויקט יכול להכיל כמה תוכניות כמויות וכמה השוואות גרסאות. אפשר להוסיף את השני בכל שלב.</p>
               </div>
-              {/* The project exports cover the quantity plans only, so they live in this panel. */}
-              <div className="panel-head-actions">
-                <button
-                  className="btn-secondary"
-                  disabled={!!busy || plans.length === 0}
-                  onClick={() => void run('excel', () => runProjectExport('project_excel', () => exportProjectToExcel(project, plans)))}
-                  title="כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד"
-                >
-                  <Icon name="sheet" />
-                  {busy === 'excel' ? 'מייצא…' : 'Excel'}
+              <div className="project-start-options">
+                <button className="project-start-option" onClick={() => setAdding(true)} disabled={!!busy}>
+                  <Icon name="map" size={22} />
+                  <span className="project-start-title">תוכנית כמויות חדשה</span>
+                  <span className="project-start-desc muted">העלאת תוכנית PDF, כיול, סימון חדרים וחישוב כמויות לפי סוגי עבודה.</span>
                 </button>
-                <button
-                  className="btn-secondary"
-                  disabled={!!busy || plans.length === 0}
-                  onClick={() => void run('pdf', () => runProjectExport('project_pdf', () => exportProjectToPdf(project, plans)))}
-                  title="דוח כמויות PDF לכל תוכניות הפרויקט"
-                >
-                  <Icon name="download" />
-                  {busy === 'pdf' ? 'מייצא…' : 'PDF'}
-                </button>
-                <button className="btn-primary" onClick={() => setAdding(true)} disabled={!!busy}>
-                  <Icon name="plus" />
-                  הוספת תוכנית
+                <button className="project-start-option" onClick={() => setAddingComparison(true)} disabled={!!busy}>
+                  <Icon name="layers" size={22} />
+                  <span className="project-start-title">השוואת גרסאות חדשה</span>
+                  <span className="project-start-desc muted">תוכנית מקור מול גרסה מעודכנת — יישור, שכבות וסימון הריסה ובנייה חדשה.</span>
                 </button>
               </div>
             </div>
-
-            {plans.length === 0 ? (
-              <div className="empty-state">
-                <Icon name="file" size={24} />
-                <p>אין עדיין תוכניות בפרויקט. הוסף תוכנית מקובץ PDF כדי להתחיל למדוד.</p>
+          </div>
+        ) : (
+          <div className="home-content project-overview">
+            <div className="home-panel">
+              <div className="home-panel-head">
+                <div className="home-panel-text">
+                  <h2>חישוב כמויות</h2>
+                  <p className="muted">כל תוכנית נמדדת בנפרד — קנה מידה, חדרים ופתחים משלה.</p>
+                </div>
+                {/* The project exports cover the quantity plans only, so they live in this panel. */}
+                <div className="panel-head-actions">
+                  <button
+                    className="btn-secondary"
+                    disabled={!!busy || plans.length === 0}
+                    onClick={() => void run('excel', () => runProjectExport('project_excel', () => exportProjectToExcel(project, plans)))}
+                    title="כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד"
+                  >
+                    <Icon name="sheet" />
+                    {busy === 'excel' ? 'מייצא…' : 'Excel'}
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    disabled={!!busy || plans.length === 0}
+                    onClick={() => void run('pdf', () => runProjectExport('project_pdf', () => exportProjectToPdf(project, plans)))}
+                    title="דוח כמויות PDF לכל תוכניות הפרויקט"
+                  >
+                    <Icon name="download" />
+                    {busy === 'pdf' ? 'מייצא…' : 'PDF'}
+                  </button>
+                  <button className="btn-primary" onClick={() => setAdding(true)} disabled={!!busy}>
+                    <Icon name="plus" />
+                    תוכנית חדשה
+                  </button>
+                </div>
               </div>
-            ) : (
-              <ul className="saved-list plan-list">
-                {quantities.plans.map((r) => (
-                  <li key={r.plan.id} onClick={() => void openPlan(r.plan.id)} title="פתח את התוכנית">
-                    <Icon name="map" />
-                    <span className="saved-list-text">
-                      <span className="saved-list-name">{r.plan.name}</span>
-                      <span className="saved-list-meta">
-                        {r.roomCount} חדרים ·{' '}
-                        {r.calibratedPageCount > 0 ? `${r.calibratedPageCount} עמודים מכוילים` : 'לא כויל'}
+
+              {plans.length === 0 ? (
+                <div className="empty-state">
+                  <Icon name="file" size={24} />
+                  <p>אין עדיין תוכניות כמויות בפרויקט. הוסף תוכנית מקובץ PDF כדי להתחיל למדוד.</p>
+                </div>
+              ) : (
+                <ul className="saved-list plan-list">
+                  {quantities.plans.map((r) => (
+                    <li key={r.plan.id} onClick={() => void openPlan(r.plan.id)} title="פתח את התוכנית">
+                      <Icon name="map" />
+                      <span className="saved-list-text">
+                        <span className="saved-list-name">{r.plan.name}</span>
+                        <span className="saved-list-meta">
+                          {r.roomCount} חדרים ·{' '}
+                          {r.calibratedPageCount > 0 ? `${r.calibratedPageCount} עמודים מכוילים` : 'לא כויל'}
+                        </span>
                       </span>
-                    </span>
-                    <span className={`plan-status plan-status-${r.status}`}>{PLAN_STATUS_LABELS[r.status]}</span>
-                    <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
-                      <button className="icon-btn" title="שינוי שם" onClick={() => onRename(r.plan.id, r.plan.name)}>
-                        <Icon name="text" />
-                      </button>
-                      <button
-                        className="icon-btn"
-                        title="שכפל תוכנית"
-                        disabled={!!busy}
-                        onClick={() => void run('dup', () => duplicatePlan(r.plan.id))}
-                      >
-                        <Icon name="copy" />
-                      </button>
-                      <button className="icon-btn danger" title="מחק תוכנית" onClick={() => onDelete(r.plan.id, r.plan.name)}>
-                        <Icon name="trash" />
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                      <span className={`plan-status plan-status-${r.status}`}>{PLAN_STATUS_LABELS[r.status]}</span>
+                      <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="icon-btn" title="שינוי שם" onClick={() => onRename(r.plan.id, r.plan.name)}>
+                          <Icon name="text" />
+                        </button>
+                        <button
+                          className="icon-btn"
+                          title="שכפל תוכנית"
+                          disabled={!!busy}
+                          onClick={() => void run('dup', () => duplicatePlan(r.plan.id))}
+                        >
+                          <Icon name="copy" />
+                        </button>
+                        <button className="icon-btn danger" title="מחק תוכנית" onClick={() => onDelete(r.plan.id, r.plan.name)}>
+                          <Icon name="trash" />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-          <div className="home-panel">
-            <div className="home-panel-head">
+            <div className="home-panel">
+              <div className="home-panel-head">
+                <div className="home-panel-text">
+                  <h2>השוואת תוכניות</h2>
+                  <p className="muted">תוכנית מקור מול גרסאות מעודכנות — יישור, שכבות, וסימון הריסה ובנייה חדשה.</p>
+                </div>
+                <button className="btn-primary" onClick={() => setAddingComparison(true)} disabled={!!busy}>
+                  <Icon name="plus" />
+                  השוואה חדשה
+                </button>
+              </div>
+
+              {comparisons.length === 0 ? (
+                <div className="empty-state">
+                  <Icon name="layers" size={24} />
+                  <p>אין עדיין השוואות בפרויקט. צור השוואה מתוכנית מקור ומגרסה מעודכנת.</p>
+                </div>
+              ) : (
+                <ul className="saved-list plan-list">
+                  {comparisons.map((c) => (
+                    <li key={c.id} onClick={() => void openComparison(c.id)} title="פתח את ההשוואה">
+                      <Icon name="layers" />
+                      <span className="saved-list-text">
+                        <span className="saved-list-name">{c.name}</span>
+                        <span className="saved-list-meta">{comparisonMeta(c)}</span>
+                      </span>
+                      {/* TODO: "Move to Project" for comparisons — reassign `projectId` and move the id between the
+                          two projects' `comparisonIds`. Also the way to fold legacy comparisons, which the
+                          migration wrapped into one project each (`legacy-cmp-*`), into their real project. */}
+                      <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="icon-btn" title="שינוי שם" onClick={() => onRenameComparison(c.id, c.name)}>
+                          <Icon name="text" />
+                        </button>
+                        <button className="icon-btn danger" title="מחק השוואה" onClick={() => onDeleteComparison(c.id, c.name)}>
+                          <Icon name="trash" />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="home-panel">
               <div className="home-panel-text">
-                <h2>השוואת תוכניות</h2>
-                <p className="muted">תוכנית מקור מול גרסאות מעודכנות — יישור, שכבות, וסימון הריסה ובנייה חדשה.</p>
+                <h2>סיכום כמויות לפרויקט</h2>
+                <p className="muted">סכום כל התוכניות. לחץ על שורה כדי לראות את חלקה של כל תוכנית.</p>
               </div>
-              <button className="btn-primary" onClick={() => setAddingComparison(true)} disabled={!!busy}>
-                <Icon name="plus" />
-                השוואה חדשה
-              </button>
+              {quantities.totals.length === 0 ? (
+                <p className="muted project-summary-empty">אין עדיין כמויות — סמן חדרים בתוכניות והוסף להם סוגי עבודה.</p>
+              ) : (
+                <table className="qty-summary-table project-summary-table">
+                  <thead>
+                    <tr>
+                      <th>פריט</th>
+                      <th>כמות נטו</th>
+                      <th>להזמנה (כולל פחת)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quantities.totals.map((t) => {
+                      const open = expanded.has(t.category);
+                      return (
+                        <Fragment key={t.category}>
+                          <tr className="project-summary-row" onClick={() => toggle(t.category)}>
+                            <td>
+                              <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} />
+                              {t.label}
+                            </td>
+                            <td>{primary(t)}</td>
+                            <td className="order">{primaryOrder(t)}</td>
+                          </tr>
+                          {open &&
+                            t.perPlan.map((p) => (
+                              <tr key={p.planId} className="project-summary-plan">
+                                <td>{p.planName}</td>
+                                <td>{primary(p)}</td>
+                                <td>{primaryOrder(p)}</td>
+                              </tr>
+                            ))}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+              {quantities.uncalibratedRoomCount > 0 && (
+                <div className="warning-box">
+                  {quantities.uncalibratedRoomCount} חדרים נמצאים בעמודים שלא כוילו ואינם נכללים בסיכום.
+                </div>
+              )}
             </div>
-
-            {comparisons.length === 0 ? (
-              <div className="empty-state">
-                <Icon name="layers" size={24} />
-                <p>אין עדיין השוואות בפרויקט. צור השוואה מתוכנית מקור ומגרסה מעודכנת.</p>
-              </div>
-            ) : (
-              <ul className="saved-list plan-list">
-                {comparisons.map((c) => (
-                  <li key={c.id} onClick={() => void openComparison(c.id)} title="פתח את ההשוואה">
-                    <Icon name="layers" />
-                    <span className="saved-list-text">
-                      <span className="saved-list-name">{c.name}</span>
-                      <span className="saved-list-meta">{comparisonMeta(c)}</span>
-                    </span>
-                    {/* TODO: "Move to Project" for comparisons — reassign `projectId` and move the id between the
-                        two projects' `comparisonIds`. Also the way to fold legacy comparisons, which the
-                        migration wrapped into one project each (`legacy-cmp-*`), into their real project. */}
-                    <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
-                      <button className="icon-btn" title="שינוי שם" onClick={() => onRenameComparison(c.id, c.name)}>
-                        <Icon name="text" />
-                      </button>
-                      <button className="icon-btn danger" title="מחק השוואה" onClick={() => onDeleteComparison(c.id, c.name)}>
-                        <Icon name="trash" />
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
-
-          <div className="home-panel">
-            <div className="home-panel-text">
-              <h2>סיכום כמויות לפרויקט</h2>
-              <p className="muted">סכום כל התוכניות. לחץ על שורה כדי לראות את חלקה של כל תוכנית.</p>
-            </div>
-            {quantities.totals.length === 0 ? (
-              <p className="muted project-summary-empty">אין עדיין כמויות — סמן חדרים בתוכניות והוסף להם סוגי עבודה.</p>
-            ) : (
-              <table className="qty-summary-table project-summary-table">
-                <thead>
-                  <tr>
-                    <th>פריט</th>
-                    <th>כמות נטו</th>
-                    <th>להזמנה (כולל פחת)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {quantities.totals.map((t) => {
-                    const open = expanded.has(t.category);
-                    return (
-                      <Fragment key={t.category}>
-                        <tr className="project-summary-row" onClick={() => toggle(t.category)}>
-                          <td>
-                            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} />
-                            {t.label}
-                          </td>
-                          <td>{primary(t)}</td>
-                          <td className="order">{primaryOrder(t)}</td>
-                        </tr>
-                        {open &&
-                          t.perPlan.map((p) => (
-                            <tr key={p.planId} className="project-summary-plan">
-                              <td>{p.planName}</td>
-                              <td>{primary(p)}</td>
-                              <td>{primaryOrder(p)}</td>
-                            </tr>
-                          ))}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {quantities.uncalibratedRoomCount > 0 && (
-              <div className="warning-box">
-                {quantities.uncalibratedRoomCount} חדרים נמצאים בעמודים שלא כוילו ואינם נכללים בסיכום.
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
       {addingComparison && (
@@ -338,7 +364,7 @@ function AddPlanDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (file: 
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h3>הוספת תוכנית</h3>
+        <h3>תוכנית כמויות חדשה</h3>
         <div className="form-row">
           <label>תוכנית (PDF)</label>
           <button className="btn-secondary file-pick" onClick={() => fileInputRef.current?.click()}>

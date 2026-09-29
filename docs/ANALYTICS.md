@@ -70,7 +70,7 @@ person-property filters and the Lifecycle insight — new vs returning comes fro
 | Event | Fires when | Properties |
 |---|---|---|
 | `app_opened` | once per page load | `has_local_data`, `local_project_count_bucket`, `is_returning`, `days_since_first_seen`, `device_class`, `in_app_browser` |
-| `project_created` | project saved | `project_id`, `with_first_plan`, `is_first_project` |
+| `project_created` | project saved (always empty — plans are added from the overview and fire their own `plan_created`) | `project_id`, `with_first_plan` (always `false` since projects are created without a PDF; kept for continuity), `is_first_project` |
 | `project_opened` | opened from the home list (not the internal open after creating) | `project_id`, `project_age_days`, `plan_count`, `comparison_count` |
 | `plan_created` | plan + PDF saved (upload or duplicate) | `plan_id`, `project_id`, `method`, `pdf_size_bucket`, `plan_index` |
 | `plan_opened` | the plan's PDF first **renders** after the plan is loaded | `plan_id`, `project_id`, `page_count`, `plan_age_days`, `calibrated_pages`, `room_count` |

@@ -2,10 +2,17 @@ import { PDFDocument } from 'pdf-lib';
 import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
-import { DEFAULT_AREA_KIND_COLORS, REPORT_CATEGORY_LABELS } from '../types';
+import { AREA_UNIT, DEFAULT_AREA_KIND_COLORS, OPENING_TYPE_LABELS, PANEL_LENGTH_UNIT, REPORT_CATEGORY_LABELS } from '../types';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
-import { groupSummariesByApartment, usedExtraCategories } from './quantities';
+import {
+  groupSummariesByApartment,
+  openingAreaM2,
+  openingCountsText,
+  roomOpeningDetails,
+  usedReportCategories,
+} from './quantities';
+import { categoryPrimaryUnit, roomCategoryQuantity } from './projectQuantities';
 import { polygonCentroid } from './geometry';
 import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
@@ -27,50 +34,13 @@ const C_TOTAL = '#D6E4F0';
 const C_TOTAL_HDR = '#A9C4D9';
 const C_GRAND = '#D5F5E3';
 const C_BORDER = '#E2E8F0';
-
-const DATA_HEADERS = [
-  'דירה',
-  'חדר',
-  'שטח ריצוף רגיל',
-  'שטח ריצוף AS',
-  'שטח חיפוי',
-  'אורך פנלים (מ"א)',
-  'שטח פנלים',
-  'פחת רגיל %',
-  'פחת AS %',
-  'פחת חיפוי %',
-  'פחת פנלים %',
-  'ריצוף רגיל להזמנה',
-  'ריצוף AS להזמנה',
-  'חיפוי להזמנה',
-  'אורך פנלים להזמנה (מ"א)',
-  'פנלים להזמנה',
-  'הערות',
-];
-/**
- * Builds a summary row whose cells land under the matching data columns. Kept as one helper so the
- * totals stay aligned with the headers whenever a column is added — the later work-type columns
- * are inserted before notes, so these indices never move.
- */
-function totalsRow(columnCount: number, cells: {
-  label: string;
-  length?: string;
-  net?: string;
-  waste?: string;
-  order?: string;
-  orderLength?: string;
-}): string[] {
-  const row = new Array<string>(columnCount).fill('');
-  row[0] = cells.label;
-  row[2] = cells.net ?? '';
-  row[5] = cells.length ?? '';
-  row[7] = cells.waste ?? '';
-  row[11] = cells.order ?? '';
-  row[14] = cells.orderLength ?? '';
-  return row;
-}
-
-const DATA_WEIGHTS = [8, 18, 13, 12, 12, 12, 11, 10, 10, 10, 10, 12, 12, 11, 13, 11, 17];
+/** Column boundaries: a firmer line where a work-type group starts, and inside the blue header. */
+const C_GROUP_LINE = '#B4C2D0';
+const C_HEADER_LINE = '#4B739A';
+/** Secondary line under a number (waste, m², deductions), and cells with nothing to say. */
+const C_SUB = '#64748B';
+const C_NONE = '#A0AEC0';
+const C_WARN = '#92400E';
 
 /**
  * Renders one PDF-source page (the plan itself) with its rooms overlaid, as a standalone framed
@@ -181,218 +151,373 @@ function drawQuantityTablePages(
   const PAGE_W = 1600;
   const PAGE_H = 1132;
   const MARGIN = 40;
-  const HEADER_ROW_H = 40;
-  const ROW_H = 32;
+  const GROUP_ROW_H = 28;
+  const SUB_ROW_H = 26;
+  /** Data rows hold two lines: the number, and under it what explains it. */
+  const ROW_H = 40;
+  /** Totals and openings blocks: one line per row. */
+  const BLOCK_ROW_H = 30;
   const usableWidth = PAGE_W - MARGIN * 2;
-  // Painting / plaster / waterproofing columns (net · waste · order) only when the project uses them,
-  // inserted before notes so a project without them prints exactly the original table.
-  const extras = usedExtraCategories(summaries);
-  const notesIndex = DATA_HEADERS.length - 1;
-  const headers = [
-    ...DATA_HEADERS.slice(0, notesIndex),
-    ...extras.flatMap((c) => {
-      const label = REPORT_CATEGORY_LABELS[c];
-      return [`${label} נטו`, `פחת ${label} %`, `${label} להזמנה`];
-    }),
-    DATA_HEADERS[notesIndex],
-  ];
-  const weights = [...DATA_WEIGHTS.slice(0, notesIndex), ...extras.flatMap(() => [11, 9, 11]), DATA_WEIGHTS[notesIndex]];
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-  const colWidths = weights.map((w) => (usableWidth * w) / totalWeight);
-  const tRow = (cells: Parameters<typeof totalsRow>[1]) => totalsRow(headers.length, cells);
+  const right = PAGE_W - MARGIN;
 
-  let pt: PdfPainter;
+  // The same hierarchy as the on-screen table: identity, then one group per work type the plan uses
+  // (net · to order, waste and the skirting m² under the numbers), then the room's openings and notes.
+  const categories = usedReportCategories(summaries);
+  const roomsById = new Map(project.rooms.map((r) => [r.id, r]));
+  interface Column {
+    header: string;
+    weight: number;
+    /** First column of a header group — drawn with a firmer boundary. */
+    groupStart?: boolean;
+    /** Text columns read from the RTL start; numbers are centred. */
+    text?: boolean;
+  }
+  const columns: Column[] = [
+    { header: 'דירה', weight: 7 },
+    { header: 'חדר', weight: 16, text: true },
+    ...categories.flatMap((): Column[] => [
+      { header: 'נטו', weight: 11, groupStart: true },
+      { header: 'להזמנה', weight: 11 },
+    ]),
+    { header: 'פתחים', weight: 16, groupStart: true, text: true },
+    { header: 'הערות', weight: 18, text: true },
+  ];
+  const totalWeight = columns.reduce((a, c) => a + c.weight, 0);
+  const colWidths = columns.map((c) => (usableWidth * c.weight) / totalWeight);
+  /** x of each column's right (RTL start) edge. */
+  const colRight = colWidths.map((_, i) => right - colWidths.slice(0, i).reduce((a, b) => a + b, 0));
+
+  let pt!: PdfPainter;
   let y = 0;
 
-  // `spanLabel`: the first cell also takes the (empty) room column beside it. Used by the totals
-  // rows, whose category labels would otherwise be squeezed into the narrow apartment column.
-  const drawRow = (cells: string[], bg: string, opts?: { bold?: boolean; color?: string; spanLabel?: boolean }) => {
+  const verticals = (top: number, height: number, soft: string, firm: string) => {
+    for (let i = 1; i < columns.length; i++) {
+      const x = colRight[i];
+      pt.line(x, top, x, top + height, columns[i].groupStart ? firm : soft);
+    }
+  };
+
+  const drawColumnHeader = () => {
+    const top = y;
+    const h = GROUP_ROW_H + SUB_ROW_H;
+    pt.fillRect(MARGIN, top, usableWidth, h, C_HEADER);
+    const headerText = (text: string, x: number, w: number, baseline: number, size: number) =>
+      pt.fillText(text, x - w / 2, baseline, { size, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 8 });
+    // Apartment and room span both header rows.
+    headerText(columns[0].header, colRight[0], colWidths[0], top + h / 2 + 5, 12.5);
+    headerText(columns[1].header, colRight[1], colWidths[1], top + h / 2 + 5, 12.5);
+    // Group labels over each pair of columns.
+    const groups = [
+      ...categories.map((c) => `${REPORT_CATEGORY_LABELS[c]} (${categoryPrimaryUnit(c)})`),
+      'פרטים',
+    ];
+    groups.forEach((label, g) => {
+      const i = 2 + g * 2;
+      headerText(label, colRight[i], colWidths[i] + colWidths[i + 1], top + GROUP_ROW_H / 2 + 5, 12.5);
+    });
+    for (let i = 2; i < columns.length; i++) {
+      headerText(columns[i].header, colRight[i], colWidths[i], top + GROUP_ROW_H + SUB_ROW_H / 2 + 4, 11);
+    }
+    // The line under the group labels stops short of the two identity columns they do not cover.
+    pt.line(MARGIN, top + GROUP_ROW_H, colRight[2], top + GROUP_ROW_H, C_HEADER_LINE);
+    for (let i = 1; i < columns.length; i++) {
+      const x = colRight[i];
+      // Inside a group, the boundary only runs through the lower header row.
+      const from = columns[i].groupStart || i === 2 || i === 1 ? top : top + GROUP_ROW_H;
+      pt.line(x, from, x, top + h, C_HEADER_LINE);
+    }
+    y += h;
+  };
+
+  const newPage = (withColumnHeader: boolean) => {
+    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
+    pt.fillText(`כתב כמויות — ${project.name}`, right, 40, { size: 20, bold: true, color: '#0f172a' });
+    drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
+    pt.fillText(new Date().toLocaleDateString('he-IL'), right, 60, { size: 12, color: '#8b8f99' });
+    y = 84;
+    if (withColumnHeader) drawColumnHeader();
+  };
+  /** Starts a new page when `height` does not fit. Room rows repeat the column header; blocks bring their own. */
+  const ensure = (height: number, withColumnHeader: boolean) => {
+    if (y + height > PAGE_H - MARGIN) newPage(withColumnHeader);
+  };
+
+  interface Cell {
+    main: string;
+    sub?: string;
+    color?: string;
+  }
+  /**
+   * Splits a text cell into at most two lines that fit `width`; whatever still does not fit ends in
+   * an ellipsis. Keeps long room names and notes readable instead of condensing them to a smear.
+   */
+  const wrapTwoLines = (text: string, size: number, width: number, bold: boolean): string[] => {
+    if (pt.measure(text, size, bold) <= width) return [text];
+    const words = text.split(/\s+/);
+    let first = '';
+    let i = 0;
+    for (; i < words.length; i++) {
+      const next = first ? `${first} ${words[i]}` : words[i];
+      if (first && pt.measure(next, size, bold) > width) break;
+      first = next;
+    }
+    let second = words.slice(i).join(' ');
+    if (second && pt.measure(second, size, bold) > width) {
+      while (second.length > 1 && pt.measure(`${second}…`, size, bold) > width) second = second.slice(0, -1).trimEnd();
+      second = `${second}…`;
+    }
+    return second ? [first, second] : [first];
+  };
+
+  const drawRoomRow = (cells: Cell[], bg: string) => {
     pt.fillRect(MARGIN, y, usableWidth, ROW_H, bg);
     pt.strokeRect(MARGIN, y, usableWidth, ROW_H, C_BORDER);
-    let x = PAGE_W - MARGIN;
+    verticals(y, ROW_H, C_BORDER, C_GROUP_LINE);
     cells.forEach((cell, i) => {
-      if (opts?.spanLabel && i === 1) return; // already covered by the spanned label
-      const w = opts?.spanLabel && i === 0 ? (colWidths[0] ?? 0) + (colWidths[1] ?? 0) : (colWidths[i] ?? 0);
-      pt.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, { size: 12, bold: opts?.bold, color: opts?.color, align: 'center', maxWidth: w - 6 });
-      x -= w;
+      const w = colWidths[i];
+      const text = columns[i].text;
+      const x = text ? colRight[i] - 6 : colRight[i] - w / 2;
+      const align = text ? 'right' : 'center';
+      const bold = i === 1;
+      if (text && !cell.sub) {
+        const lines = wrapTwoLines(cell.main, 11.5, w - 12, bold);
+        if (lines.length === 2) {
+          lines.forEach((line, l) => pt.fillText(line, x, y + 17 + l * 14, { size: 11.5, color: cell.color, align, maxWidth: w - 12, bold }));
+          return;
+        }
+      }
+      const mainBaseline = cell.sub ? y + 17 : y + ROW_H / 2 + 4;
+      pt.fillText(cell.main, x, mainBaseline, { size: 12, color: cell.color, align, maxWidth: w - 12, bold });
+      if (cell.sub) pt.fillText(cell.sub, x, y + 32, { size: 9.5, color: C_SUB, align, maxWidth: w - 12 });
     });
     y += ROW_H;
   };
-  const drawTotalsRow = (cells: string[], bg: string, opts?: { bold?: boolean; color?: string }) =>
-    drawRow(cells, bg, { ...opts, spanLabel: true });
 
-  const drawColumnHeader = () => {
-    pt.fillRect(MARGIN, y, usableWidth, HEADER_ROW_H, C_HEADER);
-    let x = PAGE_W - MARGIN;
-    headers.forEach((label, i) => {
-      const w = colWidths[i];
-      pt.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 6 });
-      x -= w;
-    });
-    y += HEADER_ROW_H;
-  };
-
-  const newPage = () => {
-    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
-    pt.fillText(`כתב כמויות — ${project.name}`, PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
-    drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
-    pt.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
-    y = 84;
-    drawColumnHeader();
-  };
-
-  const remainingRows = () => Math.floor((PAGE_H - MARGIN - y) / ROW_H);
-  const ensureRoom = (rows: number) => {
-    if (remainingRows() < rows) newPage();
+  /**
+   * A self-contained block table (totals, openings): its own columns, right-aligned at the RTL
+   * start, `widthFraction` of the page. `title` is a full-width band over it.
+   */
+  const drawBlock = (
+    title: { text: string; bg: string } | null,
+    headers: string[],
+    weights: number[],
+    rows: { cells: string[]; bg: string; bold?: boolean }[],
+    widthFraction: number,
+    /** Leading columns that hold labels (read from the RTL start); the rest are centred values. */
+    labelColumns = 1
+  ) => {
+    const width = usableWidth * widthFraction;
+    const sum = weights.reduce((a, b) => a + b, 0);
+    const widths = weights.map((w) => (width * w) / sum);
+    const drawLine = (cells: string[], bg: string, bold: boolean, color = '#1e293b') => {
+      pt.fillRect(right - width, y, width, BLOCK_ROW_H, bg);
+      pt.strokeRect(right - width, y, width, BLOCK_ROW_H, C_BORDER);
+      let x = right;
+      cells.forEach((cell, i) => {
+        const w = widths[i];
+        if (i > 0) pt.line(x, y, x, y + BLOCK_ROW_H, C_BORDER);
+        if (i < labelColumns) pt.fillText(cell, x - 8, y + BLOCK_ROW_H / 2 + 4, { size: 12, bold, color, maxWidth: w - 14 });
+        else pt.fillText(cell, x - w / 2, y + BLOCK_ROW_H / 2 + 4, { size: 12, bold, color, align: 'center', maxWidth: w - 8 });
+        x -= w;
+      });
+      y += BLOCK_ROW_H;
+    };
+    const header = () => drawLine(headers, C_TOTAL_HDR, true);
+    ensure(BLOCK_ROW_H * ((title ? 1 : 0) + 1 + Math.min(rows.length, 3)), false);
+    if (title) {
+      pt.fillRect(right - width, y, width, BLOCK_ROW_H, title.bg);
+      pt.fillText(title.text, right - 8, y + BLOCK_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#0f172a' });
+      y += BLOCK_ROW_H;
+    }
+    header();
+    for (const row of rows) {
+      if (y + BLOCK_ROW_H > PAGE_H - MARGIN) {
+        newPage(false);
+        header();
+      }
+      drawLine(row.cells, row.bg, !!row.bold);
+    }
+    y += BLOCK_ROW_H * 0.5;
   };
 
   const num = (v: number | null) => (v == null ? DASH : `${v}`);
-  const pct = (v: number | null) => (v == null ? DASH : `${v}%`);
-  /** Quantity cell of a room whose page has no scale: says why it is empty instead of printing 0. */
-  const qty = (s: RoomQuantitySummary, v: number | null) => (s.pageCalibrated ? num(v) : NOT_CALIBRATED);
+  const r2 = (v: number) => `${Math.round(v * 100) / 100}`;
 
-  newPage();
+  const roomCells = (s: RoomQuantitySummary): Cell[] => {
+    const openings = roomsById.get(s.roomId)?.openings ?? [];
+    const openingsText = openingCountsText(openings);
+    const openingsArea = Math.round(openings.reduce((sum, o) => sum + openingAreaM2(o), 0) * 100) / 100;
+    return [
+      { main: s.apartmentNumber || DASH },
+      { main: s.roomName },
+      ...categories.flatMap((c): Cell[] => {
+        const q = roomCategoryQuantity(s, c);
+        if (q.wastePercent == null) return [{ main: DASH, color: C_NONE }, { main: DASH, color: C_NONE }];
+        const waste = `פחת ${q.wastePercent}%`;
+        // No scale: say why the cell is empty instead of printing 0.
+        if (!s.pageCalibrated) return [{ main: NOT_CALIBRATED, color: C_WARN }, { main: NOT_CALIBRATED, sub: waste, color: C_WARN }];
+        if (c === 'panels') {
+          const doors = (s.panelsDeductedLengthM ?? 0) > 0 ? ` · ניכוי דלתות ${s.panelsDeductedLengthM}` : '';
+          return [
+            { main: num(q.lengthM), sub: `${num(q.quantityM2)} ${AREA_UNIT}${doors}` },
+            { main: num(q.orderLengthM), sub: `${waste} · ${num(q.orderM2)} ${AREA_UNIT}` },
+          ];
+        }
+        const deduction = s.openingDeductions.find((d) => d.category === c);
+        return [
+          { main: num(q.quantityM2), sub: deduction ? `ניכוי פתחים ${deduction.deductedM2}` : undefined },
+          { main: num(q.orderM2), sub: waste },
+        ];
+      }),
+      openingsText ? { main: openingsText, sub: `${openingsArea} ${AREA_UNIT}` } : { main: DASH, color: C_NONE },
+      { main: s.notes || DASH, color: s.notes ? undefined : C_NONE },
+    ];
+  };
+
+  newPage(true);
   const groups = groupSummariesByApartment(summaries);
   for (const group of groups) {
     group.rooms.forEach((s, i) => {
-      ensureRoom(1);
+      ensure(ROW_H, true);
       const bg = s.claddingAreaM2 != null ? C_WET : s.tilingAsAreaM2 != null ? C_BALCONY : i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B;
-      drawRow(
-        [
+      drawRoomRow(roomCells(s), bg);
+    });
+
+    // Only the work types this apartment's rooms actually have — no rows of zeros.
+    const cats = usedReportCategories(group.rooms).map((c) => {
+      const amounts = group.rooms.map((s) => roomCategoryQuantity(s, c));
+      const sum = (pick: (q: (typeof amounts)[number]) => number | null) => amounts.reduce((a, q) => a + (pick(q) ?? 0), 0);
+      const linear = c === 'panels';
+      return {
+        label: REPORT_CATEGORY_LABELS[c],
+        net: sum((q) => q.quantityM2),
+        ord: sum((q) => q.orderM2),
+        len: linear ? sum((q) => q.lengthM) : null,
+        ordLen: linear ? sum((q) => q.orderLengthM) : null,
+      };
+    });
+    if (cats.length === 0) continue;
+    y += BLOCK_ROW_H * 0.3;
+    drawBlock(
+      { text: `סה"כ דירה ${group.apartment || DASH}`, bg: C_TOTAL },
+      ['פריט', 'אורך (מ"א)', 'כמות נטו (מ"ר)', 'אורך להזמנה (מ"א)', 'להזמנה (מ"ר)'],
+      [18, 12, 12, 13, 12],
+      cats.map((cat) => ({
+        cells: [cat.label, cat.len == null ? '' : r2(cat.len), r2(cat.net), cat.ordLen == null ? '' : r2(cat.ordLen), r2(cat.ord)],
+        bg: C_TOTAL,
+      })),
+      0.6
+    );
+  }
+
+  // Grand totals.
+  drawBlock(
+    { text: 'סה"כ כללי לפרויקט', bg: C_GRAND },
+    ['פריט', 'אורך (מ"א)', 'כמות נטו (מ"ר)', 'פחת %', 'אורך להזמנה (מ"א)', 'להזמנה (מ"ר)'],
+    [18, 12, 12, 9, 13, 12],
+    totals.map((t) => ({
+      cells: [
+        REPORT_CATEGORY_LABELS[t.category],
+        t.lengthM == null ? '' : `${t.lengthM}`,
+        `${t.quantityM2}`,
+        `${t.wastePercent}%`,
+        t.orderLengthM == null ? '' : `${t.orderLengthM}`,
+        `${t.orderM2}`,
+      ],
+      bg: C_GRAND,
+      bold: false,
+    })),
+    0.6
+  );
+
+  // Openings: which doors, windows and other openings each room has, and which of its work they
+  // were taken off. Only what the room stores — type, size, count; no wall position is recorded,
+  // so none is printed. A plan without openings prints no such block at all.
+  const openingRows = summaries.flatMap((s) => {
+    const room = roomsById.get(s.roomId);
+    return room ? roomOpeningDetails(room).map((d) => ({ s, d })) : [];
+  });
+  if (openingRows.length > 0) {
+    drawBlock(
+      { text: 'פירוט פתחים', bg: C_TOTAL },
+      ['דירה', 'חדר', 'סוג פתח', "רוחב (מ')", "גובה (מ')", 'כמות', 'שטח (מ"ר)', 'מנוכה מ־'],
+      [7, 16, 10, 8, 8, 6, 9, 26],
+      openingRows.map(({ s, d }, i) => ({
+        cells: [
           s.apartmentNumber || DASH,
           s.roomName,
-          qty(s, s.tilingRegularAreaM2),
-          qty(s, s.tilingAsAreaM2),
-          qty(s, s.claddingAreaM2),
-          qty(s, s.panelsLengthM),
-          qty(s, s.panelsAreaM2),
-          pct(s.tilingRegularWastePercent),
-          pct(s.tilingAsWastePercent),
-          pct(s.claddingWastePercent),
-          pct(s.panelsWastePercent),
-          qty(s, s.tilingRegularOrderM2),
-          qty(s, s.tilingAsOrderM2),
-          qty(s, s.claddingOrderM2),
-          qty(s, s.panelsOrderLengthM),
-          qty(s, s.panelsOrderM2),
-          ...extras.flatMap((c) => {
-            const q = s.extra[c];
-            return [qty(s, q.areaM2), pct(q.wastePercent), qty(s, q.orderM2)];
-          }),
-          s.notes || DASH,
+          OPENING_TYPE_LABELS[d.opening.type],
+          num(d.opening.widthM),
+          num(d.opening.heightM),
+          num(d.opening.quantity),
+          `${d.areaM2}`,
+          d.deductedFrom.length === 0
+            ? 'לא מנוכה'
+            : d.deductedFrom.map((c) => (c === 'panels' ? 'פנלים (רוחב)' : REPORT_CATEGORY_LABELS[c])).join(', '),
         ],
-        bg
-      );
-    });
-
-    const cats = [
-      { label: 'ריצוף רגיל', net: group.rooms.reduce((a, s) => a + (s.tilingRegularAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.tilingRegularOrderM2 ?? 0), 0), len: null as number | null, ordLen: null as number | null },
-      { label: 'ריצוף AS', net: group.rooms.reduce((a, s) => a + (s.tilingAsAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.tilingAsOrderM2 ?? 0), 0), len: null as number | null, ordLen: null as number | null },
-      { label: 'חיפוי קירות', net: group.rooms.reduce((a, s) => a + (s.claddingAreaM2 ?? 0), 0), ord: group.rooms.reduce((a, s) => a + (s.claddingOrderM2 ?? 0), 0), len: null as number | null, ordLen: null as number | null },
-      {
-        label: 'פנלים',
-        net: group.rooms.reduce((a, s) => a + (s.panelsAreaM2 ?? 0), 0),
-        ord: group.rooms.reduce((a, s) => a + (s.panelsOrderM2 ?? 0), 0),
-        len: group.rooms.reduce((a, s) => a + (s.panelsLengthM ?? 0), 0),
-        ordLen: group.rooms.reduce((a, s) => a + (s.panelsOrderLengthM ?? 0), 0),
-      },
-      ...extras.map((c) => ({
-        label: REPORT_CATEGORY_LABELS[c],
-        net: group.rooms.reduce((a, s) => a + (s.extra[c].areaM2 ?? 0), 0),
-        ord: group.rooms.reduce((a, s) => a + (s.extra[c].orderM2 ?? 0), 0),
-        len: null as number | null,
-        ordLen: null as number | null,
+        bg: i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B,
       })),
-    ];
-    ensureRoom(2 + cats.length);
-    y += ROW_H * 0.3;
-    drawTotalsRow(tRow({ label: `סה"כ דירה ${group.apartment || DASH}` }), C_TOTAL, { bold: true });
-    drawTotalsRow(
-      tRow({
-        label: 'פריט',
-        length: 'אורך (מ"א)',
-        net: 'כמות נטו (מ"ר)',
-        orderLength: 'אורך להזמנה (מ"א)',
-        order: 'להזמנה (מ"ר)',
-      }),
-      C_TOTAL_HDR,
-      { bold: true }
-    );
-    for (const cat of cats) {
-      drawTotalsRow(
-        tRow({
-          label: cat.label,
-          length: cat.len == null ? '' : `${Math.round(cat.len * 100) / 100}`,
-          net: `${Math.round(cat.net * 100) / 100}`,
-          orderLength: cat.ordLen == null ? '' : `${Math.round(cat.ordLen * 100) / 100}`,
-          order: `${Math.round(cat.ord * 100) / 100}`,
-        }),
-        C_TOTAL
-      );
-    }
-    y += ROW_H * 0.3;
-  }
-
-  // Grand-totals block.
-  ensureRoom(2 + totals.length);
-  drawTotalsRow(tRow({ label: 'סה"כ כללי לפרויקט' }), C_GRAND, { bold: true });
-  drawTotalsRow(
-    tRow({
-      label: 'פריט',
-      length: 'אורך (מ"א)',
-      net: 'כמות נטו (מ"ר)',
-      waste: 'פחת %',
-      orderLength: 'אורך להזמנה (מ"א)',
-      order: 'להזמנה (מ"ר)',
-    }),
-    C_TOTAL_HDR,
-    { bold: true }
-  );
-  for (const t of totals) {
-    drawTotalsRow(
-      tRow({
-        label: REPORT_CATEGORY_LABELS[t.category],
-        length: t.lengthM == null ? '' : `${t.lengthM}`,
-        net: `${t.quantityM2}`,
-        waste: `${t.wastePercent}%`,
-        orderLength: t.orderLengthM == null ? '' : `${t.orderLengthM}`,
-        order: `${t.orderM2}`,
-      }),
-      C_GRAND
+      1,
+      2
     );
   }
 
-  // Gross − openings = net for wall-based work, only for rooms where openings were deducted — a
-  // project without openings prints no such block at all.
-  const deductions = summaries.flatMap((s) => s.openingDeductions.map((d) => ({ s, d })));
-  if (deductions.length > 0) {
-    const deductionRow = (cells: string[]) => {
-      const row = new Array<string>(headers.length).fill('');
-      cells.forEach((c, i) => (row[i] = c));
-      return row;
-    };
-    ensureRoom(3);
-    y += ROW_H * 0.3;
-    drawTotalsRow(deductionRow(['ניכוי פתחים']), C_TOTAL, { bold: true });
-    drawRow(deductionRow(['דירה', 'חדר', 'סוג עבודה', 'ברוטו (מ"ר)', 'ניכוי פתחים (מ"ר)', 'נטו (מ"ר)']), C_TOTAL_HDR, { bold: true });
-    deductions.forEach(({ s, d }, i) => {
-      ensureRoom(1);
-      drawRow(
-        deductionRow([s.apartmentNumber || DASH, s.roomName, REPORT_CATEGORY_LABELS[d.category], `${d.grossM2}`, `${d.deductedM2}`, `${d.netM2}`]),
-        i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B
-      );
-    });
+  // Gross − openings = net per room and work type, only where something was actually deducted.
+  const deductionRows = summaries.flatMap((s) => [
+    ...s.openingDeductions.map((d) => ({
+      s,
+      label: REPORT_CATEGORY_LABELS[d.category],
+      gross: d.grossM2,
+      deducted: d.deductedM2,
+      net: d.netM2,
+      unit: AREA_UNIT,
+    })),
+    ...(s.panelsLengthM != null && (s.panelsDeductedLengthM ?? 0) > 0
+      ? [
+          {
+            s,
+            label: REPORT_CATEGORY_LABELS.panels,
+            gross: Math.round((s.panelsLengthM + s.panelsDeductedLengthM!) * 100) / 100,
+            deducted: s.panelsDeductedLengthM!,
+            net: s.panelsLengthM,
+            unit: PANEL_LENGTH_UNIT,
+          },
+        ]
+      : []),
+  ]);
+  if (deductionRows.length > 0) {
+    drawBlock(
+      { text: 'ניכוי פתחים לפי סוג עבודה', bg: C_TOTAL },
+      ['דירה', 'חדר', 'סוג עבודה', 'ברוטו', 'ניכוי פתחים', 'נטו', 'יחידה'],
+      [7, 16, 12, 10, 10, 10, 7],
+      deductionRows.map((r, i) => ({
+        cells: [r.s.apartmentNumber || DASH, r.s.roomName, r.label, `${r.gross}`, `${r.deducted}`, `${r.net}`, r.unit],
+        bg: i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B,
+      })),
+      0.8,
+      2
+    );
+    ensure(BLOCK_ROW_H, false);
+    pt.fillText(
+      'פתח גבוה מגובה העבודה (למשל דלת בחיפוי חלקי) מנוכה רק עד גובה העבודה; בפנלים מנוכה רוחב הדלת בלבד.',
+      right,
+      y + 8,
+      { size: 11, color: C_SUB }
+    );
+    y += BLOCK_ROW_H;
   }
 
   // Say plainly that rooms which could not be calculated are missing from those totals.
   const uncalibratedCount = summaries.filter((s) => !s.pageCalibrated).length;
   if (uncalibratedCount > 0) {
-    ensureRoom(1);
-    drawTotalsRow(
-      tRow({ label: `שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל` }),
-      C_TOTAL_HDR,
-      { bold: true, color: '#92400e' }
-    );
+    ensure(BLOCK_ROW_H, false);
+    pt.fillRect(MARGIN, y, usableWidth, BLOCK_ROW_H, C_TOTAL_HDR);
+    pt.fillText(`שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל`, right - 8, y + BLOCK_ROW_H / 2 + 4, {
+      size: 12,
+      bold: true,
+      color: '#92400e',
+    });
+    y += BLOCK_ROW_H;
   }
 }
 

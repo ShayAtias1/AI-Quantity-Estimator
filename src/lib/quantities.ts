@@ -9,9 +9,12 @@ import type {
   RoomQuantitySummary,
   WorkItem,
 } from '../types';
-import { EXTRA_REPORT_CATEGORIES } from '../types';
+import { EXTRA_REPORT_CATEGORIES, OPENING_TYPE_LABELS } from '../types';
 import { polygonAreaM2, polygonPerimeterM, round } from './geometry';
 import { projectHeightDefault, projectWasteDefault, workTypeDefinition, WORK_TYPE_DEFINITIONS } from './workTypes';
+
+/** Report order of every category. */
+export const ALL_REPORT_CATEGORIES: ReportCategory[] = ['tiling_regular', 'tiling_as', 'cladding', 'panels', ...EXTRA_REPORT_CATEGORIES];
 
 /**
  * Whether a page carries a usable scale. Matches exactly what `roomMetrics` treats as usable, so
@@ -197,6 +200,7 @@ export function buildRoomSummaries(project: Plan): RoomQuantitySummary[] {
     // same per-item waste applied to both. Summed per work item exactly like the areas below.
     let panelsLengthM = 0;
     let panelsOrderLengthM = 0;
+    let panelsDeductedLengthM = 0;
     for (const item of room.workItems) {
       const category = reportCategoryOf(item);
       if (!category) continue;
@@ -205,6 +209,7 @@ export function buildRoomSummaries(project: Plan): RoomQuantitySummary[] {
       if (calc.lengthM != null) {
         panelsLengthM += calc.lengthM;
         panelsOrderLengthM += calc.lengthM * (1 + waste / 100);
+        panelsDeductedLengthM += calc.deductedLengthM ?? 0;
       }
       const bucket = buckets[category];
       bucket.areaM2 += calc.netM2;
@@ -237,6 +242,7 @@ export function buildRoomSummaries(project: Plan): RoomQuantitySummary[] {
       pageCalibrated,
       panelsLengthM: buckets.panels.wastePercent == null || !pageCalibrated ? null : round(panelsLengthM, 2),
       panelsOrderLengthM: buckets.panels.wastePercent == null || !pageCalibrated ? null : round(panelsOrderLengthM, 2),
+      panelsDeductedLengthM: buckets.panels.wastePercent == null || !pageCalibrated ? null : round(panelsDeductedLengthM, 2),
       tilingRegularAreaM2: toArea(buckets.tiling_regular),
       tilingAsAreaM2: toArea(buckets.tiling_as),
       claddingAreaM2: toArea(buckets.cladding),
@@ -263,6 +269,85 @@ export function buildRoomSummaries(project: Plan): RoomQuantitySummary[] {
       notes: room.notes,
     };
   });
+}
+
+/** One opening row of a room, with what the report needs to explain it. */
+export interface OpeningDetail {
+  opening: Opening;
+  /** width × height × quantity, in m² (needs no page scale). */
+  areaM2: number;
+  /**
+   * Report categories of this room's work items that deduct this opening, in report order. Empty
+   * when nothing in the room deducts it (e.g. a window in a room with only tiling). Skirting takes
+   * off the door's width; wall-based work its area, up to the work's own height.
+   */
+  deductedFrom: ReportCategory[];
+}
+
+/** The room's openings with the work they reduce — the same rule `calculateWorkItem` applies. */
+export function roomOpeningDetails(room: Room): OpeningDetail[] {
+  return (room.openings ?? []).map((opening) => {
+    const categories = new Set<ReportCategory>();
+    for (const item of room.workItems) {
+      const def = workTypeDefinition(item.type);
+      const category = reportCategoryOf(item);
+      if (!def || !category || !itemDeductsOpenings(item)) continue;
+      if (def.deductedOpeningTypes.includes(opening.type)) categories.add(category);
+    }
+    return {
+      opening,
+      areaM2: round(openingAreaM2(opening), 2),
+      deductedFrom: ALL_REPORT_CATEGORIES.filter((c) => categories.has(c)),
+    };
+  });
+}
+
+const OPENING_PLURAL_LABELS: Record<Opening['type'], string> = {
+  door: 'דלתות',
+  window: 'חלונות',
+  custom: 'פתחים אחרים',
+};
+
+/**
+ * A room's openings in a few words, counted by type: "2 דלתות · חלון". Counts the `quantity` of
+ * each row, so one row of 2 identical windows reads the same as two rows of one.
+ */
+export function openingCountsText(openings: Opening[]): string {
+  const counts = new Map<Opening['type'], number>();
+  for (const o of openings) {
+    const n = nonNegative(o.quantity);
+    if (n > 0) counts.set(o.type, (counts.get(o.type) ?? 0) + n);
+  }
+  return (['door', 'window', 'custom'] as const)
+    .filter((t) => counts.has(t))
+    .map((t) => {
+      const n = counts.get(t)!;
+      return n === 1 ? OPENING_TYPE_LABELS[t] : `${n} ${OPENING_PLURAL_LABELS[t]}`;
+    })
+    .join(' · ');
+}
+
+/**
+ * The report categories at least one room uses (has an item of, scale or not), in report order.
+ * Screen and PDF tables show a column group only for these.
+ */
+export function usedReportCategories(summaries: RoomQuantitySummary[]): ReportCategory[] {
+  return ALL_REPORT_CATEGORIES.filter((c) => summaries.some((s) => categoryWastePercent(s, c) != null));
+}
+
+function categoryWastePercent(s: RoomQuantitySummary, c: ReportCategory): number | null {
+  switch (c) {
+    case 'tiling_regular':
+      return s.tilingRegularWastePercent;
+    case 'tiling_as':
+      return s.tilingAsWastePercent;
+    case 'cladding':
+      return s.claddingWastePercent;
+    case 'panels':
+      return s.panelsWastePercent;
+    default:
+      return s.extra[c].wastePercent;
+  }
 }
 
 /**

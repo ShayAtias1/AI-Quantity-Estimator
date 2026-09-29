@@ -1,16 +1,35 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
-import { buildReportCategoryTotals, buildRoomSummaries, usedExtraCategories } from '../lib/quantities';
+import {
+  buildReportCategoryTotals,
+  buildRoomSummaries,
+  openingAreaM2,
+  openingCountsText,
+  usedReportCategories,
+} from '../lib/quantities';
+import { categoryPrimaryUnit, roomCategoryQuantity } from '../lib/projectQuantities';
+import { round } from '../lib/geometry';
 import { projectWasteDefault, WORK_TYPE_DEFINITIONS } from '../lib/workTypes';
-import { EXTRA_REPORT_CATEGORIES, NOT_CALIBRATED_LABEL, PANEL_HEIGHT_M, REPORT_CATEGORY_LABELS } from '../types';
+import {
+  AREA_UNIT,
+  EXTRA_REPORT_CATEGORIES,
+  NOT_CALIBRATED_LABEL,
+  OPENING_TYPE_LABELS,
+  PANEL_HEIGHT_M,
+  PANEL_LENGTH_UNIT,
+  REPORT_CATEGORY_LABELS,
+} from '../types';
 import Icon from './Icon';
 
 const DASH = '—';
 
 /**
- * The contractor-facing quantity report. Lives inside the bottom quantities panel, which is what
- * gives its 17 columns room to breathe; `showDefaults` is owned by that panel so its toggle can sit
- * in the panel header, away from the export actions.
+ * The contractor-facing quantity report. Lives inside the bottom quantities panel; `showDefaults` is
+ * owned by that panel so its toggle can sit in the panel header, away from the export actions.
+ *
+ * One column group per work type the plan uses (net · to order), identity columns sticky, and the
+ * secondary numbers (waste %, skirting m², opening deductions) stacked under the number they explain
+ * rather than given columns of their own.
  *
  * Nothing here computes anything: every number comes from lib/quantities, unchanged.
  */
@@ -20,8 +39,9 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
 
   const summaries = useMemo(() => (project ? buildRoomSummaries(project) : []), [project]);
   const totals = useMemo(() => (project ? buildReportCategoryTotals(project, summaries) : []), [project, summaries]);
-  // Painting / plaster / waterproofing get columns only once a room uses them.
-  const extras = useMemo(() => usedExtraCategories(summaries), [summaries]);
+  // A column group per work type some room actually uses — none is shown just because it exists.
+  const categories = useMemo(() => usedReportCategories(summaries), [summaries]);
+  const roomsById = useMemo(() => new Map((project?.rooms ?? []).map((r) => [r.id, r])), [project]);
 
   if (!project) return null;
 
@@ -140,90 +160,122 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
         </div>
       ) : (
         <>
+          {categories.length === 0 && (
+            <p className="qty-table-hint muted">לחדרים אין עדיין סוגי עבודה — הוסף סוג עבודה לחדר כדי לראות את כמויותיו.</p>
+          )}
           <div className="qty-table-scroll">
-            <table className="qty-table">
+            <table className="qty-table qty-grid">
               <thead>
-                {/* Two header rows: the columns are grouped by what they are (net areas · waste ·
-                    to order), so 17 headings read as four ideas instead of seventeen. */}
+                {/* Grouped by work type: each type the plan uses gets its net and to-order columns
+                    side by side, so one work type reads left to right in one place. Waste, the
+                    m² reading of skirting and opening deductions sit under the number they explain. */}
                 <tr className="qty-group-row">
                   <th className="spacer sticky-col col-apt" />
                   <th className="spacer sticky-col col-room" />
-                  <th colSpan={5} className="group-edge">
-                    כמות נטו
-                  </th>
-                  <th colSpan={4} className="group-edge">
-                    פחת
-                  </th>
-                  <th colSpan={5} className="group-edge">
-                    להזמנה (כולל פחת)
-                  </th>
-                  {extras.map((c) => (
-                    <th key={c} colSpan={3} className="group-edge">
-                      {REPORT_CATEGORY_LABELS[c]}
+                  {categories.map((c) => (
+                    <th key={c} colSpan={2} className="group-edge">
+                      {REPORT_CATEGORY_LABELS[c]} <span className="qty-group-unit">({categoryPrimaryUnit(c)})</span>
                     </th>
                   ))}
-                  <th className="group-edge" />
+                  <th colSpan={2} className="group-edge">
+                    פרטים
+                  </th>
                 </tr>
                 <tr className="qty-col-row">
                   <th className="sticky-col col-apt">דירה</th>
                   <th className="sticky-col col-room">חדר</th>
-                  <th className="num group-edge">שטח ריצוף רגיל</th>
-                  <th className="num">שטח ריצוף AS</th>
-                  <th className="num">שטח חיפוי</th>
-                  <th className="num">אורך פנלים (מ"א)</th>
-                  <th className="num">שטח פנלים</th>
-                  <th className="num group-edge">ריצוף רגיל %</th>
-                  <th className="num">ריצוף AS %</th>
-                  <th className="num">חיפוי %</th>
-                  <th className="num">פנלים %</th>
-                  <th className="num group-edge">ריצוף רגיל</th>
-                  <th className="num">ריצוף AS</th>
-                  <th className="num">חיפוי</th>
-                  <th className="num">אורך פנלים (מ"א)</th>
-                  <th className="num">פנלים</th>
-                  {extras.map((c) => [
-                    <th key={`${c}-net`} className="num group-edge">נטו</th>,
-                    <th key={`${c}-waste`} className="num">%</th>,
-                    <th key={`${c}-order`} className="num">להזמנה</th>,
+                  {categories.map((c) => [
+                    <th key={`${c}-net`} className="num group-edge">
+                      נטו
+                    </th>,
+                    <th key={`${c}-order`} className="num">
+                      להזמנה
+                    </th>,
                   ])}
-                  <th className="group-edge">הערות</th>
+                  <th className="group-edge">פתחים</th>
+                  <th>הערות</th>
                 </tr>
               </thead>
               <tbody>
                 {summaries.map((s) => {
-                  // Quantity cells of an unscaled page show why they are blank instead of showing 0.
-                  const noScale = !s.pageCalibrated;
-                  const qty = (v: number | null) =>
-                    noScale ? <span className="cal-missing">{NOT_CALIBRATED_LABEL}</span> : (v ?? DASH);
-                  const order = (v: number | null) =>
-                    noScale ? <span className="cal-missing">{NOT_CALIBRATED_LABEL}</span> : v != null ? v : DASH;
+                  const room = roomsById.get(s.roomId);
+                  const openings = room?.openings ?? [];
+                  const openingsText = openingCountsText(openings);
+                  const openingsArea = round(openings.reduce((sum, o) => sum + openingAreaM2(o), 0), 2);
                   return (
                     <tr key={s.roomId}>
                       <td className="sticky-col col-apt">{s.apartmentNumber || DASH}</td>
                       <td className="sticky-col col-room">{s.roomName}</td>
-                      <td className="num group-edge">{qty(s.tilingRegularAreaM2)}</td>
-                      <td className="num">{qty(s.tilingAsAreaM2)}</td>
-                      <td className="num">{qty(s.claddingAreaM2)}</td>
-                      <td className="num">{qty(s.panelsLengthM)}</td>
-                      <td className="num">{qty(s.panelsAreaM2)}</td>
-                      <td className="num group-edge">{s.tilingRegularWastePercent != null ? `${s.tilingRegularWastePercent}%` : DASH}</td>
-                      <td className="num">{s.tilingAsWastePercent != null ? `${s.tilingAsWastePercent}%` : DASH}</td>
-                      <td className="num">{s.claddingWastePercent != null ? `${s.claddingWastePercent}%` : DASH}</td>
-                      <td className="num">{s.panelsWastePercent != null ? `${s.panelsWastePercent}%` : DASH}</td>
-                      <td className="num order group-edge">{order(s.tilingRegularOrderM2)}</td>
-                      <td className="num order">{order(s.tilingAsOrderM2)}</td>
-                      <td className="num order">{order(s.claddingOrderM2)}</td>
-                      <td className="num order">{order(s.panelsOrderLengthM)}</td>
-                      <td className="num order">{order(s.panelsOrderM2)}</td>
-                      {extras.map((c) => {
-                        const q = s.extra[c];
+                      {categories.map((c) => {
+                        const q = roomCategoryQuantity(s, c);
+                        // The room has no item of this type: a quiet dash, not a number.
+                        if (q.wastePercent == null) {
+                          return [
+                            <td key={`${c}-net`} className="num group-edge qty-none">{DASH}</td>,
+                            <td key={`${c}-order`} className="num qty-none">{DASH}</td>,
+                          ];
+                        }
+                        // An unscaled page: say why the cell is blank instead of showing 0.
+                        if (!s.pageCalibrated) {
+                          return [
+                            <td key={`${c}-net`} className="num group-edge">
+                              <span className="cal-missing">{NOT_CALIBRATED_LABEL}</span>
+                            </td>,
+                            <td key={`${c}-order`} className="num">
+                              <span className="qty-sub">פחת {q.wastePercent}%</span>
+                            </td>,
+                          ];
+                        }
+                        const panels = c === 'panels';
+                        const netSub: string[] = [];
+                        const orderSub: string[] = [`פחת ${q.wastePercent}%`];
+                        // The deduction reads as one short word under the net; hovering spells out
+                        // gross − deduction = net.
+                        let netTitle: string | undefined;
+                        if (panels) {
+                          netSub.push(`${q.quantityM2 ?? 0} ${AREA_UNIT}`);
+                          orderSub.push(`${q.orderM2 ?? 0} ${AREA_UNIT}`);
+                          const doors = s.panelsDeductedLengthM ?? 0;
+                          if (doors > 0 && q.lengthM != null) {
+                            netSub.push(`ניכוי ${doors}`);
+                            netTitle = `ברוטו ${round(q.lengthM + doors, 2)} − ניכוי רוחב דלתות ${doors} = נטו ${q.lengthM} ${PANEL_LENGTH_UNIT}`;
+                          }
+                        } else {
+                          const deduction = s.openingDeductions.find((d) => d.category === c);
+                          if (deduction) {
+                            netSub.push(`ניכוי ${deduction.deductedM2}`);
+                            netTitle = `ברוטו ${deduction.grossM2} − ניכוי פתחים ${deduction.deductedM2} = נטו ${deduction.netM2} ${AREA_UNIT}`;
+                          }
+                        }
                         return [
-                          <td key={`${c}-net`} className="num group-edge">{qty(q.areaM2)}</td>,
-                          <td key={`${c}-waste`} className="num">{q.wastePercent != null ? `${q.wastePercent}%` : DASH}</td>,
-                          <td key={`${c}-order`} className="num order">{order(q.orderM2)}</td>,
+                          <td key={`${c}-net`} className="num group-edge" title={netTitle}>
+                            <span className="qty-main">{panels ? q.lengthM : q.quantityM2}</span>
+                            {netSub.length > 0 && <span className="qty-sub">{netSub.join(' · ')}</span>}
+                          </td>,
+                          <td key={`${c}-order`} className="num order">
+                            <span className="qty-main">{panels ? q.orderLengthM : q.orderM2}</span>
+                            <span className="qty-sub">{orderSub.join(' · ')}</span>
+                          </td>,
                         ];
                       })}
-                      <td className="group-edge">{s.notes || DASH}</td>
+                      <td
+                        className={`group-edge qty-openings ${openingsText ? '' : 'qty-none'}`}
+                        title={openings.map((o) => `${OPENING_TYPE_LABELS[o.type]} ${o.widthM}×${o.heightM} מ' ×${o.quantity}`).join('\n') || undefined}
+                      >
+                        {openingsText ? (
+                          <>
+                            <span className="qty-main">{openingsText}</span>
+                            <span className="qty-sub">
+                              {openingsArea} {AREA_UNIT}
+                            </span>
+                          </>
+                        ) : (
+                          DASH
+                        )}
+                      </td>
+                      <td className={`qty-notes ${s.notes ? '' : 'qty-none'}`} title={s.notes || undefined}>
+                        {s.notes || DASH}
+                      </td>
                     </tr>
                   );
                 })}

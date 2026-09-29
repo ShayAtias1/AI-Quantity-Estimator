@@ -6,12 +6,9 @@
  */
 
 import type { Plan, ReportCategory, RoomQuantitySummary } from '../types';
-import { AREA_UNIT, EXTRA_REPORT_CATEGORIES, PANEL_LENGTH_UNIT, REPORT_CATEGORY_LABELS } from '../types';
-import { buildRoomSummaries, isPageCalibrated } from './quantities';
+import { AREA_UNIT, PANEL_LENGTH_UNIT, REPORT_CATEGORY_LABELS } from '../types';
+import { ALL_REPORT_CATEGORIES, buildRoomSummaries, isPageCalibrated } from './quantities';
 import { round } from './geometry';
-
-/** Report order of every category. */
-export const ALL_REPORT_CATEGORIES: ReportCategory[] = ['tiling_regular', 'tiling_as', 'cladding', 'panels', ...EXTRA_REPORT_CATEGORIES];
 
 /** One category's numbers for one room, read uniformly from a room summary. null = not calculable / not present. */
 export interface RoomCategoryQuantity {

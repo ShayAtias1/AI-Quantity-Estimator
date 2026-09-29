@@ -354,6 +354,42 @@ button:disabled,
   margin-top: 0;
   max-width: none;
 }
+/* A new, empty project: the two workflows side by side, one explicit choice each. */
+.project-start-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+}
+.project-start-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  padding: var(--s-4);
+  text-align: start;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--accent);
+  cursor: pointer;
+}
+.project-start-option:hover:not(:disabled) {
+  border-color: var(--accent-edge);
+  background: var(--accent-bg);
+}
+.project-start-option:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.project-start-title {
+  font: var(--t-title);
+  color: var(--text-h);
+  margin-top: var(--s-1);
+}
+.project-start-desc {
+  font: var(--t-meta);
+}
 .plan-status {
   flex: none;
   font: var(--t-label);
@@ -1503,6 +1539,10 @@ button:disabled,
   color: var(--muted);
   margin-bottom: var(--s-1);
 }
+.form-row .form-hint {
+  font: var(--t-meta);
+  margin: var(--s-1) 0 0;
+}
 .form-row.inline {
   display: flex;
   align-items: center;
@@ -1669,7 +1709,7 @@ button:disabled,
 }
 
 /* ---------- bottom quantities panel ----------
-   The report table is 17 columns wide; it never belonged in a 360px sidebar. It now spans the
+   The report table is wide (a column group per work type); it never belonged in a 360px sidebar. It now spans the
    whole workspace under the canvas, with the plan still visible above it. */
 /* Maximized, the panel lies OVER the workspace from the bottom up instead of squeezing the row
    above it: the canvas, tool rail and sidebar keep their size and are simply covered. */
@@ -1824,7 +1864,7 @@ button:disabled,
 .qty-table td.num, .qty-table th.num {
   text-align: end;
 }
-/* Sticky header AND sticky identity columns: scrolling sideways through 17 columns must never
+/* Sticky header AND sticky identity columns: scrolling sideways through a wide table must never
    cost you the row's identity. */
 .qty-table thead th {
   position: sticky;
@@ -1886,6 +1926,68 @@ html[dir='rtl'] .qty-table .col-room {
   border-inline-start: 1px solid var(--border);
 }
 
+/* ---------- takeoff quantity table: grouped by work type ----------
+   Scoped to .qty-grid so the Compare changes table (also .qty-table) keeps its own look. Every
+   column gets a faint boundary; a work-type group starts with a firmer one. Borders sit on the
+   inline-start edge of both header and body cells, so in RTL they are the right edge of each column
+   and the two header rows line up with the body exactly. */
+.qty-grid th, .qty-grid td {
+  border-inline-start: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  vertical-align: middle;
+  padding-inline: 7px;
+}
+.qty-grid th:first-child, .qty-grid td:first-child {
+  border-inline-start: none;
+}
+.qty-grid .group-edge {
+  border-inline-start: 1px solid var(--border-strong);
+}
+.qty-grid thead tr.qty-group-row th.spacer {
+  border-inline-start: none;
+}
+.qty-grid td.num, .qty-grid th.num {
+  min-width: 64px;
+}
+/* The room column sticks at a fixed offset, so the apartment column must be exactly that wide —
+   otherwise the room column slides over the first work-type column when the table scrolls. */
+.qty-grid .col-apt {
+  width: 62px;
+  min-width: 62px;
+  max-width: 62px;
+}
+.qty-grid td.num {
+  line-height: 1.3;
+}
+/* A stacked cell: the number, and under it what explains it (waste, m², deductions). */
+.qty-grid .qty-main {
+  display: block;
+}
+.qty-grid .qty-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.qty-grid td.qty-none {
+  color: var(--border-strong);
+}
+.qty-grid .qty-group-unit {
+  font-weight: 400;
+  color: var(--muted);
+}
+.qty-grid td.qty-openings .qty-main {
+  color: var(--text);
+}
+.qty-grid td.qty-notes {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qty-table-hint {
+  font: var(--t-meta);
+  margin: 0 0 var(--s-2);
+}
+
 .qty-summary {
   margin-top: var(--s-5);
   max-width: 640px;
@@ -1905,6 +2007,9 @@ html[dir='rtl'] .qty-table .col-room {
 }
 .qty-summary-table th:first-child, .qty-summary-table td:first-child {
   text-align: start;
+}
+.qty-summary .qty-summary-table th + th, .qty-summary .qty-summary-table td + td {
+  border-inline-start: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
 .qty-summary-table th {
   color: var(--muted);

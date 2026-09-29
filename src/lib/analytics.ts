@@ -313,11 +313,16 @@ async function trackAppOpened(
 
 // ---------- projects & plans ----------
 
-export function trackProjectCreated(projectId: string, withFirstPlan: boolean): void {
+/**
+ * Projects are always created empty now — plans are added from the overview and report their own
+ * `plan_created` — so `with_first_plan` is always false. The property stays so the event's shape
+ * (and earlier data, where it could be true) does not change.
+ */
+export function trackProjectCreated(projectId: string): void {
   safely(() => {
     const hadProjects = (localCountsAtOpen?.projects ?? 0) + (localCountsAtOpen?.plans ?? 0) > 0;
     const firstOnDevice = markFirstAndSave('first_project_at');
-    track('project_created', { project_id: projectId, with_first_plan: withFirstPlan, is_first_project: firstOnDevice && !hadProjects });
+    track('project_created', { project_id: projectId, with_first_plan: false, is_first_project: firstOnDevice && !hadProjects });
   });
 }
 

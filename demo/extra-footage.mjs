@@ -151,9 +151,13 @@ async function qtoExport(page) {
 
   await page.goto(DEV_URL, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: 'פרויקט חדש' }).click();
-  await page.locator('input[type="file"]').setInputFiles(ORIGINAL_PDF);
   await page.locator('.modal input[type="text"], .modal input:not([type])').first().fill('Apartment A - Demo');
   await page.getByRole('button', { name: 'צור פרויקט' }).click();
+  // A new project opens on its overview; the quantity plan is added from there, then opened.
+  await page.getByRole('button', { name: 'תוכנית כמויות חדשה' }).click();
+  await page.locator('.modal input[type="file"]').setInputFiles(ORIGINAL_PDF);
+  await page.getByRole('button', { name: 'הוסף תוכנית' }).click();
+  await page.locator('.plan-list li').first().click();
   await h.waitForCanvas();
   await pause(1200);
 

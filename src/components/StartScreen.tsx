@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { deleteProject, listProjects, type ProjectWithPlans } from '../db/database';
 import { trackProjectOpened } from '../lib/analytics';
@@ -25,8 +25,6 @@ export default function StartScreen() {
   const [projects, setProjects] = useState<ProjectWithPlans[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [newName, setNewName] = useState('');
 
   const refresh = () => {
@@ -45,31 +43,18 @@ export default function StartScreen() {
     refresh();
   };
 
-  const isPdf = (file: File) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-
-  // Same flow as a new comparison: the dialog first, the file chosen inside it.
-  const pickFile = (file: File | null | undefined) => {
-    if (!file) return;
-    if (!isPdf(file)) {
-      alert('נא לבחור קובץ PDF');
-      return;
-    }
-    setPendingFile(file);
-    if (!newName.trim()) setNewName(file.name.replace(/\.pdf$/i, ''));
-  };
-
   const closeDialog = () => {
     setCreating(false);
-    setPendingFile(null);
     setNewName('');
   };
 
-  // The first plan is optional: a project can start empty and get its plans from the overview.
+  // A project is only a name. It opens on its overview, where the user chooses what to add first —
+  // a quantity plan or a revision comparison; nothing is uploaded or opened on their behalf.
   const confirmCreate = async () => {
-    const name = newName.trim() || 'פרויקט חדש';
-    const file = pendingFile;
+    const name = newName.trim();
+    if (!name) return;
     closeDialog();
-    await createProject(name, file ? { file, name: file.name.replace(/\.pdf$/i, '') || 'תוכנית 1' } : undefined);
+    await createProject(name);
   };
 
   const items: SavedItem[] = projects.map((p) => ({ id: p.project.id, name: p.project.name, meta: projectMeta(p) }));
@@ -92,7 +77,7 @@ export default function StartScreen() {
         items={items}
         icon="map"
         loading={loading}
-        emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש והוסף לו תוכניות PDF."
+        emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש — ובתוכו תוסיף תוכניות כמויות והשוואות גרסאות."
         onOpen={(id) => {
           const entry = projects.find((p) => p.project.id === id);
           if (entry) trackProjectOpened(entry);
@@ -109,30 +94,23 @@ export default function StartScreen() {
             <h3>פרויקט חדש</h3>
             <div className="form-row">
               <label>שם הפרויקט</label>
-              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="לדוגמה: מגדל הכרמל — קומה טיפוסית" />
-            </div>
-            <div className="form-row">
-              <label>תוכנית ראשונה (PDF, לא חובה)</label>
-              <button className="btn-secondary file-pick" onClick={() => fileInputRef.current?.click()}>
-                <Icon name={pendingFile ? 'check' : 'file'} />
-                {pendingFile ? pendingFile.name : 'בחר קובץ PDF'}
-              </button>
               <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                hidden
-                onChange={(e) => {
-                  pickFile(e.target.files?.[0]);
-                  e.target.value = '';
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void confirmCreate();
+                  else if (e.key === 'Escape') closeDialog();
                 }}
+                placeholder="לדוגמה: מגדל הכרמל — קומה טיפוסית"
               />
+              <p className="form-hint muted">אחרי היצירה תבחר מה להוסיף לפרויקט: תוכנית כמויות או השוואת גרסאות.</p>
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={closeDialog}>
                 ביטול
               </button>
-              <button className="btn-primary" onClick={confirmCreate} disabled={!newName.trim()}>
+              <button className="btn-primary" onClick={() => void confirmCreate()} disabled={!newName.trim()}>
                 צור פרויקט
               </button>
             </div>

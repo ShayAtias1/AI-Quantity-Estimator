@@ -71,14 +71,18 @@ async function main() {
     // Home screen defaults to the takeoff (QTO) tab already.
     await page.getByRole('button', { name: 'פרויקט חדש' }).click();
 
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.setInputFiles(PDF_PATH);
-
     const nameField = page.locator('.modal input[type="text"], .modal input:not([type])').first();
     await nameField.fill('Demo Project');
 
     console.log('Creating project...');
     await page.getByRole('button', { name: 'צור פרויקט' }).click();
+
+    // A new project opens on its overview; the quantity plan is added from there, then opened.
+    console.log('Adding a quantity plan...');
+    await page.getByRole('button', { name: 'תוכנית כמויות חדשה' }).click();
+    await page.locator('.modal input[type="file"]').setInputFiles(PDF_PATH);
+    await page.getByRole('button', { name: 'הוסף תוכנית' }).click();
+    await page.locator('.plan-list li').first().click();
 
     // Wait for the plan canvas to be present, sized, and settled (pdf.js render is async).
     const canvas = page.locator('.viewer-area canvas').first();

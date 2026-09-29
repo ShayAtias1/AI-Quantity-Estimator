@@ -14,8 +14,8 @@ const MAXIMIZED_RESERVED = 140;
 /**
  * The quantity report, across the full width of the workspace instead of inside the 360px sidebar.
  *
- * The report is 17 columns wide; in the sidebar two of them were visible at a time. Here it gets the
- * whole window width while the plan stays on screen above it. The panel is a sibling of the
+ * The report is a wide table (a column group per work type in use); in the sidebar two columns were
+ * visible at a time. Here it gets the whole window width while the plan stays on screen above it. The panel is a sibling of the
  * canvas+sidebar row, so opening it simply shortens that row — it never overlays the canvas and
  * never touches the coordinate transform, which is why drawing and calibration are unaffected.
  *

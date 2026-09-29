@@ -122,6 +122,16 @@ export class PdfPainter {
     this.page.drawRectangle({ x, y: this.height - y - h, width: w, height: h, borderColor: hex(color), borderWidth: lineWidth });
   }
 
+  /** A straight line between two top-left-based points — table column boundaries. */
+  line(x1: number, y1: number, x2: number, y2: number, color: string, lineWidth = 1) {
+    this.page.drawLine({
+      start: { x: x1, y: this.height - y1 },
+      end: { x: x2, y: this.height - y2 },
+      thickness: lineWidth,
+      color: hex(color),
+    });
+  }
+
   /** Width of `text` at `size` as it would be drawn (after bidi reordering). */
   measure(text: string, size: number, bold = false): number {
     const pair = bold ? this.fonts.bold : this.fonts.regular;

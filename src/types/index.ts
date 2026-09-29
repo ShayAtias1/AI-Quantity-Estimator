@@ -309,6 +309,11 @@ export interface RoomQuantitySummary {
   panelsLengthM: number | null;
   /** The same length with the item's waste applied — what to order in running metres. */
   panelsOrderLengthM: number | null;
+  /**
+   * Running metres of door width taken off the skirting (gross length − net length). null when the
+   * room has no panels item or no scale. Display-only: already reflected in `panelsLengthM`.
+   */
+  panelsDeductedLengthM: number | null;
   tilingRegularWastePercent: number | null;
   tilingAsWastePercent: number | null;
   claddingWastePercent: number | null;

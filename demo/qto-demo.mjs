@@ -153,12 +153,20 @@ async function main() {
     // --- New project -------------------------------------------------------------------------
     await page.getByRole('button', { name: 'פרויקט חדש' }).click();
     await pause(300);
-    await page.locator('input[type="file"]').setInputFiles(PDF_PATH);
-    await pause(200);
     const nameField = page.locator('.modal input[type="text"], .modal input:not([type])').first();
     await nameField.fill('Apartment A - Demo');
     await pause(400);
     await page.getByRole('button', { name: 'צור פרויקט' }).click();
+
+    // --- The project opens on its overview: add the quantity plan there, then open it ----------
+    await pause(800);
+    await page.getByRole('button', { name: 'תוכנית כמויות חדשה' }).click();
+    await pause(300);
+    await page.locator('.modal input[type="file"]').setInputFiles(PDF_PATH);
+    await pause(400);
+    await page.getByRole('button', { name: 'הוסף תוכנית' }).click();
+    await pause(600);
+    await page.locator('.plan-list li').first().click();
 
     // --- Wait for the plan to render ---------------------------------------------------------
     await canvas.waitFor({ state: 'visible', timeout: 15_000 });
