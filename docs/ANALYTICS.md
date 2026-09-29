@@ -53,6 +53,18 @@ A device is *returning* when opened on a later calendar day than first seen; a d
 it has at least one event other than `app_opened` / `error_occurred`. Identity is per browser
 profile: another device, browser, private window or cleared site data is a new user.
 
+**Anonymous events, no person profiles.** PostHog runs with `person_profiles: 'identified_only'`
+and the app never calls `identify`, `alias`, `group`, `setPersonProperties` or `createPersonProfile`,
+and never sends `$set` / `$set_once` — so every event goes out with `$process_person_profile: false`
+and no person profile is created. Funnels, trends and retention work on the anonymous distinct id
+(the ledger's `device_id`). Not available without profiles, by PostHog's design: cohorts,
+person-property filters and the Lifecycle insight — new vs returning comes from our own
+`is_returning` / `days_since_first_seen` / `active_days` event properties instead.
+
+- If accounts or login are added, introduce `identify()` then (it merges this anonymous history).
+- Person profiles can be reconsidered later if there is a real need for person properties or
+  cohorts — not before.
+
 ## Phase 1 events
 
 | Event | Fires when | Properties |
@@ -101,8 +113,8 @@ Lowercase, `a-z 0-9 _ -` only; anything else is dropped. Record every link in th
 Example: `?utm_source=instagram&utm_medium=organic&utm_campaign=launch&utm_content=carousel_why_bettercalc`
 
 On load the wrapper reads them, removes every `utm_*` (and `bc_internal`) from the address bar with
-`history.replaceState`, stores the **first visit's** UTMs as first touch (ledger + `$set_once` on the
-anonymous person, and `first_utm_*` on every event), and the current visit's as session touch
+`history.replaceState`, stores the **first visit's** UTMs as first touch (in the local ledger, and
+attached to every event as `first_utm_*`), and the current visit's as session touch
 (`utm_*`, kept for the browser session).
 
 ## When analytics is off

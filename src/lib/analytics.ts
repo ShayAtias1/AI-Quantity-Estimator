@@ -218,9 +218,10 @@ async function loadClient(): Promise<void> {
       // Identity: our own anonymous device id, in first-party localStorage only (no cookie).
       bootstrap: { distinctID: ledger.device_id, isIdentifiedID: false },
       persistence: 'localStorage',
-      // Persons are processed so first-touch attribution can live on the anonymous person
-      // (`$set_once` on app_opened). Nothing else is ever set on a person by this app.
-      person_profiles: 'always',
+      // Anonymous events only: no person profiles. Nothing here calls identify / alias / group /
+      // setPersonProperties or sends $set / $set_once, so no profile is ever created. First-touch
+      // attribution travels on the events themselves (`first_utm_*` globals, from the ledger).
+      person_profiles: 'identified_only',
       // Product analytics only: every automatic capture and every other product is off.
       autocapture: false,
       capture_pageview: false,
@@ -301,19 +302,13 @@ async function trackAppOpened(
     localCountsAtOpen = null;
   }
   const counts = localCountsAtOpen ?? { projects: 0, plans: 0, comparisons: 0 };
-  const firstTouch = firstTouchProps(ledger?.first_touch ?? null);
-  const hasFirstTouch = Object.values(firstTouch).some((v) => v !== undefined);
-  track(
-    'app_opened',
-    {
-      has_local_data: counts.projects + counts.plans + counts.comparisons > 0,
-      local_project_count_bucket: countBucket(counts.projects),
-      is_returning: returning,
-      days_since_first_seen: daysSinceFirstSeen,
-      ...device,
-    },
-    hasFirstTouch ? { $set_once: firstTouch } : undefined
-  );
+  track('app_opened', {
+    has_local_data: counts.projects + counts.plans + counts.comparisons > 0,
+    local_project_count_bucket: countBucket(counts.projects),
+    is_returning: returning,
+    days_since_first_seen: daysSinceFirstSeen,
+    ...device,
+  });
 }
 
 // ---------- projects & plans ----------
