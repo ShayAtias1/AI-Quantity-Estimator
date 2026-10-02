@@ -14,6 +14,7 @@ import MeasureToolbar from './components/MeasureToolbar';
 import MarkupToolbar from './components/MarkupToolbar';
 import CompareWorkspace from './components/compare/CompareWorkspace';
 import BrandLogo from './components/BrandLogo';
+import LanguageSwitch from './components/LanguageSwitch';
 import { useT } from './i18n';
 
 /** Quantities is no longer one of these — it has the full-width bottom panel instead. */
@@ -78,6 +79,7 @@ function Home() {
           {/* Two separate claims, both true: plan and project data never leave this browser;
               anonymous usage statistics (no plan content) may be sent — see docs/ANALYTICS.md. */}
           <span className="muted home-top-note">{t('home.privacyNote')}</span>
+          <LanguageSwitch />
         </div>
       </div>
 

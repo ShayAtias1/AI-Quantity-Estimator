@@ -641,6 +641,35 @@ button:disabled,
   flex: none;
   gap: var(--s-1);
 }
+/* The language selector: two options, each in its own language, logical properties only. */
+.language-switch {
+  flex: none;
+  display: inline-flex;
+  margin-inline-start: var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.language-switch button {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-h);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.language-switch button + button {
+  border-inline-start: 1px solid var(--border);
+}
+.language-switch button:hover:not(.active) {
+  background: var(--bg-subtle);
+}
+.language-switch button.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: default;
+}
 /* Thin visual break between the document controls and the view/export menus. */
 .top-bar-sep {
   flex: none;

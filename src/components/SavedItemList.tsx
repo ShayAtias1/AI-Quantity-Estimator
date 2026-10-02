@@ -54,7 +54,7 @@ export default function SavedItemList({
         <li key={item.id} onClick={() => onOpen(item.id)} title={openTitle}>
           <Icon name={icon} />
           <span className="saved-list-text">
-            <span className="saved-list-name">{item.name}</span>
+            <span className="saved-list-name" dir="auto">{item.name}</span>
             <span className="saved-list-meta">{item.meta}</span>
           </span>
           <span className="list-item-actions">

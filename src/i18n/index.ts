@@ -28,11 +28,13 @@ export interface LanguageMeta {
   dir: 'rtl' | 'ltr';
   /** Locale of the dates and numbers the UI shows (never of stored values). */
   locale: string;
+  /** The language's own name, shown in the language selector (never translated). */
+  nativeName: string;
 }
 
 export const LANGUAGES: Record<Language, LanguageMeta> = {
-  he: { code: 'he', dir: 'rtl', locale: 'he-IL' },
-  en: { code: 'en', dir: 'ltr', locale: 'en-GB' },
+  he: { code: 'he', dir: 'rtl', locale: 'he-IL', nativeName: 'עברית' },
+  en: { code: 'en', dir: 'ltr', locale: 'en-GB', nativeName: 'English' },
 };
 
 export const DEFAULT_LANGUAGE: Language = 'he';

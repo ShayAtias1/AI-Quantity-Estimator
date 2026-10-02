@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { selectSaveState, useAppStore } from '../store/appStore';
 import QuantityExportActions from './QuantityExportActions';
+import LanguageSwitch from './LanguageSwitch';
 import TopBarMenu, { type MenuId } from './TopBarMenu';
 import Icon, { type IconName } from './Icon';
 import BrandLogo from './BrandLogo';
@@ -152,6 +153,7 @@ export default function TopBar() {
         )}
         <input
           className="project-name-input"
+          dir="auto"
           value={project.name}
           onChange={(e) => updateProjectMeta({ name: e.target.value })}
           title={t('topBar.planName')}
@@ -321,6 +323,7 @@ export default function TopBar() {
           <Icon name="exit" />
           <span className="btn-label">{t('topBar.projectOverviewShort')}</span>
         </button>
+        <LanguageSwitch />
       </div>
     </div>
   );

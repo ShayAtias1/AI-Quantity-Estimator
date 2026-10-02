@@ -11,6 +11,7 @@
 export const he = {
   app: {
     documentTitle: 'BetterCalc — חישוב כמויות מתוכניות',
+    language: 'שפה',
   },
 
   units: {

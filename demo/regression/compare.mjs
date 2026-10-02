@@ -19,7 +19,11 @@ import { chromium } from 'playwright';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = path.resolve(__dirname, '..', 'output', 'regression');
-const [a, b] = process.argv.slice(2);
+// --exports-only: compare just the downloaded files (for captures that have no screenshots / results.json).
+// --ignore-language-switch: drop the language selector's own strings (its two option names and its
+//   "Language" label) from the UI-text tour — the one intentional UI addition since the baseline.
+const flags = new Set(process.argv.slice(2).filter((x) => x.startsWith('--')));
+const [a, b] = process.argv.slice(2).filter((x) => !x.startsWith('--'));
 if (!a || !b) {
   console.error('usage: node demo/regression/compare.mjs <labelA> <labelB>');
   process.exit(1);
@@ -124,6 +128,7 @@ function boxesMoved(rtl, ltr) {
 async function main() {
   const browser = await chromium.launch();
   try {
+    if (!flags.has('--exports-only'))
     for (const png of ['plan-rtl.png', 'compare-rtl.png']) await comparePngs(browser, png);
   } finally {
     await browser.close();
@@ -148,10 +153,24 @@ async function main() {
     );
   }
 
+  if (flags.has('--exports-only')) {
+    console.log(failures ? `\n${failures} difference(s)` : '\nno differences');
+    process.exitCode = failures ? 1 : 0;
+    return;
+  }
   const [ra, rb] = await Promise.all([readFile(path.join(dirA, 'results.json'), 'utf8'), readFile(path.join(dirB, 'results.json'), 'utf8')].map(async (p) => JSON.parse(await p)));
   for (const key of ['plan-rtl', 'compare-rtl']) {
     const same = JSON.stringify(ra[key]) === JSON.stringify(rb[key]);
     report(same, `overlay text boxes ${key}`, same ? `${ra[key].length} texts` : firstDifference(JSON.stringify(ra[key], null, 1), JSON.stringify(rb[key], null, 1)));
+  }
+  if (flags.has('--ignore-language-switch')) {
+    const SWITCH_TEXT = new Set(['עברית', 'English']);
+    const SWITCH_ATTRS = new Set(['title=שפה', 'aria-label=שפה', 'title=Language', 'aria-label=Language']);
+    for (const r of [ra, rb])
+      for (const st of Object.values(r.uiText ?? {})) {
+        if (st.text) st.text = st.text.filter((l) => !SWITCH_TEXT.has(l));
+        if (st.attrs) st.attrs = st.attrs.filter((l) => !SWITCH_ATTRS.has(l));
+      }
   }
   // UI text tour: every state either capture reached.
   const states = [...new Set([...Object.keys(ra.uiText ?? {}), ...Object.keys(rb.uiText ?? {})])];

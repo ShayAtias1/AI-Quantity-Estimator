@@ -10,12 +10,14 @@ import { isLanguage, syncDocumentLanguage, useLanguageStore, type Language } fro
 initAnalytics()
 
 /**
- * Development-only overrides for exercising the real app in another language or direction before
- * there is a language selector. `?lang=en` runs the English dictionary (and with it `lang="en"` and
- * `dir="ltr"` from the language's metadata); `?dir=ltr` / `?dir=rtl` additionally forces the page
- * direction, e.g. to see Hebrew in LTR. Neither is persisted, and both are compiled out of production
- * builds — which always open in the saved language, Hebrew by default. Exports are written in the
- * language the UI is showing, so under `?lang=en` they are English too.
+ * Language precedence. In production the UI language is the saved preference (the language selector
+ * writes it), otherwise Hebrew — never the browser's or the system's language.
+ *
+ * Development-only overrides, for regression runs of the real app: `?lang=en` starts this page load in
+ * that language instead of the saved one (it is not saved itself; choosing a language in the selector
+ * afterwards is an ordinary choice and is saved), and `?dir=ltr` / `?dir=rtl` pins the page direction
+ * (e.g. Hebrew in LTR). Both are compiled out of production builds. Exports are written in the
+ * language the UI is showing.
  */
 function devOverrides(): { language: Language | null; direction: 'rtl' | 'ltr' | null } {
   if (!import.meta.env.DEV) return { language: null, direction: null };

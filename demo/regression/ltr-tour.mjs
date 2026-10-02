@@ -205,9 +205,11 @@ const DEMO_WORDS = new Set([
 ]);
 // innerText joins the lines of a multi-line note without a separator, so a run may be several words.
 const DEMO_TEXT = [...DEMO_WORDS].join('');
+/** The language selector writes each language's own name, so Hebrew's is meant to be there in the English UI. */
+const LANGUAGE_NAME = 'עברית';
 /** Interface Hebrew left in a list of visible strings. */
 const interfaceHebrew = (texts) =>
-  [...new Set(texts.filter((t) => (t.match(/[\u0590-\u05FF]+/g) ?? []).some((w) => !DEMO_WORDS.has(w) && !DEMO_TEXT.includes(w))))];
+  [...new Set(texts.filter((t) => t !== LANGUAGE_NAME).filter((t) => (t.match(/[\u0590-\u05FF]+/g) ?? []).some((w) => !DEMO_WORDS.has(w) && !DEMO_TEXT.includes(w))))];
 
 async function main() {
   await rm(OUT, { recursive: true, force: true });

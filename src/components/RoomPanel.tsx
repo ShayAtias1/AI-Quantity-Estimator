@@ -276,7 +276,7 @@ export default function RoomPanel() {
                 {group.rooms.map((r) => (
                   <li key={r.id} className={r.id === selectedRoomId ? 'active' : ''} onClick={() => selectRoom(r.id, r.pageNumber)}>
                     <span className="color-dot" style={{ background: r.color }} />
-                    <span className="room-list-name">{r.name || t('rooms.unnamed')}</span>
+                    <span className="room-list-name" dir="auto">{r.name || t('rooms.unnamed')}</span>
                     {r.detectionConfidence === 'low' && (
                       <span className="room-review-flag" title={t('rooms.reviewFlag')}>
                         <Icon name="alert" size={13} />
@@ -398,7 +398,7 @@ function RoomDetail({
       <div className="form-grid">
         <div className="form-row">
           <label>{t('rooms.detail.name')}</label>
-          <input value={room.name} onChange={(e) => onUpdate({ name: e.target.value })} />
+          <input dir="auto" value={room.name} onChange={(e) => onUpdate({ name: e.target.value })} />
         </div>
         <div className="form-row">
           <label>{t('rooms.detail.apartment')}</label>
@@ -446,7 +446,7 @@ function RoomDetail({
 
       <div className="form-row">
         <label>{t('rooms.detail.notes')}</label>
-        <textarea value={room.notes} onChange={(e) => onUpdate({ notes: e.target.value })} rows={2} />
+        <textarea dir="auto" value={room.notes} onChange={(e) => onUpdate({ notes: e.target.value })} rows={2} />
       </div>
 
       <OpeningsEditor
