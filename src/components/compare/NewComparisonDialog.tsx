@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import Icon from '../Icon';
+import { useT } from '../../i18n';
 
 export interface NewComparisonInput {
   name: string;
@@ -19,6 +20,7 @@ export default function NewComparisonDialog({
   onClose: () => void;
   onCreate: (input: NewComparisonInput) => Promise<void>;
 }) {
+  const t = useT();
   const originalInputRef = useRef<HTMLInputElement>(null);
   const revisedInputRef = useRef<HTMLInputElement>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
@@ -31,7 +33,7 @@ export default function NewComparisonDialog({
   const pickOriginal = (file: File | null | undefined) => {
     if (!file) return;
     if (!isPdf(file)) {
-      alert('נא לבחור קובץ PDF');
+      alert(t('compare.newComparison.notPdf'));
       return;
     }
     setOriginalFile(file);
@@ -42,7 +44,7 @@ export default function NewComparisonDialog({
     if (!files || files.length === 0) return;
     const picked = Array.from(files);
     if (picked.some((f) => !isPdf(f))) {
-      alert('נא לבחור קבצי PDF בלבד');
+      alert(t('compare.newComparison.notPdfs'));
       return;
     }
     setRevisedFiles((prev) => [...prev, ...picked]);
@@ -55,26 +57,26 @@ export default function NewComparisonDialog({
   const confirmCreate = async () => {
     if (!originalFile) return;
     onClose();
-    await onCreate({ name: name.trim() || 'השוואת תוכניות', apartmentNumber, original: originalFile, revised: revisedFiles });
+    await onCreate({ name: name.trim() || t('compare.newComparison.defaultName'), apartmentNumber, original: originalFile, revised: revisedFiles });
   };
 
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h3>השוואה חדשה</h3>
+        <h3>{t('compare.newComparison.title')}</h3>
         <div className="form-row">
-          <label>שם ההשוואה</label>
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="לדוגמה: היתר מקורי מול גרסה 01" />
+          <label>{t('compare.newComparison.nameLabel')}</label>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('compare.newComparison.namePlaceholder')} />
         </div>
         <div className="form-row">
-          <label>מספר דירה</label>
+          <label>{t('compare.newComparison.apartmentLabel')}</label>
           <input value={apartmentNumber} onChange={(e) => setApartmentNumber(e.target.value)} />
         </div>
         <div className="form-row">
-          <label>תוכנית מקור (PDF)</label>
+          <label>{t('compare.newComparison.originalLabel')}</label>
           <button className="btn-secondary file-pick" onClick={() => originalInputRef.current?.click()}>
             <Icon name={originalFile ? 'check' : 'file'} />
-            {originalFile ? originalFile.name : 'בחר קובץ PDF'}
+            {originalFile ? originalFile.name : t('compare.newComparison.pickPdf')}
           </button>
           <input
             ref={originalInputRef}
@@ -88,10 +90,10 @@ export default function NewComparisonDialog({
           />
         </div>
         <div className="form-row">
-          <label>תוכניות מעודכנות — אופציונלי, ניתן להוסיף גם מאוחר יותר</label>
+          <label>{t('compare.newComparison.revisedLabel')}</label>
           <button className="btn-secondary file-pick" onClick={() => revisedInputRef.current?.click()}>
             <Icon name="plus" />
-            הוסף קובץ PDF
+            {t('compare.newComparison.addPdf')}
           </button>
           <input
             ref={revisedInputRef}
@@ -110,7 +112,7 @@ export default function NewComparisonDialog({
                 <li key={i}>
                   <Icon name="file" />
                   <span className="picked-file-name">{f.name}</span>
-                  <button className="icon-btn danger" title="הסר קובץ" onClick={() => removeRevisedFile(i)}>
+                  <button className="icon-btn danger" title={t('compare.newComparison.removeFile')} onClick={() => removeRevisedFile(i)}>
                     <Icon name="trash" />
                   </button>
                 </li>
@@ -120,10 +122,10 @@ export default function NewComparisonDialog({
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>
-            ביטול
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={() => void confirmCreate()} disabled={!originalFile}>
-            צור השוואה
+            {t('compare.newComparison.create')}
           </button>
         </div>
       </div>

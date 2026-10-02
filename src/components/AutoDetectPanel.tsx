@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { roomProfileLabel } from '../lib/roomProfiles';
 import Icon from './Icon';
+import { useT } from '../i18n';
 
 /**
  * Auto detection is a *suggestion* workflow: detect → review → accept/reject.
@@ -13,6 +14,7 @@ import Icon from './Icon';
  * there is something to review.
  */
 export default function AutoDetectPanel() {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const currentPage = useAppStore((s) => s.currentPage);
   const detecting = useAppStore((s) => s.detecting);
@@ -41,15 +43,13 @@ export default function AutoDetectPanel() {
 
   return (
     <div className="auto-detect-panel">
-      <span className="section-label">זיהוי אוטומטי</span>
-      <p className="auto-detect-hint">
-        הזיהוי מציע אזורים בלבד — שום חדר לא נוסף לפרויקט ולא נכנס לכמויות עד שתאשר אותו.
-      </p>
+      <span className="section-label">{t('autoDetect.title')}</span>
+      <p className="auto-detect-hint">{t('autoDetect.intro')}</p>
 
       <div className="auto-detect-actions">
         <button className="btn-primary full-width" onClick={() => void detectRooms()} disabled={detecting}>
           <Icon name="scan" />
-          {detecting ? 'מזהה…' : pageCandidates.length > 0 ? 'זיהוי מחדש' : 'זיהוי חדרים'}
+          {detecting ? t('autoDetect.detecting') : pageCandidates.length > 0 ? t('autoDetect.redetect') : t('autoDetect.detect')}
         </button>
         {/* Only shown while detected rooms are actually waiting for their work items. */}
         {pendingCalc > 0 && (
@@ -57,13 +57,13 @@ export default function AutoDetectPanel() {
             className="btn-secondary full-width"
             onClick={() => {
               const n = autoCalculateQuantities();
-              flash(n > 0 ? `חושבו כמויות ל-${n} חדרים.` : 'אין חדרים שזוהו הממתינים לחישוב בעמוד זה.');
+              flash(n > 0 ? t('autoDetect.calculated', { count: n }) : t('autoDetect.nothingToCalculate'));
             }}
             disabled={detecting}
-            title={`${pendingCalc} חדרים ממתינים לחישוב`}
+            title={t('autoDetect.pendingHint', { count: pendingCalc })}
           >
             <Icon name="table" />
-            חישוב כמויות אוטומטי ({pendingCalc})
+            {t('autoDetect.autoCalculate', { count: pendingCalc })}
           </button>
         )}
       </div>
@@ -79,11 +79,11 @@ export default function AutoDetectPanel() {
 
       {!detecting && detectionSummary && detectionSummary.total === 0 && (
         <div className="detect-summary">
-          <button className="detect-summary-close icon-btn" onClick={clearDetectionSummary} title="סגור">
+          <button className="detect-summary-close icon-btn" onClick={clearDetectionSummary} title={t('autoDetect.close')}>
             <Icon name="close" size={13} />
           </button>
-          <div className="detect-summary-headline">לא זוהו חדרים בעמוד זה</div>
-          <p className="auto-detect-hint">נסה לוודא שהתוכנית ברורה, או לסמן את החדרים ידנית.</p>
+          <div className="detect-summary-headline">{t('autoDetect.noneFound')}</div>
+          <p className="auto-detect-hint">{t('autoDetect.noneFoundHint')}</p>
         </div>
       )}
 
@@ -97,6 +97,7 @@ export default function AutoDetectPanel() {
  * the current page, and gone as soon as they are all accepted or rejected.
  */
 export function DetectionReviewPanel() {
+  const t = useT();
   const currentPage = useAppStore((s) => s.currentPage);
   const candidates = useAppStore((s) => s.detectionCandidates);
   const acceptCandidate = useAppStore((s) => s.acceptDetectionCandidate);
@@ -118,30 +119,32 @@ export function DetectionReviewPanel() {
     <div className="detect-review-panel">
       <div className="detect-review">
         <div className="detect-review-head">
-          <strong>{pageCandidates.length} הצעות לבדיקה</strong>
+          <strong>{t('autoDetect.suggestions', { count: pageCandidates.length })}</strong>
           <div className="detect-review-bulk">
             <button
               className="btn-primary small"
               onClick={() => {
                 const n = acceptAll();
-                if (n > 0) flash(`${n} חדרים נוספו לפרויקט.`);
+                if (n > 0) flash(t('autoDetect.added', { count: n }));
               }}
             >
-              אשר הכל
+              {t('autoDetect.acceptAll')}
             </button>
             <button
               className="btn-secondary small"
               onClick={() => {
                 clearCandidates();
-                flash('ההצעות נדחו. שום דבר לא נוסף לפרויקט.');
+                flash(t('autoDetect.rejected'));
               }}
             >
-              דחה הכל
+              {t('autoDetect.rejectAll')}
             </button>
           </div>
         </div>
         <p className="muted">
-          חדרים שיאושרו ישויכו ל{activeApartmentNumber ? `דירה ${activeApartmentNumber}` : 'לא לדירה (ללא שיוך)'}.
+          {activeApartmentNumber
+            ? t('autoDetect.assignToApartment', { apartment: activeApartmentNumber })
+            : t('autoDetect.assignToNone')}
         </p>
         <ul className="detect-candidate-list">
           {pageCandidates.map((c) => (
@@ -151,27 +154,27 @@ export function DetectionReviewPanel() {
               <span className="detect-candidate-label">
                 {c.roomTypeKey ? (
                   <span className="cal-ok">
-                    <Icon name="check" size={12} /> זוהה: {roomProfileLabel(c.roomTypeKey)}
+                    <Icon name="check" size={12} /> {t('autoDetect.detectedType', { type: roomProfileLabel(c.roomTypeKey) ?? '' })}
                   </span>
                 ) : (
                   <span className="cal-missing">
-                    <Icon name="alert" size={12} /> סוג החדר לא זוהה — יש לבדוק ידנית
+                    <Icon name="alert" size={12} /> {t('autoDetect.typeUnknown')}
                   </span>
                 )}
                 {c.suggestedName && <span className="muted"> · {c.suggestedName}</span>}
               </span>
               <span className="list-item-actions">
-                <button className="btn-secondary small" onClick={() => acceptCandidate(c.id)} title="הוסף כחדר בפרויקט">
-                  אשר
+                <button className="btn-secondary small" onClick={() => acceptCandidate(c.id)} title={t('autoDetect.acceptHint')}>
+                  {t('autoDetect.accept')}
                 </button>
-                <button className="icon-btn danger" onClick={() => rejectCandidate(c.id)} title="דחה את ההצעה">
+                <button className="icon-btn danger" onClick={() => rejectCandidate(c.id)} title={t('autoDetect.rejectHint')}>
                   <Icon name="close" />
                 </button>
               </span>
             </li>
           ))}
         </ul>
-        <p className="auto-detect-hint">גבול לא מדויק? אשר את החדר וערוך את הנקודות שלו ככל חדר אחר.</p>
+        <p className="auto-detect-hint">{t('autoDetect.editHint')}</p>
       </div>
       {message && <div className="detect-toast">{message}</div>}
     </div>

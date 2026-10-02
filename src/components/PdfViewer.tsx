@@ -31,6 +31,7 @@ import TextNoteShape from './TextNoteShape';
 import TextNoteDialog from './TextNoteDialog';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
+import { useT } from '../i18n';
 
 const VERTEX_HIT_RADIUS_SCREEN = 9;
 /** New masks start opaque white, the colour of the paper they hide. */
@@ -145,6 +146,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
 }
 
 export default function PdfViewer() {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const currentPage = useAppStore((s) => s.currentPage);
   const setNumPages = useAppStore((s) => s.setNumPages);
@@ -229,7 +231,7 @@ export default function PdfViewer() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setLoadError(err.message || 'שגיאה בטעינת ה-PDF');
+        setLoadError(err.message || t('viewer.pdfLoadError'));
         trackError('pdf_load', err);
       });
     return () => {
@@ -420,7 +422,7 @@ export default function PdfViewer() {
           const room = project?.rooms.find((r) => r.id === selectedRoomId);
           if (room) {
             e.preventDefault();
-            if (confirm(`למחוק את "${room.name}"?`)) deleteRoom(selectedRoomId);
+            if (confirm(t('viewer.deleteRoomConfirm', { name: room.name }))) deleteRoom(selectedRoomId);
           }
         }
       }
@@ -450,6 +452,7 @@ export default function PdfViewer() {
     textDraft,
     deleteMarkup,
     deleteRoom,
+    t,
     undo,
     redo,
   ]);
@@ -799,7 +802,7 @@ export default function PdfViewer() {
               .filter((c) => c.pageNumber === currentPage)
               .map((c) => {
                 const pts = c.points.map((p) => `${p.x},${p.y}`).join(' ');
-                const label = c.suggestedName || 'לא זוהה';
+                const label = c.suggestedName || t('viewer.notDetected');
                 const centre = polygonCentroid(c.points);
                 return (
                   <g key={c.id} pointerEvents="none">
@@ -1116,7 +1119,7 @@ export default function PdfViewer() {
       )}
 
       {toolMode === 'export-region' && !regionDraft && (
-        <div className="export-region-hint">גרור על התוכנית כדי לבחור את האזור לייצוא ב-PDF</div>
+        <div className="export-region-hint">{t('viewer.exportRegionHint')}</div>
       )}
 
       {/* Scale-dependent tools only: measuring and dimension markups produce real-world numbers, so
@@ -1124,7 +1127,7 @@ export default function PdfViewer() {
           about — geometry is fine without a scale, only the quantity needs one. */}
       {needsCalibrationHint && (
         <div className="export-region-hint cal-hint-warning">
-          העמוד אינו מכויל. יש לכייל את העמוד לפני שניתן לחשב מידות.
+          {t('viewer.notCalibrated')}
         </div>
       )}
 
@@ -1137,9 +1140,9 @@ export default function PdfViewer() {
             e.stopPropagation();
             fitToContainer(pageSize.width, pageSize.height);
           }}
-          title="איפוס תצוגה לזום המקורי"
+          title={t('viewer.resetViewHint')}
         >
-          ⤢ איפוס תצוגה
+          ⤢ {t('viewer.resetView')}
         </button>
       )}
     </div>

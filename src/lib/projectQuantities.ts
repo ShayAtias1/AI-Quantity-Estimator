@@ -6,7 +6,7 @@
  */
 
 import type { Plan, ReportCategory, RoomQuantitySummary } from '../types';
-import { AREA_UNIT, PANEL_LENGTH_UNIT, REPORT_CATEGORY_LABELS } from '../types';
+import { t } from '../i18n';
 import { ALL_REPORT_CATEGORIES, buildRoomSummaries, isPageCalibrated } from './quantities';
 import { round } from './geometry';
 
@@ -49,7 +49,7 @@ export function roomCategoryQuantity(s: RoomQuantitySummary, category: ReportCat
  * alongside), everything else by m².
  */
 export function categoryPrimaryUnit(category: ReportCategory): string {
-  return category === 'panels' ? PANEL_LENGTH_UNIT : AREA_UNIT;
+  return t(category === 'panels' ? 'units.lm' : 'units.m2');
 }
 
 export interface CategoryAmount {
@@ -62,13 +62,10 @@ export interface CategoryAmount {
 
 export type PlanQuantityStatus = 'empty' | 'no-work' | 'uncalibrated' | 'partial' | 'ready';
 
-export const PLAN_STATUS_LABELS: Record<PlanQuantityStatus, string> = {
-  empty: 'אין חדרים',
-  'no-work': 'אין סוגי עבודה',
-  uncalibrated: 'לא כויל',
-  partial: 'חלק מהחדרים לא כוילו',
-  ready: 'מחושב',
-};
+/** A plan's status as shown (dictionary `planStatus.<status>`). */
+export function planStatusLabel(status: PlanQuantityStatus): string {
+  return t(`planStatus.${status}`);
+}
 
 export interface PlanQuantityReport {
   plan: Plan;
@@ -169,7 +166,7 @@ export function buildProjectQuantities(plans: Plan[]): ProjectQuantities {
     perPlan.forEach((p) => addInto(sum, p));
     totals.push({
       category,
-      label: REPORT_CATEGORY_LABELS[category],
+      label: t(`reportCategories.${category}`),
       unit: categoryPrimaryUnit(category),
       ...rounded(sum),
       perPlan,

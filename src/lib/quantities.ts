@@ -9,7 +9,8 @@ import type {
   RoomQuantitySummary,
   WorkItem,
 } from '../types';
-import { EXTRA_REPORT_CATEGORIES, OPENING_TYPE_LABELS } from '../types';
+import { EXTRA_REPORT_CATEGORIES } from '../types';
+import { t } from '../i18n';
 import { polygonAreaM2, polygonPerimeterM, round } from './geometry';
 import { projectHeightDefault, projectWasteDefault, workTypeDefinition, WORK_TYPE_DEFINITIONS } from './workTypes';
 
@@ -302,12 +303,6 @@ export function roomOpeningDetails(room: Room): OpeningDetail[] {
   });
 }
 
-const OPENING_PLURAL_LABELS: Record<Opening['type'], string> = {
-  door: 'דלתות',
-  window: 'חלונות',
-  custom: 'פתחים אחרים',
-};
-
 /**
  * A room's openings in a few words, counted by type: "2 דלתות · חלון". Counts the `quantity` of
  * each row, so one row of 2 identical windows reads the same as two rows of one.
@@ -319,10 +314,10 @@ export function openingCountsText(openings: Opening[]): string {
     if (n > 0) counts.set(o.type, (counts.get(o.type) ?? 0) + n);
   }
   return (['door', 'window', 'custom'] as const)
-    .filter((t) => counts.has(t))
-    .map((t) => {
-      const n = counts.get(t)!;
-      return n === 1 ? OPENING_TYPE_LABELS[t] : `${n} ${OPENING_PLURAL_LABELS[t]}`;
+    .filter((type) => counts.has(type))
+    .map((type) => {
+      const n = counts.get(type)!;
+      return n === 1 ? t(`openingTypes.${type}`) : `${n} ${t(`openingTypesPlural.${type}`)}`;
     })
     .join(' · ');
 }

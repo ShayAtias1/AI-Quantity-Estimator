@@ -4,22 +4,25 @@ import { deleteProject, listProjects, type ProjectWithPlans } from '../db/databa
 import { trackProjectOpened } from '../lib/analytics';
 import SavedItemList, { type SavedItem } from './SavedItemList';
 import Icon from './Icon';
+import { useT, type TranslateFn } from '../i18n';
 
 /** What the row says about a project: its plans and rooms, and when it was last touched. */
-function projectMeta({ project, plans, comparisons }: ProjectWithPlans): string {
+function projectMeta({ project, plans, comparisons }: ProjectWithPlans, t: TranslateFn): string {
   const lastTouched = Math.max(project.updatedAt, ...plans.map((p) => p.updatedAt), ...comparisons.map((c) => c.updatedAt));
-  const updated = `עודכן ${new Date(lastTouched).toLocaleDateString('he-IL')}`;
-  if (plans.length === 0 && comparisons.length === 0) return `עדיין ריק · ${updated}`;
+  const updated = t('startScreen.meta.updated', { date: new Date(lastTouched).toLocaleDateString('he-IL') });
+  if (plans.length === 0 && comparisons.length === 0) return t('startScreen.meta.empty', { updated });
   const rooms = plans.reduce((n, p) => n + p.rooms.length, 0);
   const parts: string[] = [];
-  if (plans.length > 0) parts.push(plans.length === 1 ? 'תוכנית אחת' : `${plans.length} תוכניות`);
-  if (rooms > 0) parts.push(`${rooms} חדרים`);
-  if (comparisons.length > 0) parts.push(comparisons.length === 1 ? 'השוואה אחת' : `${comparisons.length} השוואות`);
+  if (plans.length > 0) parts.push(plans.length === 1 ? t('startScreen.meta.onePlan') : t('startScreen.meta.plans', { count: plans.length }));
+  if (rooms > 0) parts.push(t('startScreen.meta.rooms', { count: rooms }));
+  if (comparisons.length > 0)
+    parts.push(comparisons.length === 1 ? t('startScreen.meta.oneComparison') : t('startScreen.meta.comparisons', { count: comparisons.length }));
   parts.push(updated);
   return parts.join(' · ');
 }
 
 export default function StartScreen() {
+  const t = useT();
   const openProject = useAppStore((s) => s.openProject);
   const createProject = useAppStore((s) => s.createProject);
   const [projects, setProjects] = useState<ProjectWithPlans[]>([]);
@@ -38,7 +41,7 @@ export default function StartScreen() {
   const handleDelete = async (id: string) => {
     const entry = projects.find((p) => p.project.id === id);
     const count = (entry?.plans.length ?? 0) + (entry?.comparisons.length ?? 0);
-    if (!confirm(`למחוק את הפרויקט${count > 0 ? ' ואת כל התוכניות וההשוואות שבו' : ''}? הפעולה בלתי הפיכה.`)) return;
+    if (!confirm(count > 0 ? t('startScreen.deleteConfirmWithContents') : t('startScreen.deleteConfirm'))) return;
     await deleteProject(id);
     refresh();
   };
@@ -57,43 +60,43 @@ export default function StartScreen() {
     await createProject(name);
   };
 
-  const items: SavedItem[] = projects.map((p) => ({ id: p.project.id, name: p.project.name, meta: projectMeta(p) }));
+  const items: SavedItem[] = projects.map((p) => ({ id: p.project.id, name: p.project.name, meta: projectMeta(p, t) }));
 
   return (
     <div className="home-panel">
       <div className="home-panel-head">
         <div className="home-panel-text">
-          <h2>פרויקטים</h2>
-          <p className="muted">פרויקט מרכז את תוכניות הכמויות ואת השוואות הגרסאות שלו — וכתב כמויות אחד לכל הפרויקט.</p>
+          <h2>{t('startScreen.title')}</h2>
+          <p className="muted">{t('startScreen.description')}</p>
         </div>
         <button className="btn-primary" onClick={() => setCreating(true)}>
           <Icon name="plus" />
-          פרויקט חדש
+          {t('startScreen.newProject')}
         </button>
       </div>
 
-      <span className="section-label">פרויקטים שמורים</span>
+      <span className="section-label">{t('startScreen.savedProjects')}</span>
       <SavedItemList
         items={items}
         icon="map"
         loading={loading}
-        emptyText="אין עדיין פרויקטים שמורים. צור פרויקט חדש — ובתוכו תוסיף תוכניות כמויות והשוואות גרסאות."
+        emptyText={t('startScreen.empty')}
         onOpen={(id) => {
           const entry = projects.find((p) => p.project.id === id);
           if (entry) trackProjectOpened(entry);
           void openProject(id);
         }}
         onDelete={(id) => void handleDelete(id)}
-        openTitle="פתח את הפרויקט"
-        deleteTitle="מחק פרויקט"
+        openTitle={t('startScreen.open')}
+        deleteTitle={t('startScreen.delete')}
       />
 
       {creating && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>פרויקט חדש</h3>
+            <h3>{t('startScreen.newProject')}</h3>
             <div className="form-row">
-              <label>שם הפרויקט</label>
+              <label>{t('startScreen.nameLabel')}</label>
               <input
                 autoFocus
                 value={newName}
@@ -102,16 +105,16 @@ export default function StartScreen() {
                   if (e.key === 'Enter') void confirmCreate();
                   else if (e.key === 'Escape') closeDialog();
                 }}
-                placeholder="לדוגמה: מגדל הכרמל — קומה טיפוסית"
+                placeholder={t('startScreen.namePlaceholder')}
               />
-              <p className="form-hint muted">אחרי היצירה תבחר מה להוסיף לפרויקט: תוכנית כמויות או השוואת גרסאות.</p>
+              <p className="form-hint muted">{t('startScreen.nameHint')}</p>
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={closeDialog}>
-                ביטול
+                {t('common.cancel')}
               </button>
               <button className="btn-primary" onClick={() => void confirmCreate()} disabled={!newName.trim()}>
-                צור פרויקט
+                {t('startScreen.create')}
               </button>
             </div>
           </div>

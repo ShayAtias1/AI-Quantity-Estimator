@@ -5,6 +5,7 @@ import TopBarMenu, { type MenuId } from '../TopBarMenu';
 import Icon, { type IconName } from '../Icon';
 import BrandLogo from '../BrandLogo';
 import ViewModeSwitch from './ViewModeSwitch';
+import { useT } from '../../i18n';
 
 export default function CompareTopBar({
   onExport,
@@ -13,6 +14,7 @@ export default function CompareTopBar({
   onExport: (revisionScope: 'active' | 'all', pageScope: 'current' | 'all') => void;
   exporting: boolean;
 }) {
+  const t = useT();
   const comparison = useCompareStore((s) => s.comparison);
   const setComparison = useCompareStore((s) => s.setComparison);
   const updateComparisonMeta = useCompareStore((s) => s.updateComparisonMeta);
@@ -60,16 +62,16 @@ export default function CompareTopBar({
   if (!comparison) return null;
 
   const exportRegion = exportRegions[currentPageKey] ?? null;
-  const pagesLabel = pageScope === 'all' ? `כל ${numPages} העמודים` : `עמוד ${currentPageKey}`;
+  const pagesLabel = pageScope === 'all' ? t('compare.topBar.allPages', { count: numPages }) : t('common.page', { page: currentPageKey });
   const activeRevision = comparison.revisions.find((r) => r.id === comparison.activeRevisionId);
 
   // Same status vocabulary as the takeoff bar: quiet when normal, colour only where attention is
   // actually required.
   const saveLabels: Record<typeof saveState, { text: string; title: string; icon: IconName }> = {
-    saving: { text: 'שומר…', title: 'שומר את ההשוואה', icon: 'reset' },
-    saved: { text: 'נשמר', title: 'כל השינויים נשמרו', icon: 'check' },
-    unsaved: { text: 'לא נשמר', title: 'יש שינויים שטרם נשמרו', icon: 'alert' },
-    error: { text: 'שגיאה בשמירה', title: 'השמירה נכשלה — העבודה לא נשמרה', icon: 'alert' },
+    saving: { text: t('topBar.save.saving'), title: t('topBar.save.savingComparison'), icon: 'reset' },
+    saved: { text: t('topBar.save.saved'), title: t('topBar.save.savedHint'), icon: 'check' },
+    unsaved: { text: t('topBar.save.unsaved'), title: t('topBar.save.unsavedHint'), icon: 'alert' },
+    error: { text: t('topBar.save.error'), title: t('topBar.save.errorHint'), icon: 'alert' },
   };
 
   // Leaving saves first; closing drops back to the project overview (or home, with no project open).
@@ -90,13 +92,13 @@ export default function CompareTopBar({
       {/* Group 1 — identity: the same mark and name field as the takeoff bar, plus the one piece
           of comparison context that must never require opening the sidebar. */}
       <div className="top-bar-group identity">
-        <div className="app-brand" title="BetterCalc — השוואת תוכניות">
+        <div className="app-brand" title={t('topBar.brandCompare')}>
           <BrandLogo />
         </div>
         {currentProject && (
           <>
-            <button className="btn-ghost small breadcrumb-project" onClick={() => void close()} title="שמירה וחזרה לסקירת הפרויקט">
-              {currentProject.name || 'פרויקט ללא שם'}
+            <button className="btn-ghost small breadcrumb-project" onClick={() => void close()} title={t('topBar.backToOverview')}>
+              {currentProject.name || t('topBar.unnamedProject')}
             </button>
             <Icon name="chevron-left" size={13} />
           </>
@@ -105,26 +107,26 @@ export default function CompareTopBar({
           className="project-name-input"
           value={comparison.name}
           onChange={(e) => updateComparisonMeta({ name: e.target.value })}
-          title="שם ההשוואה"
+          title={t('compare.topBar.comparisonName')}
         />
         <input
           className="project-name-input apt-input"
           value={comparison.apartmentNumber}
           onChange={(e) => updateComparisonMeta({ apartmentNumber: e.target.value })}
-          placeholder="דירה"
-          title="מספר דירה"
+          placeholder={t('compare.topBar.apartment')}
+          title={t('compare.topBar.apartmentNumber')}
         />
         {/* Context, not a heading: what is compared against what, and where new revision-specific
             work lands. */}
-        <span className="compare-context-chip" title="הגרסה המושווית — כל סימון, מדידה, כיול ויישור חדשים נשמרים אליה">
-          <span className="muted">מקור</span>
+        <span className="compare-context-chip" title={t('compare.topBar.revisionContext')}>
+          <span className="muted">{t('compare.topBar.original')}</span>
           <Icon name="link" size={13} />
           {comparison.revisions.length > 0 ? (
             <select
               className="compare-revision-select"
               value={comparison.activeRevisionId}
               onChange={(e) => setActiveRevisionId(e.target.value)}
-              aria-label="הגרסה המושווית"
+              aria-label={t('compare.topBar.revision')}
             >
               {comparison.revisions.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -133,7 +135,7 @@ export default function CompareTopBar({
               ))}
             </select>
           ) : (
-            <span className="cal-missing">אין גרסה</span>
+            <span className="cal-missing">{t('compare.topBar.noRevision')}</span>
           )}
         </span>
       </div>
@@ -142,11 +144,11 @@ export default function CompareTopBar({
       <div className="top-bar-group grow">
         {/* The page is dir="rtl", so previous sits on the right and next on the left. */}
         <div className="page-nav">
-          <button disabled={currentPageKey <= 1} onClick={() => setCurrentPageKey(currentPageKey - 1)} title="עמוד קודם">
+          <button disabled={currentPageKey <= 1} onClick={() => setCurrentPageKey(currentPageKey - 1)} title={t('topBar.previousPage')}>
             <Icon name="chevron-right" />
           </button>
           <span>
-            עמוד
+            {t('topBar.page')}
             <input
               className="page-jump-input"
               type="number"
@@ -158,11 +160,11 @@ export default function CompareTopBar({
                 if (e.key === 'Enter') e.currentTarget.blur();
               }}
               onBlur={commitPageJump}
-              title={`הקלד מספר עמוד (1 עד ${numPages}) ולחץ Enter`}
+              title={t('topBar.pageJumpHint', { count: numPages })}
             />
             / {numPages}
           </span>
-          <button disabled={currentPageKey >= numPages} onClick={() => setCurrentPageKey(currentPageKey + 1)} title="עמוד הבא">
+          <button disabled={currentPageKey >= numPages} onClick={() => setCurrentPageKey(currentPageKey + 1)} title={t('topBar.nextPage')}>
             <Icon name="chevron-left" />
           </button>
         </div>
@@ -175,10 +177,10 @@ export default function CompareTopBar({
         <span className="top-bar-sep" />
 
         <div className="undo-redo-group">
-          <button className="icon-btn" onClick={undo} disabled={!canUndo} title="בטל פעולה (Ctrl+Z)">
+          <button className="icon-btn" onClick={undo} disabled={!canUndo} title={t('topBar.undo')}>
             <Icon name="undo" />
           </button>
-          <button className="icon-btn" onClick={redo} disabled={!canRedo} title="בצע שוב (Ctrl+Shift+Z)">
+          <button className="icon-btn" onClick={redo} disabled={!canRedo} title={t('topBar.redo')}>
             <Icon name="redo" />
           </button>
         </div>
@@ -196,22 +198,20 @@ export default function CompareTopBar({
           openId={openMenu}
           setOpenId={setOpenMenu}
           icon={annotationsVisible && measurementsVisible ? 'eye' : 'eye-off'}
-          label="תצוגה"
+          label={t('topBar.view')}
           variant="ghost"
-          title="מה מצויר על גבי התוכנית (ומיוצא ל-PDF)"
+          title={t('compare.topBar.viewHint')}
           highlighted={!annotationsVisible || !measurementsVisible}
         >
           <button className="menu-item" onClick={toggleAnnotationsVisible}>
             <span className="menu-check">{annotationsVisible && <Icon name="check" size={13} />}</span>
-            סימוני שינויים
+            {t('compare.topBar.changeMarks')}
           </button>
           <button className="menu-item" onClick={toggleMeasurementsVisible}>
             <span className="menu-check">{measurementsVisible && <Icon name="check" size={13} />}</span>
-            מדידות
+            {t('topBar.measurements')}
           </button>
-          <p className="menu-hint">
-            מה שמוסתר כאן לא ייצויר על התוכנית המיוצאת. טבלת השינויים (הריסה ובנייה חדשה) נכללת בדוח בכל מקרה.
-          </p>
+          <p className="menu-hint">{t('compare.topBar.viewNote')}</p>
         </TopBarMenu>
 
         {/* Export is the strongest action in the bar — the one filled control. */}
@@ -220,40 +220,40 @@ export default function CompareTopBar({
           openId={openMenu}
           setOpenId={setOpenMenu}
           icon="download"
-          label={exporting ? 'מייצא…' : 'ייצוא'}
-          title="ייצוא ההשוואה ל-PDF"
+          label={exporting ? t('common.exporting') : t('common.export')}
+          title={t('compare.topBar.exportHint')}
           variant="primary"
           highlighted={!!exportRegion}
         >
           {/* Which pages, then which revisions — the two choices that define an export. */}
-          <p className="menu-hint menu-section-title">טווח עמודים</p>
+          <p className="menu-hint menu-section-title">{t('compare.topBar.pageRange')}</p>
           <button className={`menu-item ${pageScope === 'current' ? 'active' : ''}`} onClick={() => setPageScope('current')}>
             <span className="menu-check">{pageScope === 'current' && <Icon name="check" size={13} />}</span>
-            עמוד נוכחי ({currentPageKey})
+            {t('compare.topBar.currentPage', { page: currentPageKey })}
           </button>
           <button className={`menu-item ${pageScope === 'all' ? 'active' : ''}`} onClick={() => setPageScope('all')}>
             <span className="menu-check">{pageScope === 'all' && <Icon name="check" size={13} />}</span>
-            כל העמודים ({numPages})
+            {t('compare.topBar.allPagesCount', { count: numPages })}
           </button>
 
           <div className="menu-divider" />
-          <p className="menu-hint menu-section-title">ייצוא</p>
+          <p className="menu-hint menu-section-title">{t('common.export')}</p>
           <button className="menu-item" onClick={() => runExport('active')} disabled={exporting}>
             <span className="menu-check">
               <Icon name="file" size={13} />
             </span>
-            {pagesLabel} — {activeRevision?.label ?? 'הגרסה הפעילה'}
+            {pagesLabel} — {activeRevision?.label ?? t('compare.topBar.activeRevision')}
           </button>
           <button
             className="menu-item"
             onClick={() => runExport('all')}
             disabled={exporting || comparison.revisions.length < 2}
-            title={comparison.revisions.length < 2 ? 'יש רק גרסה אחת בהשוואה' : 'כל הגרסאות בקובץ אחד'}
+            title={comparison.revisions.length < 2 ? t('compare.topBar.onlyOneRevision') : t('compare.topBar.allRevisionsHint')}
           >
             <span className="menu-check">
               <Icon name="layers" size={13} />
             </span>
-            {pagesLabel} — כל {comparison.revisions.length} הגרסאות
+            {pagesLabel} — {t('compare.topBar.allRevisions', { count: comparison.revisions.length })}
           </button>
 
           <div className="menu-divider" />
@@ -267,26 +267,26 @@ export default function CompareTopBar({
             <span className="menu-check">
               <Icon name="crop" size={13} />
             </span>
-            {exportRegion ? 'שינוי אזור הייצוא' : 'בחירת אזור לייצוא'}
+            {exportRegion ? t('topBar.changeRegion') : t('topBar.chooseRegion')}
           </button>
           {exportRegion && (
             <button className="menu-item" onClick={() => setExportRegion(currentPageKey, null)}>
               <span className="menu-check">
                 <Icon name="close" size={13} />
               </span>
-              ביטול האזור בעמוד זה
+              {t('topBar.clearRegion')}
             </button>
           )}
           <p className="menu-hint">
             {exportRegion
-              ? 'האזור שייך לעמוד שבו סומן בלבד — גם בייצוא כל העמודים, שאר העמודים מיוצאים במלואם.'
-              : 'ללא אזור נבחר — מיוצאת התוכנית המלאה.'}
+              ? t('compare.topBar.regionNote')
+              : t('compare.topBar.noRegionNote')}
           </p>
         </TopBarMenu>
 
-        <button className="btn-ghost small" onClick={close} title={currentProject ? 'שמירה וחזרה לסקירת הפרויקט' : 'שמירה ויציאה'}>
+        <button className="btn-ghost small" onClick={close} title={currentProject ? t('topBar.backToOverview') : t('compare.topBar.exitHint')}>
           <Icon name="exit" />
-          <span className="btn-label">{currentProject ? 'סקירת פרויקט' : 'יציאה'}</span>
+          <span className="btn-label">{currentProject ? t('topBar.projectOverviewShort') : t('compare.topBar.exit')}</span>
         </button>
       </div>
     </div>

@@ -1,24 +1,27 @@
 import { useAppStore } from '../store/appStore';
-import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaCalcMode, type AreaKind, type AreaShape, type MeasureTool } from '../types';
+import type { AreaCalcMode, AreaKind, AreaShape, MeasureTool } from '../types';
 import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
 import { round } from '../lib/geometry';
 import { measurementLabel } from '../lib/measurementValues';
 import { isPageCalibrated } from '../lib/quantities';
 import Icon, { type IconName } from './Icon';
+import { useT } from '../i18n';
 
 const MEASURE_TOOLS: MeasureTool[] = ['distance', 'area', 'perimeter'];
 const MEASURE_ICONS: Record<MeasureTool, IconName> = { distance: 'ruler', area: 'square', perimeter: 'circle' };
-const AREA_SHAPES: { shape: AreaShape; label: string; icon: IconName }[] = [
-  { shape: 'polygon', label: 'פוליגון', icon: 'polygon' },
-  { shape: 'rectangle', label: 'מלבן', icon: 'rectangle' },
+// Labels: `measure.shapes.<shape>` and `measure.calcModes.<mode>`.
+const AREA_SHAPES: { shape: AreaShape; icon: IconName }[] = [
+  { shape: 'polygon', icon: 'polygon' },
+  { shape: 'rectangle', icon: 'rectangle' },
 ];
-const AREA_CALC_MODES: { mode: AreaCalcMode; label: string; icon: IconName }[] = [
-  { mode: 'footprint', label: 'שטח בפועל', icon: 'square' },
-  { mode: 'wall', label: 'אורך × גובה', icon: 'dimension' },
+const AREA_CALC_MODES: { mode: AreaCalcMode; icon: IconName }[] = [
+  { mode: 'footprint', icon: 'square' },
+  { mode: 'wall', icon: 'dimension' },
 ];
 const AREA_KINDS: AreaKind[] = ['demolition', 'construction'];
 
 export default function MeasureToolbar() {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const currentPage = useAppStore((s) => s.currentPage);
   const toolMode = useAppStore((s) => s.toolMode);
@@ -60,24 +63,24 @@ export default function MeasureToolbar() {
 
   return (
     <div className="measure-toolbar">
-      <h4>מדידות</h4>
+      <h4>{t('measure.title')}</h4>
       {/* Calibration now lives in the toolbar and in the page-status strip above the tabs. */}
-      {!hasCalibration && <div className="warning-box">העמוד אינו מכויל — יש לכייל אותו לפני מדידה.</div>}
+      {!hasCalibration && <div className="warning-box">{t('measure.notCalibrated')}</div>}
 
       {/* Each row of identical buttons is now one labelled segmented control, so it is obvious
           what decision the row represents rather than three anonymous icons. */}
       <div className="tool-group">
-        <span className="section-label">כלי מדידה</span>
+        <span className="section-label">{t('measure.tools')}</span>
         <div className="segmented grid">
-          {MEASURE_TOOLS.map((t) => (
+          {MEASURE_TOOLS.map((tool) => (
             <button
-              key={t}
-              className={`tool-btn ${toolMode === 'measure' && measureTool === t ? 'active' : ''}`}
-              onClick={() => setMeasureTool(measureTool === t ? null : t)}
-              aria-pressed={toolMode === 'measure' && measureTool === t}
+              key={tool}
+              className={`tool-btn ${toolMode === 'measure' && measureTool === tool ? 'active' : ''}`}
+              onClick={() => setMeasureTool(measureTool === tool ? null : tool)}
+              aria-pressed={toolMode === 'measure' && measureTool === tool}
             >
-              <Icon name={MEASURE_ICONS[t]} />
-              <span className="tool-label">{MEASURE_TOOL_LABELS[t]}</span>
+              <Icon name={MEASURE_ICONS[tool]} />
+              <span className="tool-label">{t(`measureTools.${tool}`)}</span>
             </button>
           ))}
         </div>
@@ -86,9 +89,9 @@ export default function MeasureToolbar() {
       {toolMode === 'measure' && measureTool === 'area' && (
         <>
           <div className="tool-group">
-            <span className="section-label">אופן חישוב</span>
+            <span className="section-label">{t('measure.calcMode')}</span>
             <div className="segmented">
-              {AREA_CALC_MODES.map(({ mode, label, icon }) => (
+              {AREA_CALC_MODES.map(({ mode, icon }) => (
                 <button
                   key={mode}
                   className={`tool-btn ${areaCalcMode === mode ? 'active' : ''}`}
@@ -96,15 +99,15 @@ export default function MeasureToolbar() {
                   aria-pressed={areaCalcMode === mode}
                 >
                   <Icon name={icon} />
-                  <span className="tool-label">{label}</span>
+                  <span className="tool-label">{t(`measure.calcModes.${mode}`)}</span>
                 </button>
               ))}
             </div>
           </div>
           <div className="tool-group">
-            <span className="section-label">צורה</span>
+            <span className="section-label">{t('measure.shape')}</span>
             <div className="segmented">
-              {AREA_SHAPES.map(({ shape, label, icon }) => (
+              {AREA_SHAPES.map(({ shape, icon }) => (
                 <button
                   key={shape}
                   className={`tool-btn ${areaShape === shape ? 'active' : ''}`}
@@ -112,14 +115,14 @@ export default function MeasureToolbar() {
                   aria-pressed={areaShape === shape}
                 >
                   <Icon name={icon} />
-                  <span className="tool-label">{label}</span>
+                  <span className="tool-label">{t(`measure.shapes.${shape}`)}</span>
                 </button>
               ))}
             </div>
           </div>
           {areaCalcMode === 'wall' && (
             <div className="form-row">
-              <label>גובה קיר ברירת מחדל (מ')</label>
+              <label>{t('measure.wallHeightDefault')}</label>
               <input
                 type="number"
                 step="0.05"
@@ -129,7 +132,7 @@ export default function MeasureToolbar() {
               />
             </div>
           )}
-          <span className="section-label">סיווג השטח</span>
+          <span className="section-label">{t('measure.areaKind')}</span>
           <div className="area-kind-row">
             {AREA_KINDS.map((k) => (
               <button
@@ -138,13 +141,13 @@ export default function MeasureToolbar() {
                 onClick={() => setPendingAreaKind(pendingAreaKind === k ? null : k)}
               >
                 <span className="color-dot" style={{ background: areaKindColors[k] }} />
-                {AREA_KIND_LABELS[k]}
+                {t(`areaKinds.${k}`)}
                 <input
                   type="color"
                   value={areaKindColors[k]}
                   onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setAreaKindColor(k, e.target.value)}
-                  title="שנה צבע"
+                  title={t('measure.changeColor')}
                 />
               </button>
             ))}
@@ -156,7 +159,7 @@ export default function MeasureToolbar() {
         (measureTool === 'distance' || measureTool === 'perimeter' || (measureTool === 'area' && areaShape === 'polygon')) && (
           <label className="source-color-toggle">
             <input type="checkbox" checked={orthoSnap} onChange={(e) => setOrthoSnap(e.target.checked)} />
-            קווים ישרים בלבד (90°)
+            {t('measure.orthoOnly')}
           </label>
         )}
 
@@ -164,40 +167,44 @@ export default function MeasureToolbar() {
         <p className="tool-hint">
           <Icon name="alert" size={13} />
           {measureTool === 'distance'
-            ? 'לחץ 2 נקודות כדי למדוד מרחק'
+            ? t('measure.hintDistance')
             : measureTool === 'area' && areaShape === 'rectangle'
-              ? 'לחץ פינת התחלה וסיום למלבן'
-              : `לחץ נקודות ולסגור ליד הנקודה הראשונה (${measurePoints.length} נקודות)`}
+              ? t('measure.hintRectangle')
+              : t('measure.hintPolygon', { count: measurePoints.length })}
         </p>
       )}
 
       {areaMeasurements.length > 0 && (
         <div className="area-summary">
-          <h4>סיכום שטחים</h4>
+          <h4>{t('measure.areaSummary')}</h4>
           {pageNumbersWithAreas.length > 1 && (
             <div className="area-summary-page">
-              <div className="area-summary-page-title">עמוד {currentPage} (נוכחי)</div>
+              <div className="area-summary-page-title">{t('measure.currentPage', { page: currentPage })}</div>
               {AREA_KINDS.map((k) => (
                 <div key={k} className="area-summary-row">
                   <div className="area-summary-row-header">
                     <span className="color-dot" style={{ background: areaKindColors[k] }} />
-                    <span className="area-summary-label">{AREA_KIND_LABELS[k]}</span>
-                    <span className="area-summary-count">{currentPageTally.counts[k]} סימונים</span>
+                    <span className="area-summary-label">{t(`areaKinds.${k}`)}</span>
+                    <span className="area-summary-count">{t('measure.marks', { count: currentPageTally.counts[k] })}</span>
                   </div>
-                  <span className="area-summary-total">{round(currentPageTally.totals[k], 2)} מ"ר</span>
+                  <span className="area-summary-total">
+                    {round(currentPageTally.totals[k], 2)} {t('units.m2')}
+                  </span>
                 </div>
               ))}
             </div>
           )}
-          {pageNumbersWithAreas.length > 1 && <div className="area-summary-page-title">סה"כ כל העמודים</div>}
+          {pageNumbersWithAreas.length > 1 && <div className="area-summary-page-title">{t('measure.allPages')}</div>}
           {AREA_KINDS.map((k) => (
             <div key={k} className="area-summary-row">
               <div className="area-summary-row-header">
                 <span className="color-dot" style={{ background: areaKindColors[k] }} />
-                <span className="area-summary-label">{AREA_KIND_LABELS[k]}</span>
-                <span className="area-summary-count">{grandTally.counts[k]} סימונים</span>
+                <span className="area-summary-label">{t(`areaKinds.${k}`)}</span>
+                <span className="area-summary-count">{t('measure.marks', { count: grandTally.counts[k] })}</span>
               </div>
-              <span className="area-summary-total">{round(grandTally.totals[k], 2)} מ"ר</span>
+              <span className="area-summary-total">
+                {round(grandTally.totals[k], 2)} {t('units.m2')}
+              </span>
             </div>
           ))}
         </div>
@@ -206,7 +213,7 @@ export default function MeasureToolbar() {
       {pageMeasurements.length === 0 ? (
         <div className="empty-state">
           <Icon name="ruler" size={24} />
-          <p>אין עדיין מדידות בעמוד זה. בחר כלי מדידה למעלה וסמן על התוכנית.</p>
+          <p>{t('measure.empty')}</p>
         </div>
       ) : (
         <ul className="measurement-list">
@@ -218,10 +225,11 @@ export default function MeasureToolbar() {
                   {m.areaKind ? (
                     <span className="color-dot" style={{ background: areaKindColors[m.areaKind] }} />
                   ) : null}{' '}
-                  {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: <strong>{measurementLabel(m)}</strong>
+                  {m.areaKind ? t(`areaKinds.${m.areaKind}`) : t(`measureTools.${m.tool}`)}: <strong>{measurementLabel(m)}</strong>
                   {isWall && (
                     <>
-                      {' '}(אורך {round(m.wallLengthM ?? 0, 2)} מ' × גובה{' '}
+                      {' '}
+                      {t('measure.wallLength', { length: round(m.wallLengthM ?? 0, 2) })}{' '}
                       <input
                         type="number"
                         step="0.05"
@@ -235,12 +243,13 @@ export default function MeasureToolbar() {
                           updateMeasurement(m.id, { wallHeightM: h, areaM2: area });
                         }}
                       />
-                      {' '}מ')
+                      {' '}
+                      {t('units.m')})
                     </>
                   )}
                 </span>
                 <span className="list-item-actions">
-                  <button className="icon-btn danger" title="מחק מדידה" onClick={() => deleteMeasurement(m.id)}>
+                  <button className="icon-btn danger" title={t('measure.delete')} onClick={() => deleteMeasurement(m.id)}>
                     <Icon name="trash" />
                   </button>
                 </span>

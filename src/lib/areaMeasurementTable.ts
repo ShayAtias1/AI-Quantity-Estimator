@@ -3,6 +3,7 @@ import { round } from './geometry';
 import { drawLogo, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { numberAreaMeasurements, type AreaMeasurementLike } from './areaMeasurements';
 import { changeTotals } from './changeMeasurements';
+import { t } from '../i18n';
 
 interface WallMeasurementLike extends AreaMeasurementLike {
   calcMode?: 'footprint' | 'wall';
@@ -25,11 +26,6 @@ export interface AreaTableOptions {
   showLogo?: boolean;
 }
 
-const AREA_KIND_LABELS: Record<'demolition' | 'construction', string> = {
-  demolition: 'הריסה',
-  construction: 'בנייה חדשה',
-};
-
 const DASH = '—';
 
 const C_HEADER = '#1F4E79';
@@ -39,9 +35,9 @@ const C_TOTAL = '#D6E4F0';
 const C_GRAND = '#D5F5E3';
 const C_BORDER = '#E2E8F0';
 
-const HEADERS = ['#', 'סוג', 'אופן חישוב', "אורך (מ')", "גובה (מ')", 'שטח (מ"ר)'];
+const HEADER_KEYS = ['number', 'kind', 'calcMode', 'length', 'height', 'area'] as const;
 const WEIGHTS = [8, 22, 24, 16, 16, 24];
-const HEADERS_WITH_PAGE = ['#', 'סוג', 'עמוד', 'אופן חישוב', "אורך (מ')", "גובה (מ')", 'שטח (מ"ר)'];
+const HEADER_KEYS_WITH_PAGE = ['number', 'kind', 'page', 'calcMode', 'length', 'height', 'area'] as const;
 const WEIGHTS_WITH_PAGE = [7, 20, 10, 21, 14, 14, 24];
 
 /**
@@ -58,7 +54,7 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
   options: AreaTableOptions = {}
 ): void {
   const showPage = !!options.showPage;
-  const headers = showPage ? HEADERS_WITH_PAGE : HEADERS;
+  const headers = (showPage ? HEADER_KEYS_WITH_PAGE : HEADER_KEYS).map((k) => t(`exports.common.areaHeaders.${k}`));
   const weights = showPage ? WEIGHTS_WITH_PAGE : WEIGHTS;
   const PAGE_W = 1200;
   const PAGE_H = 1132;
@@ -97,7 +93,7 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
 
   const newPage = () => {
     pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
-    pt.fillText(`טבלת שטחי הריסה ובנייה — ${title}`, PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
+    pt.fillText(t('exports.areaTable.title', { title }), PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
     pt.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
     if (options.showLogo) drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
     y = 84;
@@ -130,9 +126,9 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
       drawRow(
         cells(
           `${numbers.get(m.id) ?? ''}`,
-          AREA_KIND_LABELS[kind],
+          t(`areaKinds.${kind}`),
           m.pageNumber === undefined ? DASH : `${m.pageNumber}`,
-          isWall ? 'קיר (אורך × גובה)' : 'שטח בפועל',
+          isWall ? t('exports.common.calcWall') : t('exports.common.calcFootprint'),
           isWall ? `${round(m.wallLengthM ?? 0, 2)}` : DASH,
           isWall ? `${round(m.wallHeightM ?? 0, 2)}` : DASH,
           `${round(m.areaM2 ?? 0, 2)}`
@@ -144,7 +140,7 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
     grandLength += subLength;
     ensureRoom(1);
     drawRow(
-      cells(`סה"כ ${AREA_KIND_LABELS[kind]}`, '', '', '', subLength > 0 ? `${round(subLength, 2)}` : DASH, '', `${round(subtotal, 2)}`),
+      cells(t('exports.common.kindTotal', { kind: t(`areaKinds.${kind}`) }), '', '', '', subLength > 0 ? `${round(subLength, 2)}` : DASH, '', `${round(subtotal, 2)}`),
       C_TOTAL,
       { bold: true }
     );
@@ -152,7 +148,7 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
 
   ensureRoom(1);
   drawRow(
-    cells('סה"כ כללי', '', '', '', grandLength > 0 ? `${round(grandLength, 2)}` : DASH, '', `${round(grandTotal, 2)}`),
+    cells(t('exports.common.grandTotal'), '', '', '', grandLength > 0 ? `${round(grandLength, 2)}` : DASH, '', `${round(grandTotal, 2)}`),
     C_GRAND,
     { bold: true }
   );

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../../i18n';
 import { useCompareStore } from '../../store/compareStore';
 
 export default function CompareCalibrationDialog() {
@@ -7,6 +8,7 @@ export default function CompareCalibrationDialog() {
   const applyCalibration = useCompareStore((s) => s.applyCalibration);
   const clearCalibration = useCompareStore((s) => s.clearCalibration);
   const [value, setValue] = useState('');
+  const t = useT();
 
   if (calibrationPoints.length !== 2 || !calibrationLayer) return null;
 
@@ -20,10 +22,10 @@ export default function CompareCalibrationDialog() {
   return (
     <div className="modal-backdrop">
       <div className="modal calibration-modal">
-        <h3>כיול קנה מידה — {calibrationLayer === 'original' ? 'תוכנית מקור' : 'תוכנית מעודכנת'}</h3>
-        <p>הזן את המרחק האמיתי במטרים בין שתי הנקודות שסימנת בתוכנית.</p>
+        <h3>{calibrationLayer === 'original' ? t('calibration.titleOriginal') : t('calibration.titleRevised')}</h3>
+        <p>{t('calibration.instructions')}</p>
         <div className="form-row">
-          <label>מרחק אמיתי (מטר)</label>
+          <label>{t('calibration.distanceLabel')}</label>
           <input
             type="number"
             step="0.01"
@@ -32,15 +34,15 @@ export default function CompareCalibrationDialog() {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="לדוגמה: 5.00"
+            placeholder={t('calibration.distancePlaceholder')}
           />
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={() => clearCalibration()}>
-            ביטול
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={submit} disabled={!value}>
-            אישור כיול
+            {t('calibration.confirm')}
           </button>
         </div>
       </div>

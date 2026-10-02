@@ -1,6 +1,7 @@
 import { alignmentStatusFor, useCompareStore } from '../../store/compareStore';
 import { IDENTITY_TRANSFORM } from '../../types/compare';
 import Icon from '../Icon';
+import { useT } from '../../i18n';
 
 /**
  * Bringing the revised layer onto the original. Three groups, in the order they are used: drag it
@@ -11,6 +12,7 @@ import Icon from '../Icon';
  * controls only.
  */
 export default function AlignmentTools() {
+  const t = useT();
   const comparison = useCompareStore((s) => s.comparison);
   const currentPageKey = useCompareStore((s) => s.currentPageKey);
   const toolMode = useCompareStore((s) => s.toolMode);
@@ -28,7 +30,7 @@ export default function AlignmentTools() {
 
   return (
     <div className="alignment-tools tool-group">
-      <span className="section-label">יישור התוכנית המעודכנת</span>
+      <span className="section-label">{t('compare.alignment.title')}</span>
 
       <button
         className={`btn-secondary small full-width ${toolMode === 'align' && !pickingAlignmentPoints ? 'active' : ''}`}
@@ -37,11 +39,11 @@ export default function AlignmentTools() {
         aria-pressed={toolMode === 'align' && !pickingAlignmentPoints}
       >
         <Icon name="move" />
-        גרור להזזת התוכנית המעודכנת
+        {t('compare.alignment.drag')}
       </button>
 
       <div className="form-row inline">
-        <label>סיבוב</label>
+        <label>{t('compare.alignment.rotation')}</label>
         <input
           type="range"
           min={-180}
@@ -55,7 +57,7 @@ export default function AlignmentTools() {
       </div>
 
       <div className="form-row inline">
-        <label>קנה מידה יחסי</label>
+        <label>{t('compare.alignment.scale')}</label>
         <input
           type="range"
           min={0.5}
@@ -69,7 +71,7 @@ export default function AlignmentTools() {
       </div>
 
       {/* The accurate route: two matching points solve offset, rotation and scale together. */}
-      <span className="section-label">יישור לפי נקודות ייחוס</span>
+      <span className="section-label">{t('compare.alignment.byPoints')}</span>
       <button
         className={`${pickingAlignmentPoints ? 'btn-primary' : 'btn-secondary'} small full-width`}
         onClick={beginAlignmentPointPick}
@@ -77,14 +79,12 @@ export default function AlignmentTools() {
         aria-pressed={pickingAlignmentPoints}
       >
         <Icon name="target" />
-        {pickingAlignmentPoints ? 'סימון נקודות…' : 'סמן 2 זוגות נקודות'}
+        {pickingAlignmentPoints ? t('compare.alignment.picking') : t('compare.alignment.pickPairs')}
       </button>
       {pickingAlignmentPoints && (
         <p className="tool-hint">
           <Icon name="alert" size={13} />
-          {alignmentPendingOriginal
-            ? 'לחץ על אותה נקודה בתוכנית המעודכנת'
-            : 'לחץ על נקודת ייחוס בתוכנית המקור — פינת בניין, עמוד וכו׳'}
+          {alignmentPendingOriginal ? t('compare.alignment.pickRevised') : t('compare.alignment.pickOriginal')}
         </p>
       )}
 
@@ -92,10 +92,10 @@ export default function AlignmentTools() {
         className="btn-ghost small full-width"
         onClick={() => clearAlignmentPoints(currentPageKey)}
         disabled={!hasRevision || !aligned}
-        title="מחזיר את הגרסה למיקומה המקורי בעמוד זה"
+        title={t('compare.alignment.resetHint')}
       >
         <Icon name="reset" />
-        איפוס היישור בעמוד זה
+        {t('compare.alignment.reset')}
       </button>
     </div>
   );

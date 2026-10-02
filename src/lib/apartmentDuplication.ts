@@ -8,6 +8,7 @@
 
 import type { Plan, Room } from '../types';
 import { isPageCalibrated } from './quantities';
+import { t } from '../i18n';
 
 /** Pages the rooms of an apartment live on. */
 export function apartmentPageNumbers(project: Plan, apartmentNumber: string): number[] {
@@ -51,7 +52,5 @@ export function groupRoomsByApartment(project: Plan): { apartmentNumber: string;
 export function apartmentDuplicationWarnings(project: Plan, sourceApartmentNumber: string): string[] {
   const uncalibrated = apartmentPageNumbers(project, sourceApartmentNumber).filter((p) => !isPageCalibrated(project, p));
   if (uncalibrated.length === 0) return [];
-  return [
-    `עמוד ${uncalibrated.join(', ')} אינו מכויל. החדרים ישוכפלו, אך לא ניתן יהיה לחשב את כמויותיהם עד לכיול העמוד.`,
-  ];
+  return [t('apartmentDuplication.uncalibratedWarning', { pages: uncalibrated.join(', ') })];
 }

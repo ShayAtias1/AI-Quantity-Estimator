@@ -14,11 +14,13 @@ import MeasureToolbar from './components/MeasureToolbar';
 import MarkupToolbar from './components/MarkupToolbar';
 import CompareWorkspace from './components/compare/CompareWorkspace';
 import BrandLogo from './components/BrandLogo';
+import { useT } from './i18n';
 
 /** Quantities is no longer one of these — it has the full-width bottom panel instead. */
 type SidebarTab = 'rooms' | 'measure' | 'markup';
 
 function Workspace() {
+  const t = useT();
   const [tab, setTab] = useState<SidebarTab>('rooms');
 
   return (
@@ -38,13 +40,13 @@ function Workspace() {
           <PageStatusBar />
           <div className="sidebar-tabs">
             <button className={tab === 'rooms' ? 'active' : ''} onClick={() => setTab('rooms')}>
-              חדרים ודירות
+              {t('workspace.tabs.rooms')}
             </button>
             <button className={tab === 'measure' ? 'active' : ''} onClick={() => setTab('measure')}>
-              מדידות
+              {t('workspace.tabs.measure')}
             </button>
             <button className={tab === 'markup' ? 'active' : ''} onClick={() => setTab('markup')}>
-              סימונים
+              {t('workspace.tabs.markup')}
             </button>
           </div>
           <div className="sidebar-content">
@@ -60,6 +62,7 @@ function Workspace() {
 }
 
 function Home() {
+  const t = useT();
   return (
     <div className="workspace home">
       {/* The same bar as the two workspaces, so the entrance and the rooms behind it are
@@ -74,7 +77,7 @@ function Home() {
         <div className="top-bar-group output">
           {/* Two separate claims, both true: plan and project data never leave this browser;
               anonymous usage statistics (no plan content) may be sent — see docs/ANALYTICS.md. */}
-          <span className="muted home-top-note">התוכניות והפרויקטים נשמרים רק במחשב הזה · ייתכן איסוף סטטיסטיקת שימוש אנונימית</span>
+          <span className="muted home-top-note">{t('home.privacyNote')}</span>
         </div>
       </div>
 

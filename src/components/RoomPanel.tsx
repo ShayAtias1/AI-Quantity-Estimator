@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import type { Opening, OpeningType, Plan, TilingCategory, WorkType } from '../types';
 import {
-  AREA_UNIT,
-  NOT_CALIBRATED_LABEL as NOT_CALIBRATED,
-  OPENING_TYPE_LABELS,
-  PANEL_LENGTH_UNIT,
-  TILING_CATEGORY_LABELS,
 } from '../types';
 import {
   calculateWorkItem,
@@ -17,8 +13,8 @@ import {
   openingAreaM2,
   roomMetrics,
 } from '../lib/quantities';
-import { WORK_TYPE_DEFINITIONS, WORK_TYPE_ORDER, workTypeDefinition } from '../lib/workTypes';
-import { ROOM_PROFILES, roomProfileLabel } from '../lib/roomProfiles';
+import { WORK_TYPE_ORDER, workTypeDefinition } from '../lib/workTypes';
+import { ROOM_PROFILES, roomProfileLabel, roomProfileName } from '../lib/roomProfiles';
 import {
   apartmentDuplicationWarnings,
   apartmentNumbersInProject,
@@ -38,6 +34,7 @@ const OPENING_TYPES: OpeningType[] = ['door', 'window', 'custom'];
 const SHOW_AUTO_DETECT = false;
 
 export default function RoomPanel() {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const selectedRoomId = useAppStore((s) => s.selectedRoomId);
   const setSelectedRoomId = useAppStore((s) => s.setSelectedRoomId);
@@ -97,7 +94,7 @@ export default function RoomPanel() {
         <div className="detail-nav">
           <button className="btn-ghost small" onClick={() => setDetailOpen(false)}>
             <Icon name="back" />
-            חזרה לחדרים
+            {t('rooms.backToRooms')}
           </button>
         </div>
         {/* The room name is the identity of this view and outranks everything in it, including the
@@ -105,19 +102,19 @@ export default function RoomPanel() {
         <div className="detail-header">
           <span className="color-dot" style={{ background: detailRoom.color }} />
           <span className="detail-header-text">
-            <span className="detail-title">{detailRoom.name || 'חדר ללא שם'}</span>
+            <span className="detail-title">{detailRoom.name || t('rooms.unnamed')}</span>
             <span className="detail-subtitle">
-              {detailRoom.apartmentNumber ? `דירה ${detailRoom.apartmentNumber}` : 'ללא שיוך'}
+              {detailRoom.apartmentNumber ? t('rooms.apartment', { apartment: detailRoom.apartmentNumber }) : t('rooms.unassigned')}
             </span>
           </span>
-          <button className="icon-btn" title="שכפל אזור" onClick={() => duplicateRoom(detailRoom.id)}>
+          <button className="icon-btn" title={t('rooms.duplicate')} onClick={() => duplicateRoom(detailRoom.id)}>
             <Icon name="copy" />
           </button>
           <button
             className="icon-btn danger"
-            title="מחק אזור"
+            title={t('rooms.delete')}
             onClick={() => {
-              if (!confirm(`למחוק את "${detailRoom.name}"?`)) return;
+              if (!confirm(t('rooms.deleteConfirm', { name: detailRoom.name }))) return;
               deleteRoom(detailRoom.id);
               setDetailOpen(false);
             }}
@@ -146,7 +143,7 @@ export default function RoomPanel() {
 
   /** Creating an apartment is just naming one: it exists as soon as a room carries the number. */
   const createApartment = () => {
-    const next = window.prompt('מספר הדירה החדשה:', '');
+    const next = window.prompt(t('rooms.newApartmentPrompt'), '');
     if (next && next.trim()) setActiveApartmentNumber(next.trim());
   };
 
@@ -159,25 +156,25 @@ export default function RoomPanel() {
         <button
           className={`btn-primary ${toolMode === 'draw' ? 'active' : ''}`}
           onClick={() => setToolMode(toolMode === 'draw' ? 'select' : 'draw')}
-          title="סימון חדר כפוליגון על גבי התוכנית"
+          title={t('rooms.drawHint')}
         >
-          + סימון חדר
+          {t('rooms.draw')}
         </button>
         {/* The two drawing shapes, in the same grey segmented tray as the markup tools. */}
         <div className="segmented room-shape-tools">
           <button
             className={`tool-btn ${toolMode === 'draw' ? 'active' : ''}`}
             onClick={() => setToolMode(toolMode === 'draw' ? 'select' : 'draw')}
-            title="סימון חדר כפוליגון"
-            aria-label="סימון חדר כפוליגון"
+            title={t('rooms.drawPolygon')}
+            aria-label={t('rooms.drawPolygon')}
           >
             <Icon name="polygon" />
           </button>
           <button
             className={`tool-btn ${toolMode === 'draw-rect' ? 'active' : ''}`}
             onClick={() => setToolMode(toolMode === 'draw-rect' ? 'select' : 'draw-rect')}
-            title="סימון חדר כמלבן"
-            aria-label="סימון חדר כמלבן"
+            title={t('rooms.drawRect')}
+            aria-label={t('rooms.drawRect')}
           >
             <Icon name="rectangle" />
           </button>
@@ -186,8 +183,8 @@ export default function RoomPanel() {
           <button
             className={`btn-secondary small ${showDetection ? 'active' : ''}`}
             onClick={() => setShowDetection((v) => !v)}
-            title="זיהוי אוטומטי של חדרים — מציע אזורים לאישור"
-            aria-label="זיהוי אוטומטי"
+            title={t('rooms.autoDetectHint')}
+            aria-label={t('rooms.autoDetect')}
           >
             <Icon name="scan" />
           </button>
@@ -197,17 +194,17 @@ export default function RoomPanel() {
       {/* The template new rooms start from — work types included. A starting point only: every
           room stays fully editable afterwards. */}
       <div className="active-apartment-row">
-        <label htmlFor="new-room-template">תבנית לחדר חדש</label>
+        <label htmlFor="new-room-template">{t('rooms.newRoomTemplate')}</label>
         <select
           id="new-room-template"
           value={newRoomTemplate ?? ''}
-          title="חדרים שתסמן יקבלו את סוג החדר ואת סוגי העבודה של התבנית"
+          title={t('rooms.newRoomTemplateHint')}
           onChange={(e) => setNewRoomTemplate(e.target.value || null)}
         >
-          <option value="">ללא תבנית</option>
+          <option value="">{t('rooms.noTemplate')}</option>
           {ROOM_PROFILES.map((p) => (
             <option key={p.key} value={p.key}>
-              {p.displayName}
+              {roomProfileName(p)}
             </option>
           ))}
         </select>
@@ -216,35 +213,35 @@ export default function RoomPanel() {
       {/* Workspace state, not a form field: this is the apartment being worked in, and the sentence
           that used to repeat the selected value under it is gone — the value itself says it. */}
       <div className="active-apartment-row">
-        <label htmlFor="active-apartment">עובד בדירה</label>
+        <label htmlFor="active-apartment">{t('rooms.workingIn')}</label>
         <select
           id="active-apartment"
           value={activeApartmentNumber}
-          title="חדרים חדשים ישויכו לדירה הזו"
+          title={t('rooms.workingInHint')}
           onChange={(e) => {
             if (e.target.value === '__new__') createApartment();
             else setActiveApartmentNumber(e.target.value);
           }}
         >
-          <option value="">ללא שיוך</option>
+          <option value="">{t('rooms.unassigned')}</option>
           {apartmentNumbers.map((a) => (
             <option key={a} value={a}>
-              דירה {a}
+              {t('rooms.apartment', { apartment: a })}
             </option>
           ))}
           {activeApartmentNumber && !apartmentNumbers.includes(activeApartmentNumber) && (
-            <option value={activeApartmentNumber}>דירה {activeApartmentNumber}</option>
+            <option value={activeApartmentNumber}>{t('rooms.apartment', { apartment: activeApartmentNumber })}</option>
           )}
-          <option value="__new__">+ דירה חדשה…</option>
+          <option value="__new__">{t('rooms.newApartment')}</option>
         </select>
       </div>
 
       <div className="room-list">
-        <span className="section-label">אזורים שסומנו ({project.rooms.length})</span>
+        <span className="section-label">{t('rooms.markedAreas', { count: project.rooms.length })}</span>
         {project.rooms.length === 0 && (
           <div className="empty-state">
             <Icon name="polygon" size={28} />
-            <p>עדיין לא סומנו חדרים. בחר "סימון חדר" וסמן את קווי המתאר על גבי התוכנית.</p>
+            <p>{t('rooms.empty')}</p>
           </div>
         )}
 
@@ -259,16 +256,16 @@ export default function RoomPanel() {
                 <button
                   className="apartment-group-title"
                   onClick={() => setActiveApartmentNumber(group.apartmentNumber)}
-                  title={isUnassigned ? 'עבוד ללא שיוך לדירה' : `הפוך את דירה ${group.apartmentNumber} לדירה הפעילה`}
+                  title={isUnassigned ? t('rooms.workUnassigned') : t('rooms.makeActive', { apartment: group.apartmentNumber })}
                 >
-                  {isUnassigned ? 'ללא שיוך' : `דירה ${group.apartmentNumber}`}
+                  {isUnassigned ? t('rooms.unassigned') : t('rooms.apartment', { apartment: group.apartmentNumber })}
                   <span className="apartment-group-count">{group.rooms.length}</span>
-                  {isActive && <span className="apartment-active-flag">פעילה</span>}
+                  {isActive && <span className="apartment-active-flag">{t('rooms.active')}</span>}
                 </button>
                 {!isUnassigned && (
                   <button
                     className="icon-btn"
-                    title={`שכפל את דירה ${group.apartmentNumber}`}
+                    title={t('rooms.duplicateApartment', { apartment: group.apartmentNumber })}
                     onClick={() => setApartmentDialogSource(group.apartmentNumber)}
                   >
                     <Icon name="copy" />
@@ -279,20 +276,20 @@ export default function RoomPanel() {
                 {group.rooms.map((r) => (
                   <li key={r.id} className={r.id === selectedRoomId ? 'active' : ''} onClick={() => selectRoom(r.id, r.pageNumber)}>
                     <span className="color-dot" style={{ background: r.color }} />
-                    <span className="room-list-name">{r.name || 'חדר ללא שם'}</span>
+                    <span className="room-list-name">{r.name || t('rooms.unnamed')}</span>
                     {r.detectionConfidence === 'low' && (
-                      <span className="room-review-flag" title="זוהה אוטומטית — מומלץ לבדוק">
+                      <span className="room-review-flag" title={t('rooms.reviewFlag')}>
                         <Icon name="alert" size={13} />
                       </span>
                     )}
                     {/* The page number is only information when it is NOT the page on screen. */}
-                    {r.pageNumber !== currentPage && <span className="room-list-page">עמוד {r.pageNumber}</span>}
+                    {r.pageNumber !== currentPage && <span className="room-list-page">{t('rooms.page', { page: r.pageNumber })}</span>}
                     {/* Row actions appear on hover and on keyboard focus, so they stop competing
                         with the room name while staying reachable by tab. */}
                     <span className="room-row-actions">
                       <button
                         className="icon-btn"
-                        title="שכפל אזור"
+                        title={t('rooms.duplicate')}
                         onClick={(e) => {
                           e.stopPropagation();
                           duplicateRoom(r.id);
@@ -302,10 +299,10 @@ export default function RoomPanel() {
                       </button>
                       <button
                         className="icon-btn danger"
-                        title="מחק אזור"
+                        title={t('rooms.delete')}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`למחוק את "${r.name}"?`)) deleteRoom(r.id);
+                          if (confirm(t('rooms.deleteConfirm', { name: r.name }))) deleteRoom(r.id);
                         }}
                       >
                         <Icon name="trash" />
@@ -363,6 +360,7 @@ function RoomDetail({
   onUpdateOpening: (openingId: string, patch: Partial<Opening>) => void;
   onRemoveOpening: (openingId: string) => void;
 }) {
+  const t = useT();
   const { areaM2, perimeterM } = roomMetrics(room, calibration);
   // Same test the quantity code uses, so the warning and the numbers can never disagree.
   const noCalibration = !isPageCalibrated(project, room.pageNumber);
@@ -371,26 +369,26 @@ function RoomDetail({
 
   const onSetRoomType = (key: string | null) => {
     const outcome = onRoomTypeChange(key);
-    setTypeNotice(outcome === 'kept' ? 'התבנית עודכנה. סוגי העבודה הקיימים לא שונו.' : null);
+    setTypeNotice(outcome === 'kept' ? t('rooms.detail.typeKept') : null);
   };
 
   return (
     <div className="room-detail">
       {/* The page-status strip already announces an uncalibrated page. This warning stays because
           it reports something else: THESE results are unavailable, right where they are missing. */}
-      {noCalibration && <div className="warning-box">לא ניתן לחשב את כמויות החדר עד לכיול קנה המידה בעמוד זה.</div>}
+      {noCalibration && <div className="warning-box">{t('rooms.detail.notCalibrated')}</div>}
       {/* Without a scale these are not "0" — they are simply not computable yet. */}
       <div className="metrics-row">
         <div>
-          <span className="metric-label">שטח</span>
+          <span className="metric-label">{t('rooms.detail.area')}</span>
           <span className={`metric-value ${noCalibration ? 'cal-missing' : ''}`}>
-            {noCalibration ? NOT_CALIBRATED : `${round(areaM2, 2)} מ"ר`}
+            {noCalibration ? t('quantities.notCalibrated') : `${round(areaM2, 2)} ${t('units.m2')}`}
           </span>
         </div>
         <div>
-          <span className="metric-label">היקף</span>
+          <span className="metric-label">{t('rooms.detail.perimeter')}</span>
           <span className={`metric-value ${noCalibration ? 'cal-missing' : ''}`}>
-            {noCalibration ? NOT_CALIBRATED : `${round(perimeterM, 2)} מ'`}
+            {noCalibration ? t('quantities.notCalibrated') : `${round(perimeterM, 2)} ${t('units.m')}`}
           </span>
         </div>
       </div>
@@ -399,30 +397,30 @@ function RoomDetail({
           of full-width fields. Editing the apartment regroups the room in the list immediately. */}
       <div className="form-grid">
         <div className="form-row">
-          <label>שם חדר</label>
+          <label>{t('rooms.detail.name')}</label>
           <input value={room.name} onChange={(e) => onUpdate({ name: e.target.value })} />
         </div>
         <div className="form-row">
-          <label>דירה</label>
+          <label>{t('rooms.detail.apartment')}</label>
           <input
             value={room.apartmentNumber}
             onChange={(e) => onUpdate({ apartmentNumber: e.target.value })}
-            placeholder="ללא שיוך"
+            placeholder={t('rooms.unassigned')}
           />
         </div>
       </div>
       {/* Type is a classification, not the name: picking one never rewrites the name above. */}
       <div className="form-row">
-        <label>תבנית / סוג חדר</label>
+        <label>{t('rooms.detail.template')}</label>
         <select value={room.roomType ?? ''} onChange={(e) => onSetRoomType(e.target.value || null)}>
-          <option value="">ללא סיווג / מותאם אישית</option>
+          <option value="">{t('rooms.detail.noType')}</option>
           {/* A saved type that is not in the catalogue keeps its own option, so opening the picker never silently drops it. */}
           {room.roomType && !ROOM_PROFILES.some((p) => p.key === room.roomType) && (
             <option value={room.roomType}>{room.roomType}</option>
           )}
           {ROOM_PROFILES.map((p) => (
             <option key={p.key} value={p.key}>
-              {p.displayName}
+              {roomProfileName(p)}
             </option>
           ))}
         </select>
@@ -433,21 +431,21 @@ function RoomDetail({
         <button
           className="btn-ghost small template-apply"
           onClick={() => {
-            if (!confirm('להחליף את סוגי העבודה של החדר בסוגי העבודה של התבנית?')) return;
+            if (!confirm(t('rooms.detail.applyTemplateConfirm'))) return;
             onApplyTemplate();
             setTypeNotice(null);
           }}
         >
           <Icon name="reset" size={13} />
-          החל את סוגי העבודה של התבנית
+          {t('rooms.detail.applyTemplate')}
         </button>
       )}
       {!room.roomType && room.detectedType && (
-        <p className="muted">זוהה אוטומטית כ"{roomProfileLabel(room.detectedType)}" — בחר סוג כדי לאשר.</p>
+        <p className="muted">{t('rooms.detail.detectedAs', { type: roomProfileLabel(room.detectedType) ?? '' })}</p>
       )}
 
       <div className="form-row">
-        <label>הערות</label>
+        <label>{t('rooms.detail.notes')}</label>
         <textarea value={room.notes} onChange={(e) => onUpdate({ notes: e.target.value })} rows={2} />
       </div>
 
@@ -458,12 +456,12 @@ function RoomDetail({
         onRemove={onRemoveOpening}
       />
 
-      <span className="section-label">סוגי עבודה</span>
+      <span className="section-label">{t('rooms.detail.workTypes')}</span>
       <div className="work-item-add-row">
-        {WORK_TYPE_ORDER.map((t) => (
-          <button key={t} className="btn-secondary small" onClick={() => onAddWorkItem(t)}>
+        {WORK_TYPE_ORDER.map((type) => (
+          <button key={type} className="btn-secondary small" onClick={() => onAddWorkItem(type)}>
             <Icon name="plus" size={13} />
-            {WORK_TYPE_DEFINITIONS[t].label}
+            {t(`workTypes.${type}`)}
           </button>
         ))}
       </div>
@@ -477,7 +475,7 @@ function RoomDetail({
               <li key={item.id}>
                 <div className="work-item-header">
                   <strong>{item.type}</strong>
-                  <button className="icon-btn danger" title="הסר סוג עבודה" onClick={() => onRemoveWorkItem(item.id)}>
+                  <button className="icon-btn danger" title={t('rooms.detail.removeWorkItem')} onClick={() => onRemoveWorkItem(item.id)}>
                     <Icon name="trash" />
                   </button>
                 </div>
@@ -492,8 +490,8 @@ function RoomDetail({
           return (
             <li key={item.id}>
               <div className="work-item-header">
-                <strong>{def.label}</strong>
-                <button className="icon-btn danger" title="הסר סוג עבודה" onClick={() => onRemoveWorkItem(item.id)}>
+                <strong>{t(`workTypes.${def.id}`)}</strong>
+                <button className="icon-btn danger" title={t('rooms.detail.removeWorkItem')} onClick={() => onRemoveWorkItem(item.id)}>
                   <Icon name="trash" />
                 </button>
               </div>
@@ -501,7 +499,7 @@ function RoomDetail({
               {/* The calculated result is the reason this card exists, so it comes FIRST and in the
                   strongest type in the card. The inputs that feed it follow, compact and quieter. */}
               {noCalibration ? (
-                <div className="work-item-result cal-missing">לא ניתן לחשב כמות עד לכיול העמוד</div>
+                <div className="work-item-result cal-missing">{t('rooms.detail.itemNotCalibrated')}</div>
               ) : (
                 <>
                   <div className="wi-metrics">
@@ -510,31 +508,35 @@ function RoomDetail({
                     {calc.lengthM != null && (
                       <>
                         <span className="wi-metric">
-                          <span className="wi-metric-label">אורך</span>
+                          <span className="wi-metric-label">{t('rooms.detail.length')}</span>
                           <span className="wi-metric-value">
-                            {round(calc.lengthM, 2)} {PANEL_LENGTH_UNIT}
+                            {round(calc.lengthM, 2)} {t('units.lm')}
                           </span>
                         </span>
                         <span className="wi-metric order">
-                          <span className="wi-metric-label">להזמנה</span>
+                          <span className="wi-metric-label">{t('rooms.detail.order')}</span>
                           <span className="wi-metric-value">
-                            {round(calc.lengthM * factor, 2)} {PANEL_LENGTH_UNIT}
+                            {round(calc.lengthM * factor, 2)} {t('units.lm')}
                           </span>
                         </span>
                       </>
                     )}
                     <span className="wi-metric">
                       <span className="wi-metric-label">
-                        {calc.lengthM != null ? 'שטח' : canDeduct ? 'כמות נטו' : 'כמות'}
+                        {calc.lengthM != null
+                          ? t('rooms.detail.area')
+                          : canDeduct
+                            ? t('rooms.detail.netQuantity')
+                            : t('rooms.detail.quantity')}
                       </span>
                       <span className="wi-metric-value">
-                        {round(calc.netM2, 2)} {AREA_UNIT}
+                        {round(calc.netM2, 2)} {t('units.m2')}
                       </span>
                     </span>
                     <span className="wi-metric order">
-                      <span className="wi-metric-label">להזמנה</span>
+                      <span className="wi-metric-label">{t('rooms.detail.order')}</span>
                       <span className="wi-metric-value">
-                        {round(calc.netM2 * factor, 2)} {AREA_UNIT}
+                        {round(calc.netM2 * factor, 2)} {t('units.m2')}
                       </span>
                     </span>
                   </div>
@@ -542,8 +544,18 @@ function RoomDetail({
                   {deducts && (calc.deductedM2 > 0 || (calc.deductedLengthM ?? 0) > 0) && (
                     <p className="wi-deduction">
                       {calc.lengthM != null && calc.grossLengthM != null && calc.deductedLengthM != null
-                        ? `היקף ${round(calc.grossLengthM, 2)} − דלתות ${round(calc.deductedLengthM, 2)} = ${round(calc.lengthM, 2)} ${PANEL_LENGTH_UNIT}`
-                        : `ברוטו ${round(calc.grossM2, 2)} − פתחים ${round(calc.deductedM2, 2)} = נטו ${round(calc.netM2, 2)} ${AREA_UNIT}`}
+                        ? t('rooms.detail.perimeterDeduction', {
+                            gross: round(calc.grossLengthM, 2),
+                            deducted: round(calc.deductedLengthM, 2),
+                            net: round(calc.lengthM, 2),
+                            unit: t('units.lm'),
+                          })
+                        : t('rooms.detail.areaDeduction', {
+                            gross: round(calc.grossM2, 2),
+                            deducted: round(calc.deductedM2, 2),
+                            net: round(calc.netM2, 2),
+                            unit: t('units.m2'),
+                          })}
                     </p>
                   )}
                 </>
@@ -552,20 +564,20 @@ function RoomDetail({
               <div className="wi-controls">
               {item.type === 'tiling' && (
                 <div className="form-row inline">
-                  <label>סוג ריצוף</label>
+                  <label>{t('rooms.detail.tilingCategory')}</label>
                   <select
                     value={item.tilingCategory ?? 'regular'}
                     onChange={(e) => onUpdateWorkItem(item.id, { tilingCategory: e.target.value as TilingCategory })}
                   >
-                    <option value="regular">{TILING_CATEGORY_LABELS.regular}</option>
-                    <option value="as">{TILING_CATEGORY_LABELS.as}</option>
+                    <option value="regular">{t('tilingCategories.regular')}</option>
+                    <option value="as">{t('tilingCategories.as')}</option>
                   </select>
                 </div>
               )}
               {/* The item follows its type's project default height until a height is typed here, which overrides it for this item only. */}
               {def.height && (
                 <div className="form-row inline">
-                  <label>{def.height.label}</label>
+                  <label>{t(`workTypeHeights.${def.id as Exclude<typeof def.id, 'tiling'>}`)}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -583,12 +595,12 @@ function RoomDetail({
                     onChange={(e) => onUpdateWorkItem(item.id, { deductOpenings: e.target.checked })}
                   />
                   {def.deductedOpeningTypes.length === 1 && def.deductedOpeningTypes[0] === 'door'
-                    ? 'הפחת רוחב דלתות'
-                    : 'הפחת פתחים'}
+                    ? t('rooms.detail.deductDoors')
+                    : t('rooms.detail.deductOpenings')}
                 </label>
               )}
               <div className="form-row inline">
-                <label>פחת %</label>
+                <label>{t('rooms.detail.waste')}</label>
                 <input
                   type="number"
                   step="1"
@@ -610,7 +622,7 @@ function RoomDetail({
         {room.workItems.length === 0 && (
           <div className="empty-state">
             <Icon name="wall" size={24} />
-            <p>הוסף סוג עבודה — ריצוף, חיפוי, פנלים, צבע, טיח או איטום — כדי לחשב את כמויות החדר.</p>
+            <p>{t('rooms.detail.noWorkItems')}</p>
           </div>
         )}
       </ul>
@@ -633,6 +645,7 @@ function OpeningsEditor({
   onUpdate: (openingId: string, patch: Partial<Opening>) => void;
   onRemove: (openingId: string) => void;
 }) {
+  const t = useT();
   // A cleared field stores 0 rather than NaN, like the work-item height inputs.
   const num = (value: string) => {
     const parsed = parseFloat(value);
@@ -643,13 +656,15 @@ function OpeningsEditor({
   return (
     <div className="openings">
       <span className="section-label">
-        פתחים{openings.length > 0 ? ` (${round(totalM2, 2)} ${AREA_UNIT})` : ''}
+        {openings.length > 0
+          ? t('rooms.openings.titleWithArea', { area: round(totalM2, 2), unit: t('units.m2') })
+          : t('rooms.openings.title')}
       </span>
       <div className="work-item-add-row">
-        {OPENING_TYPES.map((t) => (
-          <button key={t} className="btn-secondary small" onClick={() => onAdd(t)}>
+        {OPENING_TYPES.map((type) => (
+          <button key={type} className="btn-secondary small" onClick={() => onAdd(type)}>
             <Icon name="plus" size={13} />
-            {OPENING_TYPE_LABELS[t]}
+            {t(`openingTypes.${type}`)}
           </button>
         ))}
       </div>
@@ -659,25 +674,25 @@ function OpeningsEditor({
             <li key={o.id}>
               <select
                 value={o.type}
-                aria-label="סוג פתח"
+                aria-label={t('rooms.openings.type')}
                 onChange={(e) => onUpdate(o.id, { type: e.target.value as OpeningType })}
               >
-                {OPENING_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {OPENING_TYPE_LABELS[t]}
+                {OPENING_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {t(`openingTypes.${type}`)}
                   </option>
                 ))}
               </select>
               <label>
-                <span>רוחב</span>
+                <span>{t('rooms.openings.width')}</span>
                 <input type="number" step="0.05" min="0" value={o.widthM} onChange={(e) => onUpdate(o.id, { widthM: num(e.target.value) })} />
               </label>
               <label>
-                <span>גובה</span>
+                <span>{t('rooms.openings.height')}</span>
                 <input type="number" step="0.05" min="0" value={o.heightM} onChange={(e) => onUpdate(o.id, { heightM: num(e.target.value) })} />
               </label>
               <label>
-                <span>כמות</span>
+                <span>{t('rooms.openings.quantity')}</span>
                 <input
                   type="number"
                   step="1"
@@ -687,9 +702,9 @@ function OpeningsEditor({
                 />
               </label>
               <span className="opening-area">
-                {round(openingAreaM2(o), 2)} {AREA_UNIT}
+                {round(openingAreaM2(o), 2)} {t('units.m2')}
               </span>
-              <button className="icon-btn danger" title="מחק פתח" onClick={() => onRemove(o.id)}>
+              <button className="icon-btn danger" title={t('rooms.openings.delete')} onClick={() => onRemove(o.id)}>
                 <Icon name="trash" />
               </button>
             </li>
@@ -715,6 +730,7 @@ function DuplicateApartmentDialog({
   sourceApartmentNumber: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const duplicateApartment = useAppStore((s) => s.duplicateApartment);
 
   const apartments = apartmentNumbersInProject(project);
@@ -729,7 +745,7 @@ function DuplicateApartmentDialog({
   const run = () => {
     const targetNumber = target.trim();
     // An existing target number is not an error — it just means the rooms join that apartment.
-    if (targetExists && !confirm(`דירה ${targetNumber} כבר קיימת בפרויקט. השכפול יוסיף אליה חדרים נוספים. להמשיך?`)) return;
+    if (targetExists && !confirm(t('rooms.duplicateDialog.targetExistsConfirm', { apartment: targetNumber }))) return;
     duplicateApartment(source, targetNumber);
     onClose();
   };
@@ -737,23 +753,21 @@ function DuplicateApartmentDialog({
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h3>שכפול דירה</h3>
+        <h3>{t('rooms.duplicateDialog.title')}</h3>
         <div className="form-row">
-          <label>דירת מקור</label>
+          <label>{t('rooms.duplicateDialog.source')}</label>
           <select value={source} onChange={(e) => setSource(e.target.value)}>
             {apartments.map((a) => (
               <option key={a} value={a}>
-                דירה {a}
+                {t('rooms.apartment', { apartment: a })}
               </option>
             ))}
           </select>
         </div>
-        <p className="muted">
-          {roomCount} חדרים ישוכפלו עם הגיאומטריה, סוגי העבודה והכמויות שלהם, תחת מספר הדירה החדש.
-        </p>
+        <p className="muted">{t('rooms.duplicateDialog.summary', { count: roomCount })}</p>
 
         <div className="form-row">
-          <label>מספר דירת יעד</label>
+          <label>{t('rooms.duplicateDialog.target')}</label>
           <input
             autoFocus
             value={target}
@@ -761,7 +775,7 @@ function DuplicateApartmentDialog({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && canDuplicate) run();
             }}
-            placeholder="לדוגמה: 13"
+            placeholder={t('rooms.duplicateDialog.targetPlaceholder')}
           />
         </div>
 
@@ -773,10 +787,10 @@ function DuplicateApartmentDialog({
 
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>
-            ביטול
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={run} disabled={!canDuplicate}>
-            שכפל דירה
+            {t('rooms.duplicateDialog.confirm')}
           </button>
         </div>
       </div>

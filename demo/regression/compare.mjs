@@ -153,6 +153,15 @@ async function main() {
     const same = JSON.stringify(ra[key]) === JSON.stringify(rb[key]);
     report(same, `overlay text boxes ${key}`, same ? `${ra[key].length} texts` : firstDifference(JSON.stringify(ra[key], null, 1), JSON.stringify(rb[key], null, 1)));
   }
+  // UI text tour: every state either capture reached.
+  const states = [...new Set([...Object.keys(ra.uiText ?? {}), ...Object.keys(rb.uiText ?? {})])];
+  for (const state of states) {
+    const x = JSON.stringify(ra.uiText?.[state] ?? null, null, 1);
+    const y = JSON.stringify(rb.uiText?.[state] ?? null, null, 1);
+    const unreachable = ra.uiText?.[state]?.unreachable ? ' (unreachable in both)' : '';
+    report(x === y, `ui text ${state}`, x === y ? `${ra.uiText?.[state]?.text?.length ?? 0} lines, ${ra.uiText?.[state]?.attrs?.length ?? 0} attributes${unreachable}` : firstDifference(x, y));
+  }
+
   for (const [label, r] of [[a, ra], [b, rb]]) {
     for (const viewer of ['plan', 'compare']) {
       const moved = boxesMoved(r[`${viewer}-rtl`], r[`${viewer}-ltr`]);

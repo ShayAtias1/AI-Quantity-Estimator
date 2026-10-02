@@ -23,6 +23,7 @@ import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Point } from '../types';
 import { saveComparison as dbSaveComparison } from '../db/database';
 import { createHistoryTracker } from '../lib/undoHistory';
+import { t } from '../i18n';
 import { noteAlignment, trackChangeMarked, trackError } from '../lib/analytics';
 import { resolveAlignmentStatus, resolveCompareScale, type AlignmentStatus, type ResolvedScale } from '../lib/compareScale';
 
@@ -39,7 +40,7 @@ export function createEmptyComparison(
   const now = Date.now();
   const revisions: RevisionLayer[] = revisedFileNames.map((fileName, i) => ({
     id: uuid(),
-    label: revisedFileNames.length > 1 ? `מעודכן ${i + 1}` : 'מעודכן',
+    label: revisedFileNames.length > 1 ? t('defaultNames.revisionNumbered', { number: i + 1 }) : t('defaultNames.revision'),
     fileName,
     opacity: 0.75,
     visible: true,
@@ -547,7 +548,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
     const id = uuid();
     const revision: RevisionLayer = {
       id,
-      label: `מעודכן ${comparison.revisions.length + 1}`,
+      label: t('defaultNames.revisionNumbered', { number: comparison.revisions.length + 1 }),
       fileName,
       opacity: 0.75,
       visible: true,
@@ -865,7 +866,7 @@ export const useCompareStore = create<CompareState>((set, get) => ({
       set({ saveError: null });
     } catch (err) {
       // Stays dirty: the work is not on disk, and the unload guard must keep warning.
-      set({ saveError: err instanceof Error ? err.message : 'שמירה נכשלה' });
+      set({ saveError: err instanceof Error ? err.message : t('errors.saveFailed') });
       console.error('Failed to save comparison', err);
       trackError('save_comparison', err);
     } finally {

@@ -8,6 +8,7 @@ import { polygonCentroid } from './geometry';
 import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
 import { numberAreaMeasurements } from './areaMeasurements';
+import { t } from '../i18n';
 
 const FONT = "'Segoe UI', sans-serif";
 
@@ -128,7 +129,10 @@ export async function exportPlanPageToPdf(
   const pdfDoc = await PDFDocument.create();
   await addCanvasPage(pdfDoc, canvas);
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  await savePdf(pdfDoc, region ? `אזור-${safeName}.pdf` : `עמוד-${pageNumber}-${safeName}.pdf`);
+  await savePdf(
+    pdfDoc,
+    region ? t('exports.planPdf.regionFileName', { name: safeName }) : t('exports.planPdf.pageFileName', { page: pageNumber, name: safeName })
+  );
 }
 
 /**
@@ -159,5 +163,5 @@ export async function exportAllPlanPagesToPdf(
   }
   if (added === 0) return;
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  await savePdf(pdfDoc, `תוכניות-${safeName}.pdf`);
+  await savePdf(pdfDoc, t('exports.planPdf.allPagesFileName', { name: safeName }));
 }

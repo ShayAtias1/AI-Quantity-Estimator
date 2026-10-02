@@ -3,6 +3,7 @@ import { saveAs } from 'file-saver';
 import type { Measurement } from '../types/compare';
 import { drawAreaMeasurementTable } from './areaMeasurementTable';
 import { embedReportFonts } from './pdfText';
+import { t } from '../i18n';
 
 /**
  * One demolition/new-construction table to append after the plan pages. Each carries its own
@@ -65,5 +66,5 @@ export async function exportCompositesAsPdf(
     type: 'application/pdf',
   });
   const safeName = fileBaseName.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(blob, `השוואה-${safeName}.pdf`);
+  saveAs(blob, t('exports.comparePdf.fileName', { name: safeName }));
 }

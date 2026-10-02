@@ -1,4 +1,5 @@
 import Icon, { type IconName } from './Icon';
+import { useT } from '../i18n';
 
 export interface SavedItem {
   id: string;
@@ -35,7 +36,8 @@ export default function SavedItemList({
   openTitle: string;
   deleteTitle: string;
 }) {
-  if (loading) return <p className="muted saved-list-loading">טוען…</p>;
+  const t = useT();
+  if (loading) return <p className="muted saved-list-loading">{t('common.loading')}</p>;
 
   if (items.length === 0) {
     return (

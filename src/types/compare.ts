@@ -29,32 +29,13 @@ export interface ExportRegion {
   height: number;
 }
 
+// Labels for these ids live in the dictionary (src/i18n), shared with the takeoff app.
 export type MarkupTool = 'cloud' | 'arrow' | 'rectangle' | 'text' | 'dimension' | 'mask';
-
-export const MARKUP_TOOL_LABELS: Record<MarkupTool, string> = {
-  cloud: 'ענן סימון',
-  arrow: 'חץ',
-  rectangle: 'מלבן סימון',
-  text: 'הערת טקסט',
-  dimension: 'קו מידה',
-  mask: 'הסתרה',
-};
 
 export type MeasureTool = 'distance' | 'area' | 'perimeter';
 
-export const MEASURE_TOOL_LABELS: Record<MeasureTool, string> = {
-  distance: 'מרחק',
-  area: 'שטח',
-  perimeter: 'היקף',
-};
-
 /** Area-measurement classification, used to tally demolition vs. new-construction quantities. */
 export type AreaKind = 'demolition' | 'construction';
-
-export const AREA_KIND_LABELS: Record<AreaKind, string> = {
-  demolition: 'הריסה',
-  construction: 'בנייה חדשה',
-};
 
 export const DEFAULT_AREA_KIND_COLORS: Record<AreaKind, string> = {
   demolition: '#eab308',
