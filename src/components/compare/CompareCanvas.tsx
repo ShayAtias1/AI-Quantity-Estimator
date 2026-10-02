@@ -20,7 +20,8 @@ import { orderMarkups } from '../../lib/drawMarkup';
 import DimensionShape from '../DimensionShape';
 import TextNoteShape from '../TextNoteShape';
 import TextNoteDialog from '../TextNoteDialog';
-import { tExport, useLanguage, useT } from '../../i18n';
+import { useLanguage, useT, type Language } from '../../i18n';
+import { exportContext } from '../../lib/exportLanguage';
 import { labelDirection } from '../../lib/textDirection';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
@@ -182,7 +183,7 @@ function useLayerRender(
 
 export interface CompareCanvasHandle {
   /** Rasterize the current view (both layers + overlay, with a title/legend header) to a PNG data URL. */
-  exportComposite: () => Promise<{ dataUrl: string; width: number; height: number } | null>;
+  exportComposite: (language: Language) => Promise<{ dataUrl: string; width: number; height: number } | null>;
   /**
    * True once both layers have finished painting the given source page for the given revision —
    * what a multi-page/multi-revision export waits for before capturing, so it can never grab the
@@ -745,7 +746,9 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         return renderedLayerKey === `revision:${revisionId}:${revisedPageNumber}`;
       },
       isRevisedPageMissing: () => revisedPageMissing,
-      exportComposite: async () => {
+      exportComposite: async (exportLanguage) => {
+        // Everything BetterCalc writes onto the exported plan is in this language — the UI's is irrelevant.
+        const x = exportContext(exportLanguage);
         if (!comparison || !pageSize.width || !originalCanvasRef.current || !revisedCanvasRef.current) return null;
         const mult = 2;
         const areaTotals: Record<AreaKind, number> = { demolition: 0, construction: 0 };
@@ -799,12 +802,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
           // the copy is given the font the screen renders it in, which the page's stylesheet
           // supplies there (without it the image falls back to the browser's serif default).
           const overlay = svgRef.current.cloneNode(true) as SVGSVGElement;
-          // The screen labels measurements in the UI language; the exported plan is in EXPORT_LANGUAGE.
+          // The screen labels measurements in the UI language; the exported plan is in the export language.
           for (const label of overlay.querySelectorAll('text[data-measurement-id]')) {
             const measurement = activeRevision?.measurements.find((m) => m.id === label.getAttribute('data-measurement-id'));
             if (measurement) {
-              label.textContent = measurementLabel(measurement, tExport);
-              label.setAttribute('direction', 'rtl');
+              const text = measurementLabel(measurement, x.t);
+              label.textContent = text;
+              label.setAttribute('direction', labelDirection(text, exportLanguage));
             }
           }
           overlay.style.fontFamily = getComputedStyle(svgRef.current).fontFamily;
@@ -841,45 +845,44 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.direction = 'rtl';
-        ctx.textAlign = 'right';
+        // The header reads from its start side: right-aligned RTL as it always has, left-aligned LTR.
+        ctx.direction = x.direction;
+        ctx.textAlign = x.rtl ? 'right' : 'left';
+        const edge = (inset: number) => (x.rtl ? w - inset : inset);
         ctx.fillStyle = '#0f172a';
         ctx.font = `${20 * mult}px 'Segoe UI', sans-serif`;
         ctx.fillText(
           comparison.apartmentNumber
-            ? tExport('compare.exportHeader.withApartment', { name: comparison.name, apartment: comparison.apartmentNumber })
+            ? x.t('compare.exportHeader.withApartment', { name: comparison.name, apartment: comparison.apartmentNumber })
             : comparison.name,
-          w - 16 * mult,
-          30 * mult
+          edge(16 * mult),
+          30 * mult,
+          w - 32 * mult
         );
         ctx.fillStyle = '#8b8f99';
         ctx.font = `${12 * mult}px 'Segoe UI', sans-serif`;
-        ctx.fillText(new Date().toLocaleDateString('he-IL'), w - 16 * mult, 50 * mult);
+        ctx.fillText(x.today(), edge(16 * mult), 50 * mult);
 
-        ctx.textAlign = 'right';
         ctx.font = `${12 * mult}px 'Segoe UI', sans-serif`;
-        ctx.fillStyle = comparison.originalColorTint;
-        ctx.beginPath();
-        ctx.arc(w - 190 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#374151';
-        ctx.fillText(tExport('compare.exportHeader.original'), w - 200 * mult, 50 * mult);
-        ctx.fillStyle = activeRevision?.colorTint ?? '#ef4444';
-        ctx.beginPath();
-        ctx.arc(w - 250 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#374151';
-        ctx.fillText(activeRevision?.label ?? tExport('compare.exportHeader.revisedFallback'), w - 260 * mult, 50 * mult);
+        // Legend items: a colour dot, then its label. The Hebrew header keeps its fixed positions; the
+        // English one flows each item after the previous label, so a longer label never meets its neighbour.
+        const originalLabel = x.t('compare.exportHeader.original');
+        const revisedLabel = activeRevision?.label ?? x.t('compare.exportHeader.revisedFallback');
+        const revisedInset = x.rtl ? 250 * mult : 190 * mult + 10 * mult + ctx.measureText(originalLabel).width + 24 * mult;
+        const legendItem = (dotInset: number, labelInset: number, color: string, text: string, baseline: number) => {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(edge(dotInset), baseline - 4 * mult, 4 * mult, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#374151';
+          ctx.fillText(text, edge(labelInset), baseline, Math.max(w - labelInset - 16 * mult, 50 * mult));
+        };
+        legendItem(190 * mult, 200 * mult, comparison.originalColorTint, originalLabel, 50 * mult);
+        legendItem(revisedInset, revisedInset + 10 * mult, activeRevision?.colorTint ?? '#ef4444', revisedLabel, 50 * mult);
 
         if (hasAreaMeasurements) {
-          const drawAreaLegend = (kind: AreaKind, y: number) => {
-            ctx.fillStyle = comparison.areaKindColors[kind];
-            ctx.beginPath();
-            ctx.arc(w - 190 * mult, y - 4 * mult, 4 * mult, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#374151';
-            ctx.fillText(`${tExport(`areaKinds.${kind}`)}: ${round(areaTotals[kind], 2)} ${tExport('units.m2')}`, w - 200 * mult, y);
-          };
+          const drawAreaLegend = (kind: AreaKind, y: number) =>
+            legendItem(190 * mult, 200 * mult, comparison.areaKindColors[kind], `${x.t(`areaKinds.${kind}`)}: ${round(areaTotals[kind], 2)} ${x.t('units.m2')}`, y);
           drawAreaLegend('demolition', 70 * mult);
           drawAreaLegend('construction', 90 * mult);
         }

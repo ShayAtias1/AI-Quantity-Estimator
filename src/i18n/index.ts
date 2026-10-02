@@ -132,16 +132,10 @@ export function t<K extends TranslationKey>(key: K, ...args: TranslationParams<K
 
 export type TranslateFn = typeof t;
 
-/**
- * The language every Excel and PDF export is written in. Pinned to Hebrew until English reports exist:
- * an English UI must not turn the generated files English by way of the shared `t()`. Export code
- * reaches the dictionary through `tExport` (or passes it where a shared helper takes a `TranslateFn`),
- * never through `t`.
- */
-export const EXPORT_LANGUAGE: Language = 'he';
-
-/** `t` for export documents: always `EXPORT_LANGUAGE`, whatever the UI language is. */
-export const tExport: TranslateFn = (key, ...args) => translate(EXPORT_LANGUAGE, key, ...args);
+/** `t` bound to one language, whatever the UI language is — for output that names its language explicitly (exports). */
+export function translatorFor(language: Language): TranslateFn {
+  return (key, ...args) => translate(language, key, ...args);
+}
 
 /** The current UI language (for stores and libs; components use `useLanguage()`). */
 export function currentLanguage(): Language {

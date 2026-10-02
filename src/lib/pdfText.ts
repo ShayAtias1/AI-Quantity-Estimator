@@ -61,11 +61,10 @@ export interface TextStyle {
   bold?: boolean;
   color?: string;
   /**
-   * Paragraph direction of this string. Defaults to the painter's direction, which is RTL unless the
-   * painter was created otherwise.
+   * Paragraph direction of this string. Defaults to the painter's direction, which the report sets.
    */
   direction?: TextDirection;
-  /** Like canvas `textAlign`: which point of the text `x` names. Defaults to the direction's start side — 'right' for RTL. */
+  /** Like canvas `textAlign`: which point of the text `x` names. Defaults to the direction's start side: right for RTL, left for LTR. */
   align?: TextAlign;
   /**
    * Like canvas `fillText`'s maxWidth: text wider than this is condensed horizontally to fit, at
@@ -75,9 +74,26 @@ export interface TextStyle {
 }
 
 /**
+ * The report font has no "²" (the m² of the English reports), so it is drawn as a small raised "2" in
+ * the same font instead of falling back to an empty box. Text without "²" — all of the Hebrew
+ * reports — comes back as it was, one run each at the text's own size and no rise.
+ */
+function withSuperscripts(runs: { text: string; font: PDFFont }[], size: number): { text: string; font: PDFFont; size: number; rise: number }[] {
+  const out: { text: string; font: PDFFont; size: number; rise: number }[] = [];
+  for (const run of runs) {
+    run.text.split(/(²)/).forEach((part) => {
+      if (part === '') return;
+      if (part === '²') out.push({ text: '2', font: run.font, size: size * 0.62, rise: size * 0.36 });
+      else out.push({ text: part, font: run.font, size, rise: 0 });
+    });
+  }
+  return out;
+}
+
+/**
  * Canvas-like drawing on one PDF page. Coordinates are top-left based, in PDF points, exactly as the
  * canvas layouts were in pixels; `y` for text is the baseline. `direction` is the default paragraph
- * direction of its text — RTL, as every report is today.
+ * direction of its text, given explicitly by the report (RTL for Hebrew, LTR for English).
  */
 export class PdfPainter {
   readonly page: PDFPage;
@@ -85,7 +101,7 @@ export class PdfPainter {
   private fonts: ReportFonts;
   private height: number;
 
-  constructor(page: PDFPage, fonts: ReportFonts, direction: TextDirection = 'rtl') {
+  constructor(page: PDFPage, fonts: ReportFonts, direction: TextDirection) {
     this.page = page;
     this.fonts = fonts;
     this.direction = direction;
@@ -113,16 +129,16 @@ export class PdfPainter {
   /** Width of `text` at `size` as it would be drawn (after bidi reordering). */
   measure(text: string, size: number, bold = false, direction: TextDirection = this.direction): number {
     const pair = bold ? this.fonts.bold : this.fonts.regular;
-    return fontRuns(visualOrder(text, direction), pair).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
+    return withSuperscripts(fontRuns(visualOrder(text, direction), pair), size).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, r.size), 0);
   }
 
   fillText(text: string, x: number, y: number, style: TextStyle) {
     if (!text) return;
     const pair = style.bold ? this.fonts.bold : this.fonts.regular;
     const direction = style.direction ?? this.direction;
-    const runs = fontRuns(visualOrder(text, direction), pair);
     const size = style.size;
-    const natural = runs.reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
+    const runs = withSuperscripts(fontRuns(visualOrder(text, direction), pair), size);
+    const natural = runs.reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, r.size), 0);
     const condense = style.maxWidth != null && natural > style.maxWidth && natural > 0 ? Math.max(style.maxWidth, 1) / natural : 1;
     const width = natural * condense;
     const startX = lineStartX(x, width, style.align ?? startAlign(direction));
@@ -132,8 +148,8 @@ export class PdfPainter {
     this.page.pushOperators(pushGraphicsState(), concatTransformationMatrix(condense, 0, 0, 1, startX, this.height - y));
     let cx = 0;
     for (const run of runs) {
-      this.page.drawText(run.text, { x: cx, y: 0, size, font: run.font, color });
-      cx += run.font.widthOfTextAtSize(run.text, size);
+      this.page.drawText(run.text, { x: cx, y: run.rise, size: run.size, font: run.font, color });
+      cx += run.font.widthOfTextAtSize(run.text, run.size);
     }
     this.page.pushOperators(popGraphicsState());
   }
@@ -201,7 +217,7 @@ function evenOddToNonZero(d: string): string {
     .join('');
 }
 
-/** Report-header logo size, in points: small, on the empty (left, RTL end) side of the title line. */
+/** Report-header logo size, in points: small, on the empty side of the title line (left for RTL, right for LTR). */
 export const REPORT_LOGO_HEIGHT = 12;
 
 /** The app's own BetterCalc lockup (src/assets/logo), read once as vector paths. */
@@ -214,6 +230,11 @@ const LOGO: { paths: LogoPath[]; minX: number; minY: number; width: number; heig
   });
   return { paths, minX, minY, width, height };
 })();
+
+/** Width the logo takes at `height` points tall — to place it flush against the right margin. */
+export function logoWidth(height: number): number {
+  return (LOGO.width * height) / LOGO.height;
+}
 
 /**
  * Draws the BetterCalc logo as vector paths with its top-left corner at (x, y) — top-left page

@@ -5,13 +5,12 @@ import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
 import {
   DEFAULT_LANGUAGE,
-  EXPORT_LANGUAGE,
   LANGUAGES,
   formatDate,
   formatNumber,
   isLanguage,
   t,
-  tExport,
+  translatorFor,
   translate,
   useLanguageStore,
   type Language,
@@ -132,11 +131,11 @@ test('on-plan label direction: Hebrew UI unchanged, English follows the text', (
   assert.equal(labelDirection('A1 סלון', 'en'), 'ltr');
 });
 
-test('exports are pinned to Hebrew whatever the UI language is', async () => {
-  assert.equal(EXPORT_LANGUAGE, 'he');
+test('an export is written in the language it is given, whatever the UI language is', async () => {
   useLanguageStore.setState({ language: 'en' });
   assert.equal(t('workTypes.tiling'), 'Floor Tiling');
-  assert.equal(tExport('workTypes.tiling'), 'ריצוף');
+  assert.equal(translatorFor('he')('workTypes.tiling'), 'ריצוף');
+  assert.equal(translatorFor('en')('workTypes.tiling'), 'Floor Tiling');
 
   const project: Project = { id: 'p', name: 'פרויקט', createdAt: 0, updatedAt: 0, planIds: ['plan-a', 'plan-b'] };
   const dump = async (wb: ExcelJS.Workbook) => {
@@ -148,13 +147,17 @@ test('exports are pinned to Hebrew whatever the UI language is', async () => {
       return { name: s.name, cells };
     });
   };
-  const build = async () => [
-    await dump(buildQuantitiesWorkbook(buildRoomSummaries(PLAN_A), [])),
-    await dump(buildProjectWorkbook(project, [PLAN_A, PLAN_B])),
+  const build = async (language: Language) => [
+    await dump(buildQuantitiesWorkbook(buildRoomSummaries(PLAN_A), [], language)),
+    await dump(buildProjectWorkbook(project, [PLAN_A, PLAN_B], language)),
   ];
+  // The same language gives the same workbook under either UI language ...
   useLanguageStore.setState({ language: 'he' });
-  const hebrew = await build();
+  const heUnderHe = await build('he');
+  const enUnderHe = await build('en');
   useLanguageStore.setState({ language: 'en' });
-  const english = await build();
-  assert.deepEqual(english, hebrew);
+  assert.deepEqual(await build('he'), heUnderHe);
+  assert.deepEqual(await build('en'), enUnderHe);
+  // ... and the two languages really do differ.
+  assert.notDeepEqual(heUnderHe, enUnderHe);
 });

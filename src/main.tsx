@@ -14,8 +14,8 @@ initAnalytics()
  * there is a language selector. `?lang=en` runs the English dictionary (and with it `lang="en"` and
  * `dir="ltr"` from the language's metadata); `?dir=ltr` / `?dir=rtl` additionally forces the page
  * direction, e.g. to see Hebrew in LTR. Neither is persisted, and both are compiled out of production
- * builds — which always open in the saved language, Hebrew by default. Exports are unaffected: they
- * are pinned to `EXPORT_LANGUAGE` and lay themselves out RTL.
+ * builds — which always open in the saved language, Hebrew by default. Exports are written in the
+ * language the UI is showing, so under `?lang=en` they are English too.
  */
 function devOverrides(): { language: Language | null; direction: 'rtl' | 'ltr' | null } {
   if (!import.meta.env.DEV) return { language: null, direction: null };

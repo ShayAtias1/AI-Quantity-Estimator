@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import type { AreaKind, ExtraReportCategory, Measurement, Plan, ReportCategory, ReportCategoryTotal, RoomQuantitySummary } from '../types';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { columnWidths, exportContext, type ExportContext } from './exportLanguage';
 import { numberAreaMeasurements } from './areaMeasurements';
 import { usedExtraCategories } from './quantities';
 import { sheetRef } from './excelSheetRef';
@@ -22,7 +22,7 @@ const C_GRAND = 'FFD5F5E3'; // grand-total row on summary sheet
 const NUM_FMT = '#,##0.00';
 
 /** Data-sheet headers, columns A..Q. The order formulas below address these columns by letter. */
-function dataHeaders(): string[] {
+function dataHeaders({ t }: ExportContext): string[] {
   return [
     t('exports.common.apartment'),
     t('exports.common.room'),
@@ -50,7 +50,7 @@ const DATA_COLUMN_COUNT = 17;
 const DATA_WIDTHS = [8, 26, 17, 16, 18, 14, 15, 15, 12, 12, 15, 15, 13, 13, 26, 17, 21];
 
 /** A category's net and to-order columns on the summary sheet — the original four and the later ones alike. */
-function summaryHeadersFor(category: ReportCategory): string[] {
+function summaryHeadersFor(category: ReportCategory, { t }: ExportContext): string[] {
   const label = t(`reportCategories.${category}`);
   return [t('exports.excel.categoryNetM2', { label }), t('exports.excel.categoryOrderM2', { label })];
 }
@@ -97,11 +97,13 @@ const AREA_HEADER_KEYS = ['number', 'page', 'kind', 'calcMode', 'length', 'heigh
 const AREA_WIDTHS = [6, 8, 14, 18, 14, 14, 14];
 
 /** Adds a "הריסה ובנייה" sheet listing every kind-tagged area/wall measurement (independent of room data) plus per-kind and grand totals. */
-function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measurement[]) {
-  const sheet = workbook.addWorksheet(t('exports.excel.sheets.areas'), { views: [{ rightToLeft: true }] });
-  AREA_WIDTHS.forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measurement[], x: ExportContext) {
+  const { t } = x;
+  const sheet = workbook.addWorksheet(t('exports.excel.sheets.areas'), { views: [{ rightToLeft: x.rtl }] });
+  const areaHeaders = AREA_HEADER_KEYS.map((k) => t(`exports.common.areaHeaders.${k}`));
+  columnWidths(AREA_WIDTHS, areaHeaders, x.language).forEach((w, i) => (sheet.getColumn(i + 1).width = w));
 
-  const headerRow = sheet.addRow(AREA_HEADER_KEYS.map((k) => t(`exports.common.areaHeaders.${k}`)));
+  const headerRow = sheet.addRow(areaHeaders);
   headerRow.eachCell({ includeEmpty: true }, (c) => {
     setFill(c, C_HEADER);
     c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
@@ -161,19 +163,21 @@ const DEDUCTION_WIDTHS = [8, 26, 16, 14, 18, 14];
  * Adds a "ניכוי פתחים" sheet showing gross − openings = net for wall-based work, one row per room
  * and work type where openings were actually deducted. Not added at all when nothing was deducted.
  */
-function addOpeningDeductionSheet(workbook: ExcelJS.Workbook, summaries: RoomQuantitySummary[]) {
+function addOpeningDeductionSheet(workbook: ExcelJS.Workbook, summaries: RoomQuantitySummary[], x: ExportContext) {
+  const { t } = x;
   const rows = summaries.flatMap((s) => s.openingDeductions.map((d) => ({ s, d })));
   if (rows.length === 0) return;
-  const sheet = workbook.addWorksheet(t('exports.excel.sheets.deductions'), { views: [{ rightToLeft: true }] });
-  DEDUCTION_WIDTHS.forEach((w, i) => (sheet.getColumn(i + 1).width = w));
-  const headerRow = sheet.addRow([
+  const sheet = workbook.addWorksheet(t('exports.excel.sheets.deductions'), { views: [{ rightToLeft: x.rtl }] });
+  const deductionHeaders = [
     t('exports.common.apartment'),
     t('exports.common.room'),
     t('exports.excel.deductionHeaders.workType'),
     t('exports.excel.deductionHeaders.gross'),
     t('exports.excel.deductionHeaders.deducted'),
     t('exports.excel.deductionHeaders.net'),
-  ]);
+  ];
+  columnWidths(DEDUCTION_WIDTHS, deductionHeaders, x.language).forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+  const headerRow = sheet.addRow(deductionHeaders);
   headerRow.eachCell({ includeEmpty: true }, (c) => {
     setFill(c, C_HEADER);
     c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
@@ -217,17 +221,20 @@ export async function exportQuantitiesToExcel(
   project: Plan,
   summaries: RoomQuantitySummary[],
   _totals: ReportCategoryTotal[],
-  areaMeasurements: Measurement[] = []
+  areaMeasurements: Measurement[],
+  language: Language
 ) {
-  const workbook = buildQuantitiesWorkbook(summaries, areaMeasurements);
+  const workbook = buildQuantitiesWorkbook(summaries, areaMeasurements, language);
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/octet-stream' });
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(blob, t('exports.excel.fileName', { name: safeName }));
+  saveAs(blob, exportContext(language).t('exports.excel.fileName', { name: safeName }));
 }
 
 /** The plan workbook exactly as `exportQuantitiesToExcel` saves it — built apart so tests can read it. */
-export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMeasurements: Measurement[] = []): ExcelJS.Workbook {
+export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMeasurements: Measurement[], language: Language): ExcelJS.Workbook {
+  const x = exportContext(language);
+  const { t } = x;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'BetterCalc';
   workbook.created = new Date();
@@ -238,22 +245,32 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
   const extras = usedExtraCategories(summaries);
   const extraCols = extraDataColumns(extras);
   const dataHeaderRow = [
-    ...dataHeaders(),
+    ...dataHeaders(x),
     ...extras.flatMap((c) => {
       const label = t(`reportCategories.${c}`);
       return [t('exports.excel.categoryNetM2', { label }), t('exports.excel.categoryWaste', { label }), t('exports.excel.categoryOrder', { label })];
     }),
   ];
-  const dataWidths = [...DATA_WIDTHS, ...extras.flatMap(() => [15, 12, 15])];
-  const summaryHeaders = [t('exports.common.apartment'), ...BASE_CATEGORIES.flatMap(summaryHeadersFor), ...extras.flatMap(summaryHeadersFor)];
-  const summaryWidths = [...SUMMARY_WIDTHS, ...extras.flatMap(() => [16, 18])];
+  const dataWidths = columnWidths([...DATA_WIDTHS, ...extras.flatMap(() => [15, 12, 15])], dataHeaderRow, language);
+  // The per-apartment totals block names each work type in column A (the apartment column), so an
+  // English workbook widens it to the longest of those names; Hebrew keeps its width.
+  if (language !== 'he') {
+    const itemNames = ['tiling_regular', 'tiling_as', 'cladding', 'panels', ...extras].map((c) => t(`reportCategories.${c as ReportCategory}`));
+    dataWidths[0] = Math.max(dataWidths[0], Math.ceil(Math.max(...itemNames.map((n) => n.length)) * 1.1) + 3);
+  }
+  const summaryHeaders = [
+    t('exports.common.apartment'),
+    ...BASE_CATEGORIES.flatMap((c) => summaryHeadersFor(c, x)),
+    ...extras.flatMap((c) => summaryHeadersFor(c, x)),
+  ];
+  const summaryWidths = columnWidths([...SUMMARY_WIDTHS, ...extras.flatMap(() => [16, 18])], summaryHeaders, language);
   const summaryLastCol = summaryHeaders.length;
 
   // Created first so the tab order is [סיכום כולל, כתב כמויות]; populated after the data sheet.
   // Sheet names: the summary sheet's formulas reach the data sheet by this same name — see `sheetRef`.
   const dataSheetName = t('exports.excel.sheets.data');
-  const summarySheet = workbook.addWorksheet(t('exports.excel.sheets.summary'), { views: [{ rightToLeft: true }] });
-  const dataSheet = workbook.addWorksheet(dataSheetName, { views: [{ rightToLeft: true }] });
+  const summarySheet = workbook.addWorksheet(t('exports.excel.sheets.summary'), { views: [{ rightToLeft: x.rtl }] });
+  const dataSheet = workbook.addWorksheet(dataSheetName, { views: [{ rightToLeft: x.rtl }] });
 
   dataWidths.forEach((w, i) => (dataSheet.getColumn(i + 1).width = w));
   summaryWidths.forEach((w, i) => (summarySheet.getColumn(i + 1).width = w));
@@ -539,10 +556,10 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
   }
   }
 
-  addOpeningDeductionSheet(workbook, summaries);
+  addOpeningDeductionSheet(workbook, summaries, x);
 
   if (areaMeasurements.length > 0) {
-    addAreaMeasurementSheet(workbook, areaMeasurements);
+    addAreaMeasurementSheet(workbook, areaMeasurements, x);
   }
 
   return workbook;

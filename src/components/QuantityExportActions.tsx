@@ -7,7 +7,7 @@ import { exportQuantitiesToExcel } from '../lib/exportExcel';
 import { exportQuantitiesToPdf, getExportablePageNumbers } from '../lib/exportQuantitiesPdf';
 import { quantityExportDetails, trackedExport } from '../lib/analytics';
 import { notifyExportFailed } from '../lib/exportFailure';
-import { useT } from '../i18n';
+import { useLanguage, useT } from '../i18n';
 
 /**
  * The two actions that produce BetterCalc's main deliverable — the quantity report — plus their
@@ -19,6 +19,8 @@ import { useT } from '../i18n';
  */
 export default function QuantityExportActions({ variant, onPicked }: { variant: 'menu' | 'buttons'; onPicked?: () => void }) {
   const t = useT();
+  // Exports are written in the language the app is showing (Phase 6 may add a separate choice).
+  const language = useLanguage();
   const project = useAppStore((s) => s.project);
   const projectName = useAppStore((s) => s.currentProject?.name);
   const currentPage = useAppStore((s) => s.currentPage);
@@ -50,7 +52,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       );
       await trackedExport(
         { export_kind: 'quantity_excel', surface, ...quantityExportDetails(project, filteredSummaries, pageNumbers, exportablePages.length) },
-        () => exportQuantitiesToExcel(planForReport(project, projectName), filteredSummaries, filteredTotals, filteredAreaMeasurements)
+        () => exportQuantitiesToExcel(planForReport(project, projectName), filteredSummaries, filteredTotals, filteredAreaMeasurements, language)
       );
     } catch (err) {
       notifyExportFailed(err);
@@ -77,7 +79,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       const filteredTotals = buildReportCategoryTotals(project, filteredSummaries);
       await trackedExport(
         { export_kind: 'quantity_pdf', surface, ...quantityExportDetails(project, filteredSummaries, pageNumbers, exportablePages.length) },
-        () => exportQuantitiesToPdf(planForReport(project, projectName), filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible)
+        () => exportQuantitiesToPdf(planForReport(project, projectName), filteredSummaries, filteredTotals, annotationsVisible, pageNumbers, measurementsVisible, language)
       );
     } catch (err) {
       notifyExportFailed(err);

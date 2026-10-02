@@ -3,8 +3,8 @@ import { saveAs } from 'file-saver';
 import type { Measurement } from '../types/compare';
 import { drawAreaMeasurementTable } from './areaMeasurementTable';
 import { embedReportFonts } from './pdfText';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { exportContext } from './exportLanguage';
 
 /**
  * One demolition/new-construction table to append after the plan pages. Each carries its own
@@ -27,8 +27,8 @@ export interface CompositeImage {
 
 /**
  * Wrap the already-rendered composite rasters (PNG data URLs produced by the canvas viewer — all
- * text and labels are rasterized there, so this stays free of PDF font/encoding concerns, notably
- * Hebrew, which pdf-lib's standard fonts cannot encode) into one downloadable PDF, followed by the
+ * text and labels are rasterized there, in `language`, so this stays free of PDF font/encoding
+ * concerns, notably Hebrew, which pdf-lib's standard fonts cannot encode) into one downloadable PDF, followed by the
  * demolition/new-construction tables that belong to them.
  *
  * One composite per exported source-page/revision pair, in the order the export walked them, with
@@ -37,8 +37,10 @@ export interface CompositeImage {
 export async function exportCompositesAsPdf(
   composites: CompositeImage[],
   fileBaseName: string,
-  changeTables: ChangeTable[] = []
+  changeTables: ChangeTable[],
+  language: Language
 ) {
+  const { t } = exportContext(language);
   if (composites.length === 0) return;
   const pdfDoc = await PDFDocument.create();
 
@@ -59,7 +61,7 @@ export async function exportCompositesAsPdf(
     drawAreaMeasurementTable(pdfDoc, fonts!, table.title, table.measurements, {
       numbering: table.numbering,
       showPage: true,
-    });
+    }, language);
   }
 
   const bytes = await pdfDoc.save();
