@@ -20,7 +20,8 @@ import { orderMarkups } from '../../lib/drawMarkup';
 import DimensionShape from '../DimensionShape';
 import TextNoteShape from '../TextNoteShape';
 import TextNoteDialog from '../TextNoteDialog';
-import { useT } from '../../i18n';
+import { tExport, useLanguage, useT } from '../../i18n';
+import { labelDirection } from '../../lib/textDirection';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
 /** New masks start opaque white, the colour of the paper they hide. */
@@ -131,7 +132,7 @@ function useLayerRender(
   onNumPages: (n: number) => void,
   /** Called with `${layer}:${pageNumber}` once this layer's raster has actually been painted. */
   onRendered?: (key: string) => void
-) {
+): PdfPlanSource | null {
   const [source, setSource] = useState<PdfPlanSource | null>(null);
 
   useEffect(() => {
@@ -175,6 +176,8 @@ function useLayerRender(
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, tint, useSourceColors]);
+
+  return source;
 }
 
 export interface CompareCanvasHandle {
@@ -193,6 +196,7 @@ export interface CompareCanvasHandle {
 
 const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_props, ref) {
   const t = useT();
+  const language = useLanguage();
   const comparison = useCompareStore((s) => s.comparison);
   const currentPageKey = useCompareStore((s) => s.currentPageKey);
   const toolMode = useCompareStore((s) => s.toolMode);
@@ -766,11 +770,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         const bctx = bodyCanvas.getContext('2d');
         if (!bctx) return null;
 
+        const originalRaster = originalCanvasRef.current;
+        const revisedRaster = revisedCanvasRef.current;
         bctx.fillStyle = '#ffffff';
         bctx.fillRect(0, 0, fullW, fullH);
         if (comparison.originalVisible) {
           bctx.globalAlpha = comparison.originalOpacity;
-          bctx.drawImage(originalCanvasRef.current, 0, 0, fullW, fullH);
+          bctx.drawImage(originalRaster, 0, 0, fullW, fullH);
         }
         if (activeRevision?.visible) {
           bctx.globalAlpha = activeRevision.opacity;
@@ -782,7 +788,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
           bctx.rotate((alignment.rotationDeg * Math.PI) / 180);
           bctx.scale(alignment.scale, alignment.scale);
           bctx.translate(-px, -py);
-          bctx.drawImage(revisedCanvasRef.current, 0, 0, revisedPageSize.width * mult, revisedPageSize.height * mult);
+          bctx.drawImage(revisedRaster, 0, 0, revisedPageSize.width * mult, revisedPageSize.height * mult);
           bctx.restore();
         }
         bctx.globalAlpha = 1;
@@ -793,6 +799,14 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
           // the copy is given the font the screen renders it in, which the page's stylesheet
           // supplies there (without it the image falls back to the browser's serif default).
           const overlay = svgRef.current.cloneNode(true) as SVGSVGElement;
+          // The screen labels measurements in the UI language; the exported plan is in EXPORT_LANGUAGE.
+          for (const label of overlay.querySelectorAll('text[data-measurement-id]')) {
+            const measurement = activeRevision?.measurements.find((m) => m.id === label.getAttribute('data-measurement-id'));
+            if (measurement) {
+              label.textContent = measurementLabel(measurement, tExport);
+              label.setAttribute('direction', 'rtl');
+            }
+          }
           overlay.style.fontFamily = getComputedStyle(svgRef.current).fontFamily;
           const svgString = new XMLSerializer().serializeToString(overlay);
           const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
@@ -833,7 +847,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.font = `${20 * mult}px 'Segoe UI', sans-serif`;
         ctx.fillText(
           comparison.apartmentNumber
-            ? t('compare.exportHeader.withApartment', { name: comparison.name, apartment: comparison.apartmentNumber })
+            ? tExport('compare.exportHeader.withApartment', { name: comparison.name, apartment: comparison.apartmentNumber })
             : comparison.name,
           w - 16 * mult,
           30 * mult
@@ -849,13 +863,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.arc(w - 190 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#374151';
-        ctx.fillText(t('compare.exportHeader.original'), w - 200 * mult, 50 * mult);
+        ctx.fillText(tExport('compare.exportHeader.original'), w - 200 * mult, 50 * mult);
         ctx.fillStyle = activeRevision?.colorTint ?? '#ef4444';
         ctx.beginPath();
         ctx.arc(w - 250 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#374151';
-        ctx.fillText(activeRevision?.label ?? t('compare.exportHeader.revisedFallback'), w - 260 * mult, 50 * mult);
+        ctx.fillText(activeRevision?.label ?? tExport('compare.exportHeader.revisedFallback'), w - 260 * mult, 50 * mult);
 
         if (hasAreaMeasurements) {
           const drawAreaLegend = (kind: AreaKind, y: number) => {
@@ -864,7 +878,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             ctx.arc(w - 190 * mult, y - 4 * mult, 4 * mult, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#374151';
-            ctx.fillText(`${t(`areaKinds.${kind}`)}: ${round(areaTotals[kind], 2)} ${t('units.m2')}`, w - 200 * mult, y);
+            ctx.fillText(`${tExport(`areaKinds.${kind}`)}: ${round(areaTotals[kind], 2)} ${tExport('units.m2')}`, w - 200 * mult, y);
           };
           drawAreaLegend('demolition', 70 * mult);
           drawAreaLegend('construction', 90 * mult);
@@ -892,7 +906,6 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       currentPageKey,
       originalPageNumber,
       revisedPageNumber,
-      t,
     ]
   );
 
@@ -942,11 +955,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         className="pdf-content"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: pageSize.width, height: pageSize.height }}
       >
-        {/* The plan canvases are pinned to RTL: pdf.js draws their text with the inherited direction, and the
-            export reuses these rasters, so they must not change with the UI direction. */}
+        {/* The plan's own raster must not depend on the UI language: pdf.js lays its text out with the canvas's
+            direction and language, so the canvases are pinned to the Hebrew RTL context production has always used. */}
         <canvas
           ref={originalCanvasRef}
           dir="rtl"
+          lang="he"
           style={{
             position: 'absolute',
             top: 0,
@@ -970,6 +984,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
           <canvas
             ref={revisedCanvasRef}
             dir="rtl"
+            lang="he"
             className="revised-sheet"
             style={{
               position: 'absolute',
@@ -1121,11 +1136,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
                       <text
                         x={labelX}
                         y={labelY}
+                        data-measurement-id={m.areaKind ? undefined : m.id}
                         textAnchor="middle"
                         dominantBaseline="middle"
                         fontSize={12 / zoom}
                         fill={color}
                         fontWeight={600}
+                        direction={labelDirection(m.areaKind ? '' : measurementLabel(m), language)}
                         transform={isDistance ? `rotate(${angleDeg} ${labelX} ${labelY})` : undefined}
                       >
                         {m.areaKind ? (areaNumbers.get(m.id) ?? '') : measurementLabel(m)}

@@ -3,7 +3,8 @@ import { round } from './geometry';
 import { drawLogo, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { numberAreaMeasurements, type AreaMeasurementLike } from './areaMeasurements';
 import { changeTotals } from './changeMeasurements';
-import { t } from '../i18n';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
+import { tExport as t } from '../i18n';
 
 interface WallMeasurementLike extends AreaMeasurementLike {
   calcMode?: 'footprint' | 'wall';

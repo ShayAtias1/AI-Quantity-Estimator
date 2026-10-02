@@ -4,12 +4,12 @@ import { deleteProject, listProjects, type ProjectWithPlans } from '../db/databa
 import { trackProjectOpened } from '../lib/analytics';
 import SavedItemList, { type SavedItem } from './SavedItemList';
 import Icon from './Icon';
-import { useT, type TranslateFn } from '../i18n';
+import { formatDate, useT, type TranslateFn } from '../i18n';
 
 /** What the row says about a project: its plans and rooms, and when it was last touched. */
 function projectMeta({ project, plans, comparisons }: ProjectWithPlans, t: TranslateFn): string {
   const lastTouched = Math.max(project.updatedAt, ...plans.map((p) => p.updatedAt), ...comparisons.map((c) => c.updatedAt));
-  const updated = t('startScreen.meta.updated', { date: new Date(lastTouched).toLocaleDateString('he-IL') });
+  const updated = t('startScreen.meta.updated', { date: formatDate(lastTouched) });
   if (plans.length === 0 && comparisons.length === 0) return t('startScreen.meta.empty', { updated });
   const rooms = plans.reduce((n, p) => n + p.rooms.length, 0);
   const parts: string[] = [];

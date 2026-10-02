@@ -3,7 +3,8 @@ import { saveAs } from 'file-saver';
 import type { Measurement } from '../types/compare';
 import { drawAreaMeasurementTable } from './areaMeasurementTable';
 import { embedReportFonts } from './pdfText';
-import { t } from '../i18n';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
+import { tExport as t } from '../i18n';
 
 /**
  * One demolition/new-construction table to append after the plan pages. Each carries its own

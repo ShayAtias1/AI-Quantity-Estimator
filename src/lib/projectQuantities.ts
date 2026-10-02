@@ -6,7 +6,7 @@
  */
 
 import type { Plan, ReportCategory, RoomQuantitySummary } from '../types';
-import { t } from '../i18n';
+import { t, type TranslateFn } from '../i18n';
 import { ALL_REPORT_CATEGORIES, buildRoomSummaries, isPageCalibrated } from './quantities';
 import { round } from './geometry';
 
@@ -48,8 +48,8 @@ export function roomCategoryQuantity(s: RoomQuantitySummary, category: ReportCat
  * How a category is read in a project summary: skirting by the running metre (its m² is shown
  * alongside), everything else by m².
  */
-export function categoryPrimaryUnit(category: ReportCategory): string {
-  return t(category === 'panels' ? 'units.lm' : 'units.m2');
+export function categoryPrimaryUnit(category: ReportCategory, tr: TranslateFn = t): string {
+  return tr(category === 'panels' ? 'units.lm' : 'units.m2');
 }
 
 export interface CategoryAmount {
@@ -63,8 +63,8 @@ export interface CategoryAmount {
 export type PlanQuantityStatus = 'empty' | 'no-work' | 'uncalibrated' | 'partial' | 'ready';
 
 /** A plan's status as shown (dictionary `planStatus.<status>`). */
-export function planStatusLabel(status: PlanQuantityStatus): string {
-  return t(`planStatus.${status}`);
+export function planStatusLabel(status: PlanQuantityStatus, tr: TranslateFn = t): string {
+  return tr(`planStatus.${status}`);
 }
 
 export interface PlanQuantityReport {
@@ -154,7 +154,7 @@ export function buildPlanQuantityReport(plan: Plan): PlanQuantityReport {
 }
 
 /** Aggregates every plan of a project, per category, keeping each plan's contribution. */
-export function buildProjectQuantities(plans: Plan[]): ProjectQuantities {
+export function buildProjectQuantities(plans: Plan[], tr: TranslateFn = t): ProjectQuantities {
   const reports = plans.map(buildPlanQuantityReport);
   const totals: ProjectCategoryTotal[] = [];
   for (const category of ALL_REPORT_CATEGORIES) {
@@ -166,8 +166,8 @@ export function buildProjectQuantities(plans: Plan[]): ProjectQuantities {
     perPlan.forEach((p) => addInto(sum, p));
     totals.push({
       category,
-      label: t(`reportCategories.${category}`),
-      unit: categoryPrimaryUnit(category),
+      label: tr(`reportCategories.${category}`),
+      unit: categoryPrimaryUnit(category, tr),
       ...rounded(sum),
       perPlan,
     });

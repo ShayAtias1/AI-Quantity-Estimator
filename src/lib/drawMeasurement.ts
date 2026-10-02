@@ -1,5 +1,7 @@
 import type { Point } from '../types';
 import { polygonCentroid, tickMarkEndpoints } from './geometry';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew): the label's unit is not the UI's.
+import { tExport } from '../i18n';
 import { measurementLabel, type MeasurementValueFields } from './measurementValues';
 
 const FONT = "'Segoe UI', sans-serif";
@@ -120,7 +122,7 @@ export function drawMeasurementOnCanvas(
     ctx.font = `bold ${12 * mult}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const text = isWall ? `${number ?? ''}` : measurementLabel(m);
+    const text = isWall ? `${number ?? ''}` : measurementLabel(m, tExport);
     if (angleRad) {
       ctx.translate(labelX, labelY);
       ctx.rotate(angleRad);

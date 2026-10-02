@@ -3,7 +3,8 @@ import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type Report
 import { saveAs } from 'file-saver';
 import type { Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
 import { DEFAULT_AREA_KIND_COLORS } from '../types';
-import { t } from '../i18n';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
+import { tExport as t } from '../i18n';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import {
@@ -207,7 +208,7 @@ function drawQuantityTablePages(
     headerText(columns[1].header, colRight[1], colWidths[1], top + h / 2 + 5, 12.5);
     // Group labels over each pair of columns.
     const groups = [
-      ...categories.map((c) => t('exports.quantityPdf.categoryWithUnit', { label: t(`reportCategories.${c}`), unit: categoryPrimaryUnit(c) })),
+      ...categories.map((c) => t('exports.quantityPdf.categoryWithUnit', { label: t(`reportCategories.${c}`), unit: categoryPrimaryUnit(c, t) })),
       t('exports.quantityPdf.columns.details'),
     ];
     groups.forEach((label, g) => {
@@ -346,7 +347,7 @@ function drawQuantityTablePages(
 
   const roomCells = (s: RoomQuantitySummary): Cell[] => {
     const openings = roomsById.get(s.roomId)?.openings ?? [];
-    const openingsText = openingCountsText(openings);
+    const openingsText = openingCountsText(openings, t);
     const openingsArea = Math.round(openings.reduce((sum, o) => sum + openingAreaM2(o), 0) * 100) / 100;
     return [
       { main: s.apartmentNumber || DASH },

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useT, type TranslateFn } from '../i18n';
+import { formatDate, formatNumber, useLanguage, useT, type TranslateFn } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import { buildProjectQuantities, planStatusLabel, type CategoryAmount } from '../lib/projectQuantities';
 import { exportProjectToExcel } from '../lib/exportProjectExcel';
@@ -22,12 +22,12 @@ function comparisonMeta(c: Comparison, t: TranslateFn): string {
         ? t('projectOverview.comparisonMeta.oneRevision')
         : t('projectOverview.comparisonMeta.revisions', { count: c.revisions.length })
   );
-  parts.push(t('projectOverview.comparisonMeta.updated', { date: new Date(c.updatedAt).toLocaleDateString('he-IL') }));
+  parts.push(t('projectOverview.comparisonMeta.updated', { date: formatDate(c.updatedAt) }));
   return parts.join(' · ');
 }
 
 const DASH = '—';
-const fmt = (v: number | null) => (v == null ? DASH : v.toLocaleString('he-IL', { maximumFractionDigits: 2 }));
+const fmt = (v: number | null) => (v == null ? DASH : formatNumber(v));
 
 /** The main reading of an amount: running metres for skirting, m² for everything else. */
 function primary(a: CategoryAmount, t: TranslateFn): string {
@@ -66,7 +66,9 @@ export default function ProjectOverview() {
     void refreshProjectPlans();
   }, [refreshProjectPlans]);
 
-  const quantities = useMemo(() => buildProjectQuantities(plans), [plans]);
+  const language = useLanguage();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the labels inside depend on the UI language
+  const quantities = useMemo(() => buildProjectQuantities(plans), [plans, language]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);

@@ -8,7 +8,7 @@
  * saved label when a document is read.
  */
 
-import { t } from '../i18n';
+import { t, type TranslateFn } from '../i18n';
 import { round } from './geometry';
 
 /** The fields a label is made from — common to both apps' `Measurement` types. */
@@ -21,13 +21,13 @@ export interface MeasurementValueFields {
 }
 
 /** A distance or perimeter as shown: metres to the centimetre ("3.24 מ'"). */
-export function formatLengthM(lengthM: number): string {
-  return `${round(lengthM, 2)} ${t('units.m')}`;
+export function formatLengthM(lengthM: number, tr: TranslateFn = t): string {
+  return `${round(lengthM, 2)} ${tr('units.m')}`;
 }
 
 /** An area as shown. `areaM2` is stored already rounded to two decimals. */
-export function formatAreaM2(areaM2: number): string {
-  return `${areaM2} ${t('units.m2')}`;
+export function formatAreaM2(areaM2: number, tr: TranslateFn = t): string {
+  return `${areaM2} ${tr('units.m2')}`;
 }
 
 // The exact label formats older builds saved. Fixed for good — they describe data already on disk,
@@ -51,15 +51,15 @@ function valueFromSavedLabel(label: string | undefined, format: (v: number) => s
 }
 
 /** The text shown for a measurement, made from its stored number. */
-export function measurementLabel(m: MeasurementValueFields): string {
+export function measurementLabel(m: MeasurementValueFields, tr: TranslateFn = t): string {
   if (m.tool === 'area') {
-    if (isNumber(m.areaM2)) return formatAreaM2(m.areaM2);
+    if (isNumber(m.areaM2)) return formatAreaM2(m.areaM2, tr);
     // Saved before areas kept `areaM2`. The number is read off the label for display only: storing it
     // as `areaM2` would start counting these areas in totals that have always left them out.
     const legacy = valueFromSavedLabel(m.label, savedAreaLabel);
-    return legacy != null ? formatAreaM2(legacy) : (m.label ?? '');
+    return legacy != null ? formatAreaM2(legacy, tr) : (m.label ?? '');
   }
-  if (isNumber(m.lengthM)) return formatLengthM(m.lengthM);
+  if (isNumber(m.lengthM)) return formatLengthM(m.lengthM, tr);
   return m.label ?? '';
 }
 

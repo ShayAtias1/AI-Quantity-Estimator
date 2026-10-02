@@ -10,7 +10,7 @@ import type {
   WorkItem,
 } from '../types';
 import { EXTRA_REPORT_CATEGORIES } from '../types';
-import { t } from '../i18n';
+import { t, type TranslateFn } from '../i18n';
 import { polygonAreaM2, polygonPerimeterM, round } from './geometry';
 import { projectHeightDefault, projectWasteDefault, workTypeDefinition, WORK_TYPE_DEFINITIONS } from './workTypes';
 
@@ -307,7 +307,7 @@ export function roomOpeningDetails(room: Room): OpeningDetail[] {
  * A room's openings in a few words, counted by type: "2 דלתות · חלון". Counts the `quantity` of
  * each row, so one row of 2 identical windows reads the same as two rows of one.
  */
-export function openingCountsText(openings: Opening[]): string {
+export function openingCountsText(openings: Opening[], tr: TranslateFn = t): string {
   const counts = new Map<Opening['type'], number>();
   for (const o of openings) {
     const n = nonNegative(o.quantity);
@@ -317,7 +317,7 @@ export function openingCountsText(openings: Opening[]): string {
     .filter((type) => counts.has(type))
     .map((type) => {
       const n = counts.get(type)!;
-      return n === 1 ? t(`openingTypes.${type}`) : `${n} ${t(`openingTypesPlural.${type}`)}`;
+      return n === 1 ? tr(`openingTypes.${type}`) : `${n} ${tr(`openingTypesPlural.${type}`)}`;
     })
     .join(' · ');
 }
