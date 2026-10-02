@@ -787,8 +787,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
 
         if (svgRef.current) {
           // Rasterized as a standalone image, the overlay inherits nothing from the page — its
-          // direction="rtl" (and each text note's own) is what lays the text out as on screen.
-          const svgString = new XMLSerializer().serializeToString(svgRef.current);
+          // direction="rtl" (and each text note's own) is what lays the text out as on screen, and
+          // the copy is given the font the screen renders it in, which the page's stylesheet
+          // supplies there (without it the image falls back to the browser's serif default).
+          const overlay = svgRef.current.cloneNode(true) as SVGSVGElement;
+          overlay.style.fontFamily = getComputedStyle(svgRef.current).fontFamily;
+          const svgString = new XMLSerializer().serializeToString(overlay);
           const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
           const img = new Image(fullW, fullH);
           await new Promise<void>((resolve, reject) => {
