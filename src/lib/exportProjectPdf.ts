@@ -1,9 +1,9 @@
 import { PDFDocument } from 'pdf-lib';
-import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
+import { drawLogo, embedReportFonts, logoWidth, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, Project } from '../types';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { exportContext, type ExportContext } from './exportLanguage';
 import { buildProjectQuantities, planStatusLabel, roomCategoryQuantity, type CategoryAmount } from './projectQuantities';
 
 /*
@@ -31,7 +31,6 @@ interface TableRow {
   bold?: boolean;
 }
 
-const fmt = (v: number | null | undefined) => (v == null ? DASH : v.toLocaleString('he-IL', { maximumFractionDigits: 2 }));
 
 /** Paginated vector writer: section titles and tables, a new page whenever one fills up. */
 class ReportWriter {
@@ -41,8 +40,15 @@ class ReportWriter {
   private fonts: ReportFonts;
   private title: string;
   private subtitle: string;
+  private x: ExportContext;
+  /** Where lines of text and table rows begin: the right margin for RTL, the left for LTR. */
+  private startX: number;
+  private sign: 1 | -1;
 
-  constructor(doc: PDFDocument, fonts: ReportFonts, title: string, subtitle: string) {
+  constructor(doc: PDFDocument, fonts: ReportFonts, title: string, subtitle: string, x: ExportContext) {
+    this.x = x;
+    this.startX = x.rtl ? PAGE_W - MARGIN : MARGIN;
+    this.sign = x.rtl ? -1 : 1;
     this.doc = doc;
     this.fonts = fonts;
     this.title = title;
@@ -51,10 +57,10 @@ class ReportWriter {
   }
 
   private newPage() {
-    this.pt = new PdfPainter(this.doc.addPage([PAGE_W, PAGE_H]), this.fonts);
-    this.pt.fillText(this.title, PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
-    this.pt.fillText(this.subtitle, PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
-    drawLogo(this.pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
+    this.pt = new PdfPainter(this.doc.addPage([PAGE_W, PAGE_H]), this.fonts, this.x.direction);
+    this.pt.fillText(this.title, this.startX, 40, { size: 20, bold: true, color: '#0f172a' });
+    this.pt.fillText(this.subtitle, this.startX, 60, { size: 12, color: '#8b8f99' });
+    drawLogo(this.pt, this.x.rtl ? MARGIN : PAGE_W - MARGIN - logoWidth(REPORT_LOGO_HEIGHT), 28, REPORT_LOGO_HEIGHT);
     this.y = 84;
   }
 
@@ -66,11 +72,11 @@ class ReportWriter {
     const usable = PAGE_W - MARGIN * 2;
     this.pt.fillRect(MARGIN, this.y, usable, ROW_H, bg);
     this.pt.strokeRect(MARGIN, this.y, usable, ROW_H, C_BORDER);
-    let x = PAGE_W - MARGIN;
+    let edge = this.startX;
     cells.forEach((cell, i) => {
       const w = widths[i] ?? 0;
-      this.pt.fillText(cell, x - w / 2, this.y + ROW_H / 2 + 4, { size: 12, bold, color, align: 'center', maxWidth: w - 6 });
-      x -= w;
+      this.pt.fillText(cell, edge + (this.sign * w) / 2, this.y + ROW_H / 2 + 4, { size: 12, bold, color, align: 'center', maxWidth: w - 6 });
+      edge += this.sign * w;
     });
     this.y += ROW_H;
   }
@@ -78,7 +84,7 @@ class ReportWriter {
   section(title: string) {
     this.ensure(3);
     this.y += 10;
-    this.pt.fillText(title, PAGE_W - MARGIN, this.y + 16, { size: 15, bold: true, color: '#0f172a' });
+    this.pt.fillText(title, this.startX, this.y + 16, { size: 15, bold: true, color: '#0f172a' });
     this.y += 26;
   }
 
@@ -101,12 +107,12 @@ class ReportWriter {
 
   note(text: string) {
     this.ensure(1);
-    this.pt.fillText(text, PAGE_W - MARGIN, this.y + 16, { size: 12, bold: true, color: '#92400e' });
+    this.pt.fillText(text, this.startX, this.y + 16, { size: 12, bold: true, color: '#92400e' });
     this.y += ROW_H;
   }
 }
 
-const amountHeaders = () => {
+const amountHeaders = ({ t }: ExportContext) => {
   const m2 = t('units.m2');
   const lm = t('units.lm');
   return [
@@ -116,27 +122,31 @@ const amountHeaders = () => {
     t('exports.projectPdf.orderUnit', { unit: lm }),
   ];
 };
-const amountCells = (a: CategoryAmount) => [fmt(a.quantityM2), fmt(a.orderM2), fmt(a.lengthM), fmt(a.orderLengthM)];
+const amountCells = (a: CategoryAmount, fmt: (v: number | null | undefined) => string) => [fmt(a.quantityM2), fmt(a.orderM2), fmt(a.lengthM), fmt(a.orderLengthM)];
 
-export async function exportProjectToPdf(project: Project, plans: Plan[]) {
+export async function exportProjectToPdf(project: Project, plans: Plan[], language: Language) {
+  const x = exportContext(language);
+  const { t } = x;
+  const fmt = (v: number | null | undefined) => (v == null ? DASH : x.number(v));
   const q = buildProjectQuantities(plans, t);
-  const date = new Date().toLocaleDateString('he-IL');
+  const date = x.today();
   const pdfDoc = await PDFDocument.create();
   const fonts = await embedReportFonts(pdfDoc);
   const report = new ReportWriter(
     pdfDoc,
     fonts,
     t('exports.projectPdf.title', { name: project.name }),
-    t('exports.projectPdf.subtitle', { count: plans.length, date })
+    t('exports.projectPdf.subtitle', { count: plans.length, date }),
+    x
   );
-  const AMOUNT_HEADERS = amountHeaders();
+  const AMOUNT_HEADERS = amountHeaders(x);
   const notCalibrated = t('exports.common.notCalibrated');
 
   report.section(t('exports.projectPdf.summary'));
   if (q.totals.length === 0) {
     report.note(t('exports.projectPdf.empty'));
   } else {
-    report.table([t('exports.common.item'), ...AMOUNT_HEADERS], [18, 12, 12, 12, 12], q.totals.map((total) => ({ cells: [total.label, ...amountCells(total)] })));
+    report.table([t('exports.common.item'), ...AMOUNT_HEADERS], [18, 12, 12, 12, 12], q.totals.map((total) => ({ cells: [total.label, ...amountCells(total, fmt)] })));
   }
   if (q.uncalibratedRoomCount > 0) report.note(t('exports.projectPdf.uncalibratedNote', { count: q.uncalibratedRoomCount }));
 
@@ -161,8 +171,8 @@ export async function exportProjectToPdf(project: Project, plans: Plan[]) {
       [t('exports.common.item'), t('exports.common.plan'), ...AMOUNT_HEADERS],
       [16, 20, 12, 12, 12, 12],
       q.totals.flatMap((total) => [
-        { cells: [total.label, t('exports.common.total'), ...amountCells(total)], bg: C_TOTAL, bold: true },
-        ...total.perPlan.map((p) => ({ cells: ['', p.planName, ...amountCells(p)] })),
+        { cells: [total.label, t('exports.common.total'), ...amountCells(total, fmt)], bg: C_TOTAL, bold: true },
+        ...total.perPlan.map((p) => ({ cells: ['', p.planName, ...amountCells(p, fmt)] })),
       ])
     );
 

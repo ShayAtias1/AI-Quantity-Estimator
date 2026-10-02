@@ -183,7 +183,7 @@ export default function ProjectOverview() {
                   <button
                     className="btn-secondary"
                     disabled={!!busy || plans.length === 0}
-                    onClick={() => void run('excel', () => runProjectExport('project_excel', () => exportProjectToExcel(project, plans)))}
+                    onClick={() => void run('excel', () => runProjectExport('project_excel', () => exportProjectToExcel(project, plans, language)))}
                     title={t('projectOverview.excelHint')}
                   >
                     <Icon name="sheet" />
@@ -192,7 +192,7 @@ export default function ProjectOverview() {
                   <button
                     className="btn-secondary"
                     disabled={!!busy || plans.length === 0}
-                    onClick={() => void run('pdf', () => runProjectExport('project_pdf', () => exportProjectToPdf(project, plans)))}
+                    onClick={() => void run('pdf', () => runProjectExport('project_pdf', () => exportProjectToPdf(project, plans, language)))}
                     title={t('projectOverview.pdfHint')}
                   >
                     <Icon name="download" />

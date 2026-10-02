@@ -1,10 +1,11 @@
 import { PDFDocument } from 'pdf-lib';
-import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
+import { drawLogo, embedReportFonts, logoWidth, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
 import { DEFAULT_AREA_KIND_COLORS } from '../types';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { exportContext, type ExportContext } from './exportLanguage';
+import { labelDirection } from './textDirection';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import {
@@ -53,7 +54,8 @@ async function renderFramedPlanPage(
   mult: number,
   showMarkings: boolean,
   showMeasurements: boolean,
-  areaNumbers: Map<string, number>
+  areaNumbers: Map<string, number>,
+  language: Language
 ): Promise<{ dataUrl: string; width: number; height: number; headerH: number } | null> {
   let source;
   try {
@@ -106,9 +108,12 @@ async function renderFramedPlanPage(
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3 * mult;
       ctx.strokeStyle = '#ffffff';
+      // A room's name is the user's own text: it keeps its own direction (Hebrew exports: RTL as ever).
+      ctx.direction = labelDirection(r.name, language);
       ctx.strokeText(r.name, labelX, labelY);
       ctx.fillStyle = r.color;
       ctx.fillText(r.name, labelX, labelY);
+      ctx.direction = 'rtl';
       ctx.textBaseline = 'alphabetic';
     }
 
@@ -121,7 +126,7 @@ async function renderFramedPlanPage(
       ctx.save();
       ctx.translate(0, headerH);
       for (const m of measurements) {
-        drawMeasurementOnCanvas(ctx, m, mult, 0, 0, m.areaKind ? areaKindColors[m.areaKind] : undefined, areaNumbers.get(m.id));
+        drawMeasurementOnCanvas(ctx, m, mult, 0, 0, language, m.areaKind ? areaKindColors[m.areaKind] : undefined, areaNumbers.get(m.id));
       }
       ctx.restore();
     }
@@ -146,8 +151,10 @@ function drawQuantityTablePages(
   fonts: ReportFonts,
   project: Plan,
   summaries: RoomQuantitySummary[],
-  totals: ReportCategoryTotal[]
+  totals: ReportCategoryTotal[],
+  x: ExportContext
 ): void {
+  const { t } = x;
   const PAGE_W = 1600;
   const PAGE_H = 1132;
   const MARGIN = 40;
@@ -159,6 +166,12 @@ function drawQuantityTablePages(
   const BLOCK_ROW_H = 30;
   const usableWidth = PAGE_W - MARGIN * 2;
   const right = PAGE_W - MARGIN;
+  // Everything is laid out from the reading start — the right margin for RTL, the left for LTR.
+  const sign = x.rtl ? -1 : 1;
+  const startX = x.rtl ? right : MARGIN;
+  const textAlign = x.rtl ? 'right' : 'left';
+  /** The side of the page the report's logo goes on: the one the title does not start from. */
+  const logoX = x.rtl ? MARGIN : right - logoWidth(REPORT_LOGO_HEIGHT);
 
   // The same hierarchy as the on-screen table: identity, then one group per work type the plan uses
   // (net · to order, waste and the skirting m² under the numbers), then the room's openings and notes.
@@ -173,7 +186,8 @@ function drawQuantityTablePages(
     text?: boolean;
   }
   const columns: Column[] = [
-    { header: t('exports.common.apartment'), weight: 7 },
+    // 'Apartment' is a longer word than the Hebrew 'דירה', so the English column is a little wider.
+    { header: t('exports.common.apartment'), weight: x.rtl ? 7 : 10 },
     { header: t('exports.common.room'), weight: 16, text: true },
     ...categories.flatMap((): Column[] => [
       { header: t('exports.quantityPdf.columns.net'), weight: 11, groupStart: true },
@@ -184,16 +198,16 @@ function drawQuantityTablePages(
   ];
   const totalWeight = columns.reduce((a, c) => a + c.weight, 0);
   const colWidths = columns.map((c) => (usableWidth * c.weight) / totalWeight);
-  /** x of each column's right (RTL start) edge. */
-  const colRight = colWidths.map((_, i) => right - colWidths.slice(0, i).reduce((a, b) => a + b, 0));
+  /** x of each column's start edge (right for RTL, left for LTR). */
+  const colStart = colWidths.map((_, i) => startX + sign * colWidths.slice(0, i).reduce((a, b) => a + b, 0));
 
   let pt!: PdfPainter;
   let y = 0;
 
   const verticals = (top: number, height: number, soft: string, firm: string) => {
     for (let i = 1; i < columns.length; i++) {
-      const x = colRight[i];
-      pt.line(x, top, x, top + height, columns[i].groupStart ? firm : soft);
+      const lx = colStart[i];
+      pt.line(lx, top, lx, top + height, columns[i].groupStart ? firm : soft);
     }
   };
 
@@ -201,11 +215,11 @@ function drawQuantityTablePages(
     const top = y;
     const h = GROUP_ROW_H + SUB_ROW_H;
     pt.fillRect(MARGIN, top, usableWidth, h, C_HEADER);
-    const headerText = (text: string, x: number, w: number, baseline: number, size: number) =>
-      pt.fillText(text, x - w / 2, baseline, { size, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 8 });
+    const headerText = (text: string, edge: number, w: number, baseline: number, size: number) =>
+      pt.fillText(text, edge + (sign * w) / 2, baseline, { size, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 8 });
     // Apartment and room span both header rows.
-    headerText(columns[0].header, colRight[0], colWidths[0], top + h / 2 + 5, 12.5);
-    headerText(columns[1].header, colRight[1], colWidths[1], top + h / 2 + 5, 12.5);
+    headerText(columns[0].header, colStart[0], colWidths[0], top + h / 2 + 5, 12.5);
+    headerText(columns[1].header, colStart[1], colWidths[1], top + h / 2 + 5, 12.5);
     // Group labels over each pair of columns.
     const groups = [
       ...categories.map((c) => t('exports.quantityPdf.categoryWithUnit', { label: t(`reportCategories.${c}`), unit: categoryPrimaryUnit(c, t) })),
@@ -213,27 +227,27 @@ function drawQuantityTablePages(
     ];
     groups.forEach((label, g) => {
       const i = 2 + g * 2;
-      headerText(label, colRight[i], colWidths[i] + colWidths[i + 1], top + GROUP_ROW_H / 2 + 5, 12.5);
+      headerText(label, colStart[i], colWidths[i] + colWidths[i + 1], top + GROUP_ROW_H / 2 + 5, 12.5);
     });
     for (let i = 2; i < columns.length; i++) {
-      headerText(columns[i].header, colRight[i], colWidths[i], top + GROUP_ROW_H + SUB_ROW_H / 2 + 4, 11);
+      headerText(columns[i].header, colStart[i], colWidths[i], top + GROUP_ROW_H + SUB_ROW_H / 2 + 4, 11);
     }
     // The line under the group labels stops short of the two identity columns they do not cover.
-    pt.line(MARGIN, top + GROUP_ROW_H, colRight[2], top + GROUP_ROW_H, C_HEADER_LINE);
+    pt.line(x.rtl ? MARGIN : colStart[2], top + GROUP_ROW_H, x.rtl ? colStart[2] : right, top + GROUP_ROW_H, C_HEADER_LINE);
     for (let i = 1; i < columns.length; i++) {
-      const x = colRight[i];
+      const lx = colStart[i];
       // Inside a group, the boundary only runs through the lower header row.
       const from = columns[i].groupStart || i === 2 || i === 1 ? top : top + GROUP_ROW_H;
-      pt.line(x, from, x, top + h, C_HEADER_LINE);
+      pt.line(lx, from, lx, top + h, C_HEADER_LINE);
     }
     y += h;
   };
 
   const newPage = (withColumnHeader: boolean) => {
-    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
-    pt.fillText(t('exports.quantityPdf.title', { name: project.name }), right, 40, { size: 20, bold: true, color: '#0f172a' });
-    drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
-    pt.fillText(new Date().toLocaleDateString('he-IL'), right, 60, { size: 12, color: '#8b8f99' });
+    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts, x.direction);
+    pt.fillText(t('exports.quantityPdf.title', { name: project.name }), startX, 40, { size: 20, bold: true, color: '#0f172a' });
+    drawLogo(pt, logoX, 28, REPORT_LOGO_HEIGHT);
+    pt.fillText(x.today(), startX, 60, { size: 12, color: '#8b8f99' });
     y = 84;
     if (withColumnHeader) drawColumnHeader();
   };
@@ -276,19 +290,19 @@ function drawQuantityTablePages(
     cells.forEach((cell, i) => {
       const w = colWidths[i];
       const text = columns[i].text;
-      const x = text ? colRight[i] - 6 : colRight[i] - w / 2;
-      const align = text ? 'right' : 'center';
+      const cx = text ? colStart[i] + sign * 6 : colStart[i] + (sign * w) / 2;
+      const align = text ? textAlign : 'center';
       const bold = i === 1;
       if (text && !cell.sub) {
         const lines = wrapTwoLines(cell.main, 11.5, w - 12, bold);
         if (lines.length === 2) {
-          lines.forEach((line, l) => pt.fillText(line, x, y + 17 + l * 14, { size: 11.5, color: cell.color, align, maxWidth: w - 12, bold }));
+          lines.forEach((line, l) => pt.fillText(line, cx, y + 17 + l * 14, { size: 11.5, color: cell.color, align, maxWidth: w - 12, bold }));
           return;
         }
       }
       const mainBaseline = cell.sub ? y + 17 : y + ROW_H / 2 + 4;
-      pt.fillText(cell.main, x, mainBaseline, { size: 12, color: cell.color, align, maxWidth: w - 12, bold });
-      if (cell.sub) pt.fillText(cell.sub, x, y + 32, { size: 9.5, color: C_SUB, align, maxWidth: w - 12 });
+      pt.fillText(cell.main, cx, mainBaseline, { size: 12, color: cell.color, align, maxWidth: w - 12, bold });
+      if (cell.sub) pt.fillText(cell.sub, cx, y + 32, { size: 9.5, color: C_SUB, align, maxWidth: w - 12 });
     });
     y += ROW_H;
   };
@@ -309,24 +323,25 @@ function drawQuantityTablePages(
     const width = usableWidth * widthFraction;
     const sum = weights.reduce((a, b) => a + b, 0);
     const widths = weights.map((w) => (width * w) / sum);
+    const blockLeft = x.rtl ? right - width : MARGIN;
     const drawLine = (cells: string[], bg: string, bold: boolean, color = '#1e293b') => {
-      pt.fillRect(right - width, y, width, BLOCK_ROW_H, bg);
-      pt.strokeRect(right - width, y, width, BLOCK_ROW_H, C_BORDER);
-      let x = right;
+      pt.fillRect(blockLeft, y, width, BLOCK_ROW_H, bg);
+      pt.strokeRect(blockLeft, y, width, BLOCK_ROW_H, C_BORDER);
+      let edge = startX;
       cells.forEach((cell, i) => {
         const w = widths[i];
-        if (i > 0) pt.line(x, y, x, y + BLOCK_ROW_H, C_BORDER);
-        if (i < labelColumns) pt.fillText(cell, x - 8, y + BLOCK_ROW_H / 2 + 4, { size: 12, bold, color, maxWidth: w - 14 });
-        else pt.fillText(cell, x - w / 2, y + BLOCK_ROW_H / 2 + 4, { size: 12, bold, color, align: 'center', maxWidth: w - 8 });
-        x -= w;
+        if (i > 0) pt.line(edge, y, edge, y + BLOCK_ROW_H, C_BORDER);
+        if (i < labelColumns) pt.fillText(cell, edge + sign * 8, y + BLOCK_ROW_H / 2 + 4, { size: 12, bold, color, maxWidth: w - 14 });
+        else pt.fillText(cell, edge + (sign * w) / 2, y + BLOCK_ROW_H / 2 + 4, { size: 12, bold, color, align: 'center', maxWidth: w - 8 });
+        edge += sign * w;
       });
       y += BLOCK_ROW_H;
     };
     const header = () => drawLine(headers, C_TOTAL_HDR, true);
     ensure(BLOCK_ROW_H * ((title ? 1 : 0) + 1 + Math.min(rows.length, 3)), false);
     if (title) {
-      pt.fillRect(right - width, y, width, BLOCK_ROW_H, title.bg);
-      pt.fillText(title.text, right - 8, y + BLOCK_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#0f172a' });
+      pt.fillRect(blockLeft, y, width, BLOCK_ROW_H, title.bg);
+      pt.fillText(title.text, startX + sign * 8, y + BLOCK_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#0f172a' });
       y += BLOCK_ROW_H;
     }
     header();
@@ -533,7 +548,7 @@ function drawQuantityTablePages(
     ensure(BLOCK_ROW_H, false);
     pt.fillText(
       t('exports.quantityPdf.deductionNote'),
-      right,
+      startX,
       y + 8,
       { size: 11, color: C_SUB }
     );
@@ -545,7 +560,7 @@ function drawQuantityTablePages(
   if (uncalibratedCount > 0) {
     ensure(BLOCK_ROW_H, false);
     pt.fillRect(MARGIN, y, usableWidth, BLOCK_ROW_H, C_TOTAL_HDR);
-    pt.fillText(t('exports.quantityPdf.uncalibratedNote', { count: uncalibratedCount }), right - 8, y + BLOCK_ROW_H / 2 + 4, {
+    pt.fillText(t('exports.quantityPdf.uncalibratedNote', { count: uncalibratedCount }), startX + sign * 8, y + BLOCK_ROW_H / 2 + 4, {
       size: 12,
       bold: true,
       color: '#92400e',
@@ -570,9 +585,12 @@ export async function exportQuantitiesToPdf(
   summaries: RoomQuantitySummary[],
   totals: ReportCategoryTotal[],
   showRoomMarkings: boolean = true,
-  pageNumbers?: number[],
-  showMeasurements: boolean = true
+  pageNumbers: number[] | undefined,
+  showMeasurements: boolean,
+  language: Language
 ) {
+  const x = exportContext(language);
+  const { t } = x;
   const pdfDoc = await PDFDocument.create();
   const fonts = await embedReportFonts(pdfDoc);
   const mult = 2;
@@ -586,7 +604,7 @@ export async function exportQuantitiesToPdf(
     const pageAreaMeasurements = allAreaMeasurements.filter((m) => m.pageNumber === pageNumber);
     const pageAreaNumbers = numberAreaMeasurements(pageAreaMeasurements);
 
-    const framed = await renderFramedPlanPage(project, pageNumber, mult, showRoomMarkings, showMeasurements, pageAreaNumbers);
+    const framed = await renderFramedPlanPage(project, pageNumber, mult, showRoomMarkings, showMeasurements, pageAreaNumbers, language);
     if (framed) {
       const pngBytes = await fetch(framed.dataUrl).then((r) => r.arrayBuffer());
       const pngImage = await pdfDoc.embedPng(pngBytes);
@@ -594,21 +612,22 @@ export async function exportQuantitiesToPdf(
       page.drawImage(pngImage, { x: 0, y: 0, width: framed.width, height: framed.height });
       // The header band's text, as real text over the image's blank band (same place and sizes the
       // raster header used).
-      const pt = new PdfPainter(page, fonts);
-      pt.fillText(project.name, framed.width - 16 * mult, 26 * mult, { size: 18 * mult, bold: true, color: '#0f172a' });
-      pt.fillText(t('exports.quantityPdf.planPageHeader', { page: pageNumber, date: new Date().toLocaleDateString('he-IL') }), framed.width - 16 * mult, 46 * mult, {
+      const pt = new PdfPainter(page, fonts, x.direction);
+      const headerStart = x.rtl ? framed.width - 16 * mult : 16 * mult;
+      pt.fillText(project.name, headerStart, 26 * mult, { size: 18 * mult, bold: true, color: '#0f172a' });
+      pt.fillText(t('exports.quantityPdf.planPageHeader', { page: pageNumber, date: x.today() }), headerStart, 46 * mult, {
         size: 12 * mult,
         color: '#8b8f99',
       });
-      drawLogo(pt, 16 * mult, 14 * mult, REPORT_LOGO_HEIGHT * mult);
+      drawLogo(pt, x.rtl ? 16 * mult : framed.width - 16 * mult - logoWidth(REPORT_LOGO_HEIGHT * mult), 14 * mult, REPORT_LOGO_HEIGHT * mult);
     }
 
     if (showMeasurements && pageAreaMeasurements.length > 0) {
-      drawAreaMeasurementTable(pdfDoc, fonts, t('exports.quantityPdf.planPageTitle', { name: project.name, page: pageNumber }), pageAreaMeasurements, { showLogo: true });
+      drawAreaMeasurementTable(pdfDoc, fonts, t('exports.quantityPdf.planPageTitle', { name: project.name, page: pageNumber }), pageAreaMeasurements, { showLogo: true }, language);
     }
   }
 
-  if (summaries.length > 0) drawQuantityTablePages(pdfDoc, fonts, project, summaries, totals);
+  if (summaries.length > 0) drawQuantityTablePages(pdfDoc, fonts, project, summaries, totals, x);
 
   const bytes = await pdfDoc.save();
   const blob = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {

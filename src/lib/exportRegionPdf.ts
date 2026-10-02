@@ -8,8 +8,9 @@ import { polygonCentroid } from './geometry';
 import { drawMarkupOnCanvas, orderMarkups } from './drawMarkup';
 import { drawMeasurementOnCanvas } from './drawMeasurement';
 import { numberAreaMeasurements } from './areaMeasurements';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { exportContext } from './exportLanguage';
+import { labelDirection } from './textDirection';
 
 const FONT = "'Segoe UI', sans-serif";
 
@@ -23,7 +24,8 @@ async function renderRegionCanvas(
   pageNumber: number,
   region: ExportRegion | null,
   showMarkings: boolean,
-  showMeasurements: boolean
+  showMeasurements: boolean,
+  language: Language
 ): Promise<HTMLCanvasElement | null> {
   const mult = 2;
   const { source } = await loadPdfPlanSource(project.id, () => loadPdfBlob(project.id), pageNumber);
@@ -74,9 +76,13 @@ async function renderRegionCanvas(
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3 * mult;
       ctx.strokeStyle = '#ffffff';
+      // A room's name is the user's own text and keeps its own direction. The Hebrew export keeps the
+      // canvas default it has always drawn these with.
+      ctx.direction = language === 'he' ? 'inherit' : labelDirection(r.name, language);
       ctx.strokeText(r.name, labelX, labelY);
       ctx.fillStyle = r.color;
       ctx.fillText(r.name, labelX, labelY);
+      ctx.direction = 'inherit';
       ctx.textBaseline = 'alphabetic';
     }
   }
@@ -86,7 +92,7 @@ async function renderRegionCanvas(
     const measurements = (project.measurements ?? []).filter((m) => m.pageNumber === pageNumber);
     const areaNumbers = numberAreaMeasurements(measurements);
     for (const m of measurements) {
-      drawMeasurementOnCanvas(ctx, m, mult, rx, ry, m.areaKind ? areaKindColors[m.areaKind] : undefined, areaNumbers.get(m.id));
+      drawMeasurementOnCanvas(ctx, m, mult, rx, ry, language, m.areaKind ? areaKindColors[m.areaKind] : undefined, areaNumbers.get(m.id));
     }
   }
 
@@ -123,9 +129,11 @@ export async function exportPlanPageToPdf(
   pageNumber: number,
   region: ExportRegion | null,
   showMarkings: boolean,
-  showMeasurements: boolean
+  showMeasurements: boolean,
+  language: Language
 ) {
-  const canvas = await renderRegionCanvas(project, pageNumber, region, showMarkings, showMeasurements);
+  const { t } = exportContext(language);
+  const canvas = await renderRegionCanvas(project, pageNumber, region, showMarkings, showMeasurements, language);
   if (!canvas) return;
   const pdfDoc = await PDFDocument.create();
   await addCanvasPage(pdfDoc, canvas);
@@ -146,8 +154,10 @@ export async function exportAllPlanPagesToPdf(
   numPages: number,
   exportRegions: Record<number, ExportRegion>,
   showMarkings: boolean,
-  showMeasurements: boolean
+  showMeasurements: boolean,
+  language: Language
 ) {
+  const { t } = exportContext(language);
   const pdfDoc = await PDFDocument.create();
   let added = 0;
   for (let pageNumber = 1; pageNumber <= numPages; pageNumber += 1) {
@@ -156,7 +166,8 @@ export async function exportAllPlanPagesToPdf(
       pageNumber,
       exportRegions[pageNumber] ?? null,
       showMarkings,
-      showMeasurements
+      showMeasurements,
+      language
     );
     if (!canvas) continue;
     await addCanvasPage(pdfDoc, canvas);

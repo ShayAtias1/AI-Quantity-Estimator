@@ -1,10 +1,10 @@
 import type { PDFDocument } from 'pdf-lib';
 import { round } from './geometry';
-import { drawLogo, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
+import { drawLogo, logoWidth, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { numberAreaMeasurements, type AreaMeasurementLike } from './areaMeasurements';
 import { changeTotals } from './changeMeasurements';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { exportContext } from './exportLanguage';
 
 interface WallMeasurementLike extends AreaMeasurementLike {
   calcMode?: 'footprint' | 'wall';
@@ -40,6 +40,8 @@ const HEADER_KEYS = ['number', 'kind', 'calcMode', 'length', 'height', 'area'] a
 const WEIGHTS = [8, 22, 24, 16, 16, 24];
 const HEADER_KEYS_WITH_PAGE = ['number', 'kind', 'page', 'calcMode', 'length', 'height', 'area'] as const;
 const WEIGHTS_WITH_PAGE = [7, 20, 10, 21, 14, 14, 24];
+const WEIGHTS_LTR = [18, 18, 22, 14, 14, 20];
+const WEIGHTS_WITH_PAGE_LTR = [17, 16, 9, 20, 12, 12, 20];
 
 /**
  * Appends the printable demolition/construction area breakdown to `doc` as vector pages (real text
@@ -52,11 +54,15 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
   fonts: ReportFonts,
   title: string,
   measurements: T[],
-  options: AreaTableOptions = {}
+  options: AreaTableOptions,
+  language: Language
 ): void {
+  const x = exportContext(language);
+  const { t } = x;
   const showPage = !!options.showPage;
   const headers = (showPage ? HEADER_KEYS_WITH_PAGE : HEADER_KEYS).map((k) => t(`exports.common.areaHeaders.${k}`));
-  const weights = showPage ? WEIGHTS_WITH_PAGE : WEIGHTS;
+  // The first column carries the totals' labels, which are longer in English than in Hebrew.
+  const weights = x.rtl ? (showPage ? WEIGHTS_WITH_PAGE : WEIGHTS) : showPage ? WEIGHTS_WITH_PAGE_LTR : WEIGHTS_LTR;
   const PAGE_W = 1200;
   const PAGE_H = 1132;
   const MARGIN = 40;
@@ -69,34 +75,39 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
   let pt: PdfPainter;
   let y = 0;
 
+  // Columns run from the reading start: the right margin for RTL, the left for LTR.
+  const sign = x.rtl ? -1 : 1;
+  const startX = x.rtl ? PAGE_W - MARGIN : MARGIN;
+
   const drawRow = (cells: string[], bg: string, opts?: { bold?: boolean }) => {
     pt.fillRect(MARGIN, y, usableWidth, ROW_H, bg);
     pt.strokeRect(MARGIN, y, usableWidth, ROW_H, C_BORDER);
-    let x = PAGE_W - MARGIN;
+    let edge = startX;
     cells.forEach((cell, i) => {
       const w = colWidths[i] ?? 0;
-      pt.fillText(cell, x - w / 2, y + ROW_H / 2 + 4, { size: 12, bold: opts?.bold, align: 'center', maxWidth: w - 6 });
-      x -= w;
+      pt.fillText(cell, edge + (sign * w) / 2, y + ROW_H / 2 + 4, { size: 12, bold: opts?.bold, align: 'center', maxWidth: w - 6 });
+      edge += sign * w;
     });
     y += ROW_H;
   };
 
   const drawColumnHeader = () => {
     pt.fillRect(MARGIN, y, usableWidth, HEADER_ROW_H, C_HEADER);
-    let x = PAGE_W - MARGIN;
+    let edge = startX;
     headers.forEach((label, i) => {
       const w = colWidths[i];
-      pt.fillText(label, x - w / 2, y + HEADER_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 6 });
-      x -= w;
+      pt.fillText(label, edge + (sign * w) / 2, y + HEADER_ROW_H / 2 + 4, { size: 12.5, bold: true, color: '#ffffff', align: 'center', maxWidth: w - 6 });
+      edge += sign * w;
     });
     y += HEADER_ROW_H;
   };
 
   const newPage = () => {
-    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
-    pt.fillText(t('exports.areaTable.title', { title }), PAGE_W - MARGIN, 40, { size: 20, bold: true, color: '#0f172a' });
-    pt.fillText(new Date().toLocaleDateString('he-IL'), PAGE_W - MARGIN, 60, { size: 12, color: '#8b8f99' });
-    if (options.showLogo) drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
+    pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts, x.direction);
+    pt.fillText(t('exports.areaTable.title', { title }), startX, 40, { size: 20, bold: true, color: '#0f172a' });
+    pt.fillText(x.today(), startX, 60, { size: 12, color: '#8b8f99' });
+    // The logo sits on the side the title does not start from.
+    if (options.showLogo) drawLogo(pt, x.rtl ? MARGIN : PAGE_W - MARGIN - logoWidth(REPORT_LOGO_HEIGHT), 28, REPORT_LOGO_HEIGHT);
     y = 84;
     drawColumnHeader();
   };

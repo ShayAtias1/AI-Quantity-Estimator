@@ -1,7 +1,7 @@
 import type { Point } from '../types';
 import { polygonCentroid, tickMarkEndpoints } from './geometry';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew): the label's unit is not the UI's.
-import { tExport } from '../i18n';
+import { translatorFor, type Language } from '../i18n';
+import { labelDirection } from './textDirection';
 import { measurementLabel, type MeasurementValueFields } from './measurementValues';
 
 const FONT = "'Segoe UI', sans-serif";
@@ -28,6 +28,8 @@ export function drawMeasurementOnCanvas(
   mult: number,
   offsetX: number,
   offsetY: number,
+  /** The export's language: the label's unit and its reading direction (never the UI's). */
+  language: Language,
   color = PLAIN_COLOR,
   number?: number
 ) {
@@ -116,13 +118,14 @@ export function drawMeasurementOnCanvas(
       ctx.globalAlpha = 1;
       ctx.fillStyle = color;
     }
-    // Match the on-screen overlay, whose SVG is pinned to direction="rtl" (affects the bidi ordering
-    // of labels like `3.24 מ'`); the anchor itself is centered, same as text-anchor="middle" there.
-    ctx.direction = 'rtl';
+    // Match the on-screen overlay's labels: a Hebrew export lays `3.24 מ'` out RTL as the overlay always
+    // has, an English one `3.24 m` LTR (see labelDirection); the anchor itself is centered, same as
+    // text-anchor="middle" there.
+    const text = isWall ? `${number ?? ''}` : measurementLabel(m, translatorFor(language));
+    ctx.direction = labelDirection(text, language);
     ctx.font = `bold ${12 * mult}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const text = isWall ? `${number ?? ''}` : measurementLabel(m, tExport);
     if (angleRad) {
       ctx.translate(labelX, labelY);
       ctx.rotate(angleRad);

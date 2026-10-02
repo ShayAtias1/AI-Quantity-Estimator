@@ -8,10 +8,12 @@ import { exportAllPlanPagesToPdf, exportPlanPageToPdf } from '../lib/exportRegio
 import { planForReport } from '../lib/reportTitle';
 import { trackedExport } from '../lib/analytics';
 import { notifyExportFailed } from '../lib/exportFailure';
-import { useT } from '../i18n';
+import { useLanguage, useT } from '../i18n';
 
 export default function TopBar() {
   const t = useT();
+  // Exports are written in the language the app is showing (Phase 6 may add a separate choice).
+  const language = useLanguage();
   const project = useAppStore((s) => s.project);
   const currentProject = useAppStore((s) => s.currentProject);
   const projectPlans = useAppStore((s) => s.projectPlans);
@@ -78,7 +80,7 @@ export default function TopBar() {
           page_scope: 'current',
           region_cropped: !!exportRegion,
         },
-        () => exportPlanPageToPdf(planForReport(project, currentProject?.name), currentPage, exportRegion, annotationsVisible, measurementsVisible)
+        () => exportPlanPageToPdf(planForReport(project, currentProject?.name), currentPage, exportRegion, annotationsVisible, measurementsVisible, language)
       );
     } catch (err) {
       notifyExportFailed(err);
@@ -102,7 +104,7 @@ export default function TopBar() {
           page_scope: 'all',
           region_cropped: Object.keys(exportRegions).length > 0,
         },
-        () => exportAllPlanPagesToPdf(planForReport(project, currentProject?.name), numPages, exportRegions, annotationsVisible, measurementsVisible)
+        () => exportAllPlanPagesToPdf(planForReport(project, currentProject?.name), numPages, exportRegions, annotationsVisible, measurementsVisible, language)
       );
     } catch (err) {
       notifyExportFailed(err);

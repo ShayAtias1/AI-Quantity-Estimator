@@ -1,8 +1,8 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import type { Plan, Project, ReportCategory } from '../types';
-// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
-import { tExport as t } from '../i18n';
+import type { Language } from '../i18n';
+import { columnWidths, exportContext, type ExportContext } from './exportLanguage';
 import { calculateWorkItem, effectiveWastePercent, roomMetrics } from './quantities';
 import { buildProjectQuantities, planStatusLabel, roomCategoryQuantity, type ProjectQuantities } from './projectQuantities';
 import { workTypeDefinition } from './workTypes';
@@ -45,7 +45,7 @@ function styleBody(row: ExcelJS.Row, argb: string, numericFrom: number) {
 }
 
 /** Column groups per category: m² net + order, and for skirting its running metres too. */
-function categoryColumns(categories: ReportCategory[]) {
+function categoryColumns(categories: ReportCategory[], { t }: ExportContext) {
   return categories.flatMap((c) => {
     const label = t(`reportCategories.${c}`);
     const cols: { category: ReportCategory; field: 'quantityM2' | 'orderM2' | 'lengthM' | 'orderLengthM'; header: string }[] = [
@@ -61,11 +61,12 @@ function categoryColumns(categories: ReportCategory[]) {
 }
 
 /** Per plan: rooms, calibration, status and each category's totals, with a SUM row the summary sheet reads. */
-function addPlansSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categories: ReportCategory[]) {
+function addPlansSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categories: ReportCategory[], x: ExportContext) {
+  const { t } = x;
   // The summary sheet's formulas reach this sheet by this same name — see `sheetRef`.
   const plansSheet = t('exports.excel.sheets.plans');
-  const sheet = workbook.addWorksheet(plansSheet, { views: [{ rightToLeft: true }] });
-  const cols = categoryColumns(categories);
+  const sheet = workbook.addWorksheet(plansSheet, { views: [{ rightToLeft: x.rtl }] });
+  const cols = categoryColumns(categories, x);
   const fixed = [
     t('exports.common.plan'),
     t('exports.excel.project.planHeaders.rooms'),
@@ -73,8 +74,9 @@ function addPlansSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categor
     t('exports.excel.project.planHeaders.uncalibratedRooms'),
     t('exports.excel.project.planHeaders.status'),
   ];
-  styleHeader(sheet.addRow([...fixed, ...cols.map((c) => c.header)]));
-  [22, 8, 12, 12, 18, ...cols.map(() => 15)].forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+  const plansHeaders = [...fixed, ...cols.map((c) => c.header)];
+  styleHeader(sheet.addRow(plansHeaders));
+  columnWidths([22, 8, 12, 12, 18, ...cols.map(() => 15)], plansHeaders, x.language, 2).forEach((w, i) => (sheet.getColumn(i + 1).width = w));
 
   const first = sheet.rowCount + 1;
   q.plans.forEach((r, i) => {
@@ -109,23 +111,24 @@ function addSummarySheet(
   sheet: ExcelJS.Worksheet,
   project: Project,
   q: ProjectQuantities,
-  totalCell: Map<string, string>
+  totalCell: Map<string, string>,
+  x: ExportContext
 ) {
-  [22, 16, 18, 16, 18].forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+  const { t } = x;
   const title = sheet.addRow([t('exports.excel.project.title', { name: project.name })]);
   title.font = { bold: true, size: 14 };
-  sheet.addRow([t('exports.excel.project.planCountDate', { count: q.plans.length, date: new Date().toLocaleDateString('he-IL') })]).font = { color: { argb: 'FF8B8F99' } };
+  sheet.addRow([t('exports.excel.project.planCountDate', { count: q.plans.length, date: x.today() })]).font = { color: { argb: 'FF8B8F99' } };
   sheet.addRow([]);
 
-  styleHeader(
-    sheet.addRow([
-      t('exports.common.item'),
-      t('exports.excel.project.summaryHeaders.net'),
-      t('exports.excel.project.summaryHeaders.order'),
-      t('exports.excel.project.summaryHeaders.length'),
-      t('exports.excel.project.summaryHeaders.orderLength'),
-    ])
-  );
+  const summaryHeaders = [
+    t('exports.common.item'),
+    t('exports.excel.project.summaryHeaders.net'),
+    t('exports.excel.project.summaryHeaders.order'),
+    t('exports.excel.project.summaryHeaders.length'),
+    t('exports.excel.project.summaryHeaders.orderLength'),
+  ];
+  columnWidths([22, 16, 18, 16, 18], summaryHeaders, x.language, 2).forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+  styleHeader(sheet.addRow(summaryHeaders));
   q.totals.forEach((total, i) => {
     const row = sheet.addRow([total.label]);
     const ref = (field: string, result: number | null, ci: number) => {
@@ -147,9 +150,10 @@ function addSummarySheet(
 }
 
 /** Every room of every plan: floor area, perimeter and each category's quantities. */
-function addRoomsSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categories: ReportCategory[]) {
-  const sheet = workbook.addWorksheet(t('exports.excel.sheets.rooms'), { views: [{ rightToLeft: true }] });
-  const cols = categoryColumns(categories);
+function addRoomsSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categories: ReportCategory[], x: ExportContext) {
+  const { t } = x;
+  const sheet = workbook.addWorksheet(t('exports.excel.sheets.rooms'), { views: [{ rightToLeft: x.rtl }] });
+  const cols = categoryColumns(categories, x);
   const fixed = [
     t('exports.common.plan'),
     t('exports.common.apartment'),
@@ -158,8 +162,9 @@ function addRoomsSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categor
     t('exports.excel.project.roomHeaders.perimeter'),
   ];
   const notCalibrated = t('exports.common.notCalibrated');
-  styleHeader(sheet.addRow([...fixed, ...cols.map((c) => c.header)]));
-  [20, 8, 22, 14, 12, ...cols.map(() => 15)].forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+  const roomsHeaders = [...fixed, ...cols.map((c) => c.header)];
+  styleHeader(sheet.addRow(roomsHeaders));
+  columnWidths([20, 8, 22, 14, 12, ...cols.map(() => 15)], roomsHeaders, x.language, 2).forEach((w, i) => (sheet.getColumn(i + 1).width = w));
 
   let i = 0;
   for (const r of q.plans) {
@@ -185,10 +190,10 @@ function addRoomsSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categor
  * One row per work item: gross, openings deducted, net, waste and a live "to order" formula — the
  * detail behind every total. Skirting is listed in running metres (its unit), everything else in m².
  */
-function addWorkItemsSheet(workbook: ExcelJS.Workbook, plans: Plan[]) {
-  const sheet = workbook.addWorksheet(t('exports.excel.sheets.workItems'), { views: [{ rightToLeft: true }] });
-  styleHeader(
-    sheet.addRow([
+function addWorkItemsSheet(workbook: ExcelJS.Workbook, plans: Plan[], x: ExportContext) {
+  const { t } = x;
+  const sheet = workbook.addWorksheet(t('exports.excel.sheets.workItems'), { views: [{ rightToLeft: x.rtl }] });
+  const workItemHeaders = [
       t('exports.common.plan'),
       t('exports.common.apartment'),
       t('exports.common.room'),
@@ -199,10 +204,10 @@ function addWorkItemsSheet(workbook: ExcelJS.Workbook, plans: Plan[]) {
       t('exports.excel.project.workItemHeaders.net'),
       t('exports.excel.project.workItemHeaders.waste'),
       t('exports.excel.project.workItemHeaders.order'),
-    ])
-  );
+  ];
+  styleHeader(sheet.addRow(workItemHeaders));
   const notCalibrated = t('exports.common.notCalibrated');
-  [20, 8, 22, 16, 8, 12, 13, 12, 10, 13].forEach((w, i) => (sheet.getColumn(i + 1).width = w));
+  columnWidths([20, 8, 22, 16, 8, 12, 13, 12, 10, 13], workItemHeaders, x.language, 2).forEach((w, i) => (sheet.getColumn(i + 1).width = w));
 
   let i = 0;
   for (const plan of plans) {
@@ -235,14 +240,16 @@ function addWorkItemsSheet(workbook: ExcelJS.Workbook, plans: Plan[]) {
 }
 
 /** The whole project in one workbook: summary, per-plan totals, rooms and work items. */
-export async function exportProjectToExcel(project: Project, plans: Plan[]) {
-  const buffer = await buildProjectWorkbook(project, plans).xlsx.writeBuffer();
+export async function exportProjectToExcel(project: Project, plans: Plan[], language: Language) {
+  const buffer = await buildProjectWorkbook(project, plans, language).xlsx.writeBuffer();
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(new Blob([buffer], { type: 'application/octet-stream' }), t('exports.excel.projectFileName', { name: safeName }));
+  saveAs(new Blob([buffer], { type: 'application/octet-stream' }), exportContext(language).t('exports.excel.projectFileName', { name: safeName }));
 }
 
 /** The project workbook exactly as `exportProjectToExcel` saves it — built apart so tests can read it. */
-export function buildProjectWorkbook(project: Project, plans: Plan[]): ExcelJS.Workbook {
+export function buildProjectWorkbook(project: Project, plans: Plan[], language: Language): ExcelJS.Workbook {
+  const x = exportContext(language);
+  const { t } = x;
   const q = buildProjectQuantities(plans, t);
   const categories = q.totals.map((t) => t.category);
 
@@ -250,10 +257,10 @@ export function buildProjectWorkbook(project: Project, plans: Plan[]): ExcelJS.W
   workbook.creator = 'BetterCalc';
   workbook.created = new Date();
   // Created first so it is the first tab; filled once the plans sheet exists to reference.
-  const summary = workbook.addWorksheet(t('exports.excel.sheets.projectSummary'), { views: [{ rightToLeft: true }] });
-  const totalCell = addPlansSheet(workbook, q, categories);
-  addSummarySheet(summary, project, q, totalCell);
-  addRoomsSheet(workbook, q, categories);
-  addWorkItemsSheet(workbook, plans);
+  const summary = workbook.addWorksheet(t('exports.excel.sheets.projectSummary'), { views: [{ rightToLeft: x.rtl }] });
+  const totalCell = addPlansSheet(workbook, q, categories, x);
+  addSummarySheet(summary, project, q, totalCell, x);
+  addRoomsSheet(workbook, q, categories, x);
+  addWorkItemsSheet(workbook, plans, x);
   return workbook;
 }

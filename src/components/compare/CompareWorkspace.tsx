@@ -14,7 +14,8 @@ import { exportCompositesAsPdf, type ChangeTable, type CompositeImage } from '..
 import { changeTableFor, planCompareExport } from '../../lib/compareExportPlan';
 import { trackedExport } from '../../lib/analytics';
 import { notifyExportFailed } from '../../lib/exportFailure';
-import { tExport, useT } from '../../i18n';
+import { useLanguage, useT } from '../../i18n';
+import { exportContext } from '../../lib/exportLanguage';
 
 type SidebarTab = 'layers' | 'measure' | 'markup';
 
@@ -34,6 +35,7 @@ async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<boolean>
 
 export default function CompareWorkspace() {
   const t = useT();
+  const language = useLanguage();
   const toolMode = useCompareStore((s) => s.toolMode);
   const setToolMode = useCompareStore((s) => s.setToolMode);
   const comparison = useCompareStore((s) => s.comparison);
@@ -86,13 +88,13 @@ export default function CompareWorkspace() {
           skipped.push(label);
           continue;
         }
-        const composite = await canvasRef.current?.exportComposite();
+        const composite = await canvasRef.current?.exportComposite(language);
         if (!composite) {
           skipped.push(label);
           continue;
         }
         composites.push(composite);
-        tables.push(changeTableFor(comparison.name, revision, pageKey));
+        tables.push(changeTableFor(comparison.name, revision, pageKey, language));
       }
 
       if (composites.length === 0) {
@@ -102,8 +104,9 @@ export default function CompareWorkspace() {
       if (skipped.length > 0) {
         alert(t('compare.exportSkipped', { skipped: skipped.join(', ') }));
       }
-      const scopeName = pageScope === 'all' ? tExport('compare.exportScopeAll') : tExport('compare.exportScopePage', { page: restorePageKey });
-      await exportCompositesAsPdf(composites, `${comparison.name}-${scopeName}`, tables);
+      const exportT = exportContext(language).t;
+      const scopeName = pageScope === 'all' ? exportT('compare.exportScopeAll') : exportT('compare.exportScopePage', { page: restorePageKey });
+      await exportCompositesAsPdf(composites, `${comparison.name}-${scopeName}`, tables, language);
       return { pages_count: composites.length };
     };
 

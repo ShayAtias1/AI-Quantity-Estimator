@@ -52,7 +52,7 @@ const PROJECT: Project = { id: 'project-1', name: 'פרויקט חרצית 7', c
 test('plan workbook: sheets, formulas and values', async (t) => {
   const summaries = buildRoomSummaries(PLAN_A);
   const areas = PLAN_A.measurements.filter((m) => m.tool === 'area' && m.areaKind && typeof m.areaM2 === 'number');
-  const sheets = await dump(buildQuantitiesWorkbook(summaries, areas));
+  const sheets = await dump(buildQuantitiesWorkbook(summaries, areas, 'he'));
   assert.deepEqual(
     sheets.map((s) => s.name),
     ['סיכום כולל', 'כתב כמויות', 'ניכוי פתחים', 'הריסה ובנייה']
@@ -63,7 +63,7 @@ test('plan workbook: sheets, formulas and values', async (t) => {
 });
 
 test('plan workbook with area measurements only', async (t) => {
-  const sheets = await dump(buildQuantitiesWorkbook([], PLAN_A.measurements.filter((m) => m.areaKind && typeof m.areaM2 === 'number')));
+  const sheets = await dump(buildQuantitiesWorkbook([], PLAN_A.measurements.filter((m) => m.areaKind && typeof m.areaM2 === 'number'), 'he'));
   assert.deepEqual(
     sheets.map((s) => s.name),
     ['הריסה ובנייה']
@@ -72,7 +72,7 @@ test('plan workbook with area measurements only', async (t) => {
 });
 
 test('project workbook: sheets, formulas and values', async (t) => {
-  const sheets = await dump(buildProjectWorkbook(PROJECT, [PLAN_A, PLAN_B]));
+  const sheets = await dump(buildProjectWorkbook(PROJECT, [PLAN_A, PLAN_B], 'he'));
   assert.deepEqual(
     sheets.map((s) => s.name),
     ['סיכום פרויקט', 'תוכניות', 'חדרים', 'סוגי עבודה']

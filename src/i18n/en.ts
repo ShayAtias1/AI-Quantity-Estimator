@@ -9,8 +9,9 @@
  *
  * Counts that can be 1 are written without a plural ("Rooms: {count}") so no key needs plural rules.
  *
- * The `exports.*` texts are ready for the English reports but unused until then: every export is
- * still produced in Hebrew (`EXPORT_LANGUAGE` in index.ts).
+ * The `exports.*` texts are the English Excel and PDF reports. They use the same terms as the UI
+ * (Floor Tiling, Wall Cladding, Skirting, … To order); an export is written in the language it is
+ * given, which today is the UI's.
  */
 import type { Dictionary } from './index';
 
@@ -785,7 +786,7 @@ export const en: Dictionary = {
       sheets: {
         summary: 'Overall Summary',
         data: 'Quantity Takeoff',
-        areas: 'Demolition & Construction',
+        areas: 'Demolition & New Construction',
         deductions: 'Opening Deductions',
         projectSummary: 'Project Summary',
         plans: 'Plans',
@@ -795,17 +796,17 @@ export const en: Dictionary = {
       fileName: 'quantity-takeoff-{name}.xlsx',
       projectFileName: 'quantity-takeoff-project-{name}.xlsx',
       dataHeaders: {
-        tilingRegularArea: 'Standard tiling area (m²)',
-        tilingAsArea: 'AS tiling area (m²)',
+        tilingRegularArea: 'Standard floor tiling area (m²)',
+        tilingAsArea: 'AS floor tiling area (m²)',
         claddingArea: 'Wall cladding area (m²)',
         panelsArea: 'Skirting area (m²)',
-        tilingRegularWaste: 'Standard tiling waste (%)',
-        tilingAsWaste: 'AS tiling waste (%)',
-        claddingWaste: 'Cladding waste (%)',
+        tilingRegularWaste: 'Standard floor tiling waste (%)',
+        tilingAsWaste: 'AS floor tiling waste (%)',
+        claddingWaste: 'Wall cladding waste (%)',
         panelsWaste: 'Skirting waste (%)',
-        tilingRegularOrder: 'Standard tiling to order',
-        tilingAsOrder: 'AS tiling to order',
-        claddingOrder: 'Cladding to order',
+        tilingRegularOrder: 'Standard floor tiling to order',
+        tilingAsOrder: 'AS floor tiling to order',
+        claddingOrder: 'Wall cladding to order',
         panelsOrder: 'Skirting to order',
         panelsLength: 'Skirting length (lm)',
         panelsOrderLength: 'Skirting length to order (lm)',
@@ -875,8 +876,8 @@ export const en: Dictionary = {
       },
       categoryWithUnit: '{label} ({unit})',
       waste: 'Waste {percent}%',
-      doorsDeducted: 'Doors deducted {length}',
-      openingsDeducted: 'Openings deducted {amount}',
+      doorsDeducted: 'Doors −{length}',
+      openingsDeducted: 'Openings −{amount}',
       apartmentTotal: 'Apartment {apartment} total',
       grandTotal: 'Project grand total',
       totalsHeaders: {

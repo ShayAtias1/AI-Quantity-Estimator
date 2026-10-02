@@ -255,6 +255,18 @@ async function main() {
     await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.quantityExport.excelMenu }).click(); }, 'plan.xlsx');
     await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.quantityExport.pdfMenu }).click(); }, 'plan.pdf');
     await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.topBar.pageOnly.replace('{page}', '1') }).click(); }, 'plan-page.pdf');
+    // The same page with every BetterCalc overlay hidden: only the imported plan itself is left, which
+    // must be pixel-identical whatever language the export is in.
+    const toggleView = async (label) => {
+      await page.locator('.top-bar-menu-btn', { hasText: L.topBar.view }).click(quick);
+      await page.locator('.menu-item', { hasText: label }).click(quick);
+      await page.keyboard.press('Escape');
+    };
+    await toggleView(L.topBar.annotations);
+    await toggleView(L.topBar.measurements);
+    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.topBar.pageOnly.replace('{page}', '1') }).click(); }, 'plan-bare.pdf');
+    await toggleView(L.topBar.annotations);
+    await toggleView(L.topBar.measurements);
 
     // ---- Project overview exports ----
     console.log('project');

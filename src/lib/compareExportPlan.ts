@@ -1,7 +1,8 @@
 import type { Comparison, RevisionLayer } from '../types/compare';
 import { changeMeasurements, changeNumbering } from './changeMeasurements';
 import type { ChangeTable } from './exportComparePdf';
-import { t, tExport } from '../i18n';
+import { t, type Language } from '../i18n';
+import { exportContext } from './exportLanguage';
 
 export type RevisionScope = 'active' | 'all';
 export type PageScope = 'current' | 'all';
@@ -66,9 +67,10 @@ export function mappedRevisedPage(comparison: Comparison, revisionId: string, pa
  * Deliberately independent of `measurementsVisible`: hiding the overlays is a viewing preference,
  * and must not quietly drop the quantities from the report.
  */
-export function changeTableFor(comparisonName: string, revision: RevisionLayer | undefined, pageKey: number): ChangeTable {
+export function changeTableFor(comparisonName: string, revision: RevisionLayer | undefined, pageKey: number, language: Language): ChangeTable {
+  const { t: tr } = exportContext(language);
   return {
-    title: tExport('exports.comparePdf.title', { name: comparisonName, revision: revision?.label ?? tExport('exports.comparePdf.original'), page: pageKey }),
+    title: tr('exports.comparePdf.title', { name: comparisonName, revision: revision?.label ?? tr('exports.comparePdf.original'), page: pageKey }),
     measurements: changeMeasurements(revision?.measurements ?? [], pageKey),
     numbering: changeNumbering(revision?.measurements ?? []),
   };
