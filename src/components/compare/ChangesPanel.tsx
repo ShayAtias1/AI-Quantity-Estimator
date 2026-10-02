@@ -236,7 +236,7 @@ export default function ChangesPanel() {
                             onChange={(e) => {
                               const h = parseFloat(e.target.value) || 0;
                               const area = round((m.wallLengthM ?? 0) * h, 2);
-                              updateMeasurement(m.id, { wallHeightM: h, areaM2: area, label: `${area} מ"ר` });
+                              updateMeasurement(m.id, { wallHeightM: h, areaM2: area });
                             }}
                           />
                         ) : (

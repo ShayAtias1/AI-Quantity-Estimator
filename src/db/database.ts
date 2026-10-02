@@ -4,6 +4,7 @@ import type { Plan, Project } from '../types';
 import { DEFAULT_AREA_KIND_COLORS, IDENTITY_TRANSFORM } from '../types/compare';
 import type { Comparison, ComparisonPage, RevisionLayer } from '../types/compare';
 import { migrateComparePageOwnership } from '../lib/compareMigration';
+import { withMeasurementValues } from '../lib/measurementValues';
 
 interface QtoDB extends DBSchema {
   /**
@@ -66,6 +67,21 @@ function getDb(): Promise<IDBPDatabase<QtoDB>> {
 
 // ---------- plans ----------
 
+/**
+ * Gives measurements saved before `lengthM` existed their value (lib/measurementValues). In memory
+ * only: nothing is written on open, and the value is saved with the plan's next ordinary save.
+ */
+function withPlanMeasurementValues(plan: Plan): Plan {
+  if (!Array.isArray(plan.measurements)) return plan;
+  const measurements = withMeasurementValues(plan.measurements);
+  return measurements === plan.measurements ? plan : { ...plan, measurements };
+}
+
+/** Every saved plan, as read for use. */
+async function readAllPlans(db: IDBPDatabase<QtoDB>): Promise<Plan[]> {
+  return (await db.getAll('projects')).map(withPlanMeasurementValues);
+}
+
 export async function savePlan(plan: Plan): Promise<void> {
   const db = await getDb();
   await db.put('projects', plan);
@@ -83,7 +99,8 @@ export async function loadPdfBlob(planId: string): Promise<Blob | undefined> {
 
 export async function loadPlan(id: string): Promise<Plan | undefined> {
   const db = await getDb();
-  return db.get('projects', id);
+  const plan = await db.get('projects', id);
+  return plan && withPlanMeasurementValues(plan);
 }
 
 /** Deletes a plan with its PDF and takes it out of its project's plan list. */
@@ -222,7 +239,7 @@ function withOrderedPlans(project: Project, allPlans: Plan[], allComparisons: Co
 export async function listProjects(): Promise<ProjectWithPlans[]> {
   const db = await getDb();
   await migrateLegacyDocuments(db);
-  const [projects, plans, comparisons] = await Promise.all([db.getAll('takeoffProjects'), db.getAll('projects'), listComparisons()]);
+  const [projects, plans, comparisons] = await Promise.all([db.getAll('takeoffProjects'), readAllPlans(db), listComparisons()]);
   const lastTouched = (x: ProjectWithPlans) =>
     Math.max(x.project.updatedAt, ...x.plans.map((p) => p.updatedAt), ...x.comparisons.map((c) => c.updatedAt));
   return projects.map((p) => withOrderedPlans(p, plans, comparisons)).sort((a, b) => lastTouched(b) - lastTouched(a));
@@ -240,7 +257,7 @@ export async function loadProjectWithPlans(projectId: string): Promise<ProjectWi
   await migrateLegacyDocuments(db);
   const project = await db.get('takeoffProjects', projectId);
   if (!project) return undefined;
-  const [plans, comparisons] = await Promise.all([db.getAll('projects'), listComparisons()]);
+  const [plans, comparisons] = await Promise.all([readAllPlans(db), listComparisons()]);
   return withOrderedPlans(project, plans, comparisons);
 }
 
@@ -361,7 +378,19 @@ async function migrateComparison(db: IDBPDatabase<QtoDB>, raw: Comparison): Prom
   const step2 = await migrateRevisionScopedData(db, step1);
   const { comparison, changed } = migrateComparePageOwnership(step2);
   if (changed) await db.put('comparisons', comparison);
-  return comparison;
+  return withComparisonMeasurementValues(comparison);
+}
+
+/** The comparison counterpart of `withPlanMeasurementValues` — in memory only, per revision. */
+function withComparisonMeasurementValues(comparison: Comparison): Comparison {
+  let changed = false;
+  const revisions = comparison.revisions.map((r) => {
+    const measurements = withMeasurementValues(r.measurements);
+    if (measurements === r.measurements) return r;
+    changed = true;
+    return { ...r, measurements };
+  });
+  return changed ? { ...comparison, revisions } : comparison;
 }
 
 export async function saveComparison(comparison: Comparison): Promise<void> {

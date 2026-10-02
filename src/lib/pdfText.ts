@@ -6,9 +6,9 @@
  * selectable PDF text instead, in an embedded Noto Sans Hebrew (subset to the glyphs used):
  *
  * - Hebrew needs no glyph shaping, only visual reordering. Each string is reordered with the Unicode
- *   bidi algorithm (bidi-js) on an RTL base — the same result the canvas gave with
+ *   bidi algorithm (bidi-js) on an RTL base by default — the same result the canvas gave with
  *   `ctx.direction = 'rtl'` — and drawn left to right, glyph runs split between the font's Hebrew
- *   and Latin subsets.
+ *   and Latin subsets (lib/pdfTextRuns). A painter, or a single string, can ask for an LTR base.
  * - `PdfPainter` exposes a canvas-like API (top-left origin, fillRect/strokeRect/fillText with
  *   textAlign and maxWidth) so table layouts written for the canvas carry over unchanged.
  *
@@ -25,12 +25,12 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import bidiFactory from 'bidi-js';
 import hebrewRegularUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff?url';
 import hebrewBoldUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-700-normal.woff?url';
 import latinRegularUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-latin-400-normal.woff?url';
 import latinBoldUrl from '@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-latin-700-normal.woff?url';
 import logoSvg from '../assets/logo/bettercalc-logo.svg?raw';
+import { fontRuns, lineStartX, startAlign, visualOrder, type TextAlign, type TextDirection } from './pdfTextRuns';
 
 interface FontPair {
   hebrew: PDFFont;
@@ -50,36 +50,6 @@ export async function embedReportFonts(doc: PDFDocument): Promise<ReportFonts> {
   return { regular: { hebrew: hr, latin: lr }, bold: { hebrew: hb, latin: lb } };
 }
 
-const bidi = bidiFactory();
-
-/** Logical → visual order for an RTL paragraph (mirrors brackets too), ready to draw left to right. */
-function visualOrder(text: string): string {
-  const levels = bidi.getEmbeddingLevels(text, 'rtl');
-  return bidi.getReorderedString(text, levels);
-}
-
-const isHebrew = (ch: string) => {
-  const c = ch.codePointAt(0)!;
-  return (c >= 0x0590 && c <= 0x05ff) || (c >= 0xfb1d && c <= 0xfb4f) || c === 0x20aa;
-};
-
-/**
- * Splits a visual-order string into runs that each use one font subset. fontkit (pdf-lib's font
- * engine) recognises Hebrew as an RTL script and reverses a Hebrew run's glyphs itself, so each
- * Hebrew run is handed over in logical order — its reversal then lands on the visual order.
- */
-function fontRuns(visual: string, pair: FontPair): { text: string; font: PDFFont }[] {
-  const runs: { text: string; font: PDFFont }[] = [];
-  for (const ch of visual) {
-    const font = isHebrew(ch) ? pair.hebrew : pair.latin;
-    const last = runs[runs.length - 1];
-    if (last && last.font === font) last.text += ch;
-    else runs.push({ text: ch, font });
-  }
-  for (const run of runs) if (run.font === pair.hebrew) run.text = Array.from(run.text).reverse().join('');
-  return runs;
-}
-
 /** '#1F4E79' → pdf-lib colour. */
 export function hex(color: string) {
   const n = parseInt(color.replace('#', ''), 16);
@@ -90,8 +60,13 @@ export interface TextStyle {
   size: number;
   bold?: boolean;
   color?: string;
-  /** Like canvas `textAlign`: which point of the text `x` names. Defaults to 'right' (RTL start). */
-  align?: 'left' | 'right' | 'center';
+  /**
+   * Paragraph direction of this string. Defaults to the painter's direction, which is RTL unless the
+   * painter was created otherwise.
+   */
+  direction?: TextDirection;
+  /** Like canvas `textAlign`: which point of the text `x` names. Defaults to the direction's start side — 'right' for RTL. */
+  align?: TextAlign;
   /**
    * Like canvas `fillText`'s maxWidth: text wider than this is condensed horizontally to fit, at
    * its full height — the same thing the canvas did, so layouts look as they always have.
@@ -101,16 +76,19 @@ export interface TextStyle {
 
 /**
  * Canvas-like drawing on one PDF page. Coordinates are top-left based, in PDF points, exactly as the
- * canvas layouts were in pixels; `y` for text is the baseline.
+ * canvas layouts were in pixels; `y` for text is the baseline. `direction` is the default paragraph
+ * direction of its text — RTL, as every report is today.
  */
 export class PdfPainter {
   readonly page: PDFPage;
+  readonly direction: TextDirection;
   private fonts: ReportFonts;
   private height: number;
 
-  constructor(page: PDFPage, fonts: ReportFonts) {
+  constructor(page: PDFPage, fonts: ReportFonts, direction: TextDirection = 'rtl') {
     this.page = page;
     this.fonts = fonts;
+    this.direction = direction;
     this.height = page.getHeight();
   }
 
@@ -133,21 +111,21 @@ export class PdfPainter {
   }
 
   /** Width of `text` at `size` as it would be drawn (after bidi reordering). */
-  measure(text: string, size: number, bold = false): number {
+  measure(text: string, size: number, bold = false, direction: TextDirection = this.direction): number {
     const pair = bold ? this.fonts.bold : this.fonts.regular;
-    return fontRuns(visualOrder(text), pair).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
+    return fontRuns(visualOrder(text, direction), pair).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
   }
 
   fillText(text: string, x: number, y: number, style: TextStyle) {
     if (!text) return;
     const pair = style.bold ? this.fonts.bold : this.fonts.regular;
-    const runs = fontRuns(visualOrder(text), pair);
+    const direction = style.direction ?? this.direction;
+    const runs = fontRuns(visualOrder(text, direction), pair);
     const size = style.size;
     const natural = runs.reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, size), 0);
     const condense = style.maxWidth != null && natural > style.maxWidth && natural > 0 ? Math.max(style.maxWidth, 1) / natural : 1;
     const width = natural * condense;
-    const align = style.align ?? 'right';
-    const startX = align === 'right' ? x - width : align === 'center' ? x - width / 2 : x;
+    const startX = lineStartX(x, width, style.align ?? startAlign(direction));
     const color = hex(style.color ?? '#1e293b');
     // Runs are laid out at their natural widths in a local space whose x axis is scaled by
     // `condense` — one transform for the whole line, so the runs stay butted together.

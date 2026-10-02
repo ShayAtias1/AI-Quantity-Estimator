@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { compareScaleFor, useCompareStore } from '../../store/compareStore';
 import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaCalcMode, type AreaKind, type AreaShape, type MeasureTool } from '../../types/compare';
 import { round } from '../../lib/geometry';
+import { measurementLabel } from '../../lib/measurementValues';
 import { changeMeasurements, isChangeMeasurement } from '../../lib/changeMeasurements';
 import Icon, { type IconName } from '../Icon';
 
@@ -211,7 +212,7 @@ export default function MeasureToolbar() {
             return (
               <li key={m.id}>
                 <span>
-                  {MEASURE_TOOL_LABELS[m.tool]}: <strong>{m.label}</strong>
+                  {MEASURE_TOOL_LABELS[m.tool]}: <strong>{measurementLabel(m)}</strong>
                   {isWall && (
                     <>
                       {' '}(אורך {round(m.wallLengthM ?? 0, 2)} מ' × גובה{' '}
@@ -225,7 +226,7 @@ export default function MeasureToolbar() {
                         onChange={(e) => {
                           const h = parseFloat(e.target.value) || 0;
                           const area = round((m.wallLengthM ?? 0) * h, 2);
-                          updateMeasurement(m.id, { wallHeightM: h, areaM2: area, label: `${area} מ"ר` });
+                          updateMeasurement(m.id, { wallHeightM: h, areaM2: area });
                         }}
                       />
                       {' '}מ')

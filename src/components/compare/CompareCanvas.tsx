@@ -10,6 +10,7 @@ import type { Point } from '../../types';
 import type { AreaKind, ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
 import { polygonAreaM2, polygonPerimeterM, longestEdgePx, distancePx, pxToMeters, round, cloudPath, snapOrtho, projectOntoLine, polygonCentroid, tickMarkEndpoints, arrowHeadPoints } from '../../lib/geometry';
+import { measurementLabel } from '../../lib/measurementValues';
 import { changeNumbering } from '../../lib/changeMeasurements';
 import { resolveCompareScale } from '../../lib/compareScale';
 import { isEditableTarget, shouldDeleteSelection } from '../../lib/editableTarget';
@@ -359,30 +360,26 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       clearMeasurePoints();
       return;
     }
-    let label = '';
+    let lengthM: number | undefined;
     let areaM2: number | undefined;
     let wallLengthM: number | undefined;
     let wallHeightM: number | undefined;
     if (measureTool === 'distance') {
-      const m = pxToMeters(distancePx(points[0], points[1]), metersPerPixel);
-      label = `${round(m, 2)} מ'`;
+      lengthM = round(pxToMeters(distancePx(points[0], points[1]), metersPerPixel), 2);
     } else if (measureTool === 'area' && areaCalcMode === 'wall') {
       wallLengthM = round(pxToMeters(longestEdgePx(points), metersPerPixel), 2);
       wallHeightM = comparison?.wallHeightDefaultM ?? 2.5;
       areaM2 = round(wallLengthM * wallHeightM, 2);
-      label = `${areaM2} מ"ר`;
     } else if (measureTool === 'area') {
       areaM2 = round(polygonAreaM2(points, metersPerPixel), 2);
-      label = `${areaM2} מ"ר`;
     } else {
-      const m = polygonPerimeterM(points, true, metersPerPixel);
-      label = `${round(m, 2)} מ'`;
+      lengthM = round(polygonPerimeterM(points, true, metersPerPixel), 2);
     }
     finishMeasurement({
       id: uuid(),
       tool: measureTool,
       points,
-      label,
+      lengthM,
       areaKind: measureTool === 'area' && pendingAreaKind ? pendingAreaKind : undefined,
       areaM2,
       calcMode: measureTool === 'area' ? areaCalcMode : undefined,
@@ -789,7 +786,15 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         bctx.globalAlpha = 1;
 
         if (svgRef.current) {
-          const svgString = new XMLSerializer().serializeToString(svgRef.current);
+          // Known difference, kept on purpose: rendered as a standalone image, the overlay has always
+          // laid its text out LTR here (it inherited nothing from the page), so text notes and
+          // measurement labels in this export sit differently from the screen. The on-screen overlay
+          // is now pinned to RTL; the copy exported is set back to LTR so existing exports stay
+          // exactly as they were until that is fixed deliberately.
+          const overlay = svgRef.current.cloneNode(true) as SVGSVGElement;
+          overlay.querySelectorAll('[direction]').forEach((el) => el.removeAttribute('direction'));
+          overlay.setAttribute('direction', 'ltr');
+          const svgString = new XMLSerializer().serializeToString(overlay);
           const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
           const img = new Image(fullW, fullH);
           await new Promise<void>((resolve, reject) => {
@@ -969,7 +974,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         </div>
 
         {pageSize.width > 0 && (
-          <svg ref={svgRef} className="overlay-svg" width={pageSize.width} height={pageSize.height} viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}>
+          // Pinned to RTL rather than inherited from the page — see the takeoff viewer's overlay.
+          <svg ref={svgRef} className="overlay-svg" width={pageSize.width} height={pageSize.height} viewBox={`0 0 ${pageSize.width} ${pageSize.height}`} direction="rtl">
             {/* Alignment point pairs */}
             {alignmentPairs.map((pair, i) => (
               <g key={i}>
@@ -1115,7 +1121,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
                         fontWeight={600}
                         transform={isDistance ? `rotate(${angleDeg} ${labelX} ${labelY})` : undefined}
                       >
-                        {m.areaKind ? (areaNumbers.get(m.id) ?? '') : m.label}
+                        {m.areaKind ? (areaNumbers.get(m.id) ?? '') : measurementLabel(m)}
                       </text>
                     </>
                   )}

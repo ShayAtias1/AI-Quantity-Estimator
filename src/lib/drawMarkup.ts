@@ -25,8 +25,8 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
   const fontScale = markup.fontScale ?? 1;
 
   ctx.save();
-  // The app's page (and therefore the on-screen overlay SVG) is dir="rtl", so text is laid out and
-  // anchored right-to-left there — the canvas has to match, or labels land on the wrong side of their point.
+  // The on-screen overlay SVG is pinned to direction="rtl", so text is laid out and anchored
+  // right-to-left there — the canvas has to match, or labels land on the wrong side of their point.
   ctx.direction = 'rtl';
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -143,7 +143,7 @@ export function drawMarkupOnCanvas(ctx: CanvasRenderingContext2D, markup: Markup
         ctx.translate(a.x, a.y);
         if (markup.rotationDeg) ctx.rotate((markup.rotationDeg * Math.PI) / 180);
         ctx.font = `italic ${fontSize}px ${FONT}`;
-        // SVG's default text-anchor="start" under dir="rtl" puts the anchor at the text's right edge.
+        // TextNoteShape's text-anchor="start" under direction="rtl" puts the anchor at the text's right edge.
         ctx.textAlign = 'right';
         ctx.textBaseline = 'alphabetic';
         ctx.fillStyle = markup.color;

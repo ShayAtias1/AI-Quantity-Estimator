@@ -1,14 +1,13 @@
 import type { Point } from '../types';
 import { polygonCentroid, tickMarkEndpoints } from './geometry';
+import { measurementLabel, type MeasurementValueFields } from './measurementValues';
 
 const FONT = "'Segoe UI', sans-serif";
 const PLAIN_COLOR = '#0ea5e9';
 
 /** Structural shape shared by both apps' Measurement types (quantity-takeoff and Revision Compare). */
-export interface MeasurementShape {
-  tool: string;
+export interface MeasurementShape extends MeasurementValueFields {
   points: Point[];
-  label: string;
   areaKind?: 'demolition' | 'construction';
   calcMode?: 'footprint' | 'wall';
 }
@@ -115,18 +114,19 @@ export function drawMeasurementOnCanvas(
       ctx.globalAlpha = 1;
       ctx.fillStyle = color;
     }
-    // Match the on-screen overlay, which inherits the page's dir="rtl" (affects the bidi ordering of
-    // labels like `3.24 מ'`); the anchor itself is centered, same as text-anchor="middle" there.
+    // Match the on-screen overlay, whose SVG is pinned to direction="rtl" (affects the bidi ordering
+    // of labels like `3.24 מ'`); the anchor itself is centered, same as text-anchor="middle" there.
     ctx.direction = 'rtl';
     ctx.font = `bold ${12 * mult}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const text = isWall ? `${number ?? ''}` : measurementLabel(m);
     if (angleRad) {
       ctx.translate(labelX, labelY);
       ctx.rotate(angleRad);
-      ctx.fillText(isWall ? `${number ?? ''}` : m.label, 0, 0);
+      ctx.fillText(text, 0, 0);
     } else {
-      ctx.fillText(isWall ? `${number ?? ''}` : m.label, labelX, labelY);
+      ctx.fillText(text, labelX, labelY);
     }
   }
 

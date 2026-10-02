@@ -23,6 +23,7 @@ import {
   tickMarkEndpoints,
 } from '../lib/geometry';
 import { numberAreaMeasurements } from '../lib/areaMeasurements';
+import { measurementLabel } from '../lib/measurementValues';
 import { dimensionLabels, dimensionNormal, reshapeDimension } from '../lib/dimensionChain';
 import { orderMarkups } from '../lib/drawMarkup';
 import DimensionShape from './DimensionShape';
@@ -290,31 +291,27 @@ export default function PdfViewer() {
       clearMeasurePoints();
       return;
     }
-    let label = '';
+    let lengthM: number | undefined;
     let areaM2: number | undefined;
     let wallLengthM: number | undefined;
     let wallHeightM: number | undefined;
     if (measureTool === 'distance') {
-      const m = pxToMeters(distancePx(points[0], points[1]), metersPerPixel);
-      label = `${round(m, 2)} מ'`;
+      lengthM = round(pxToMeters(distancePx(points[0], points[1]), metersPerPixel), 2);
     } else if (measureTool === 'area' && areaCalcMode === 'wall') {
       wallLengthM = round(pxToMeters(longestEdgePx(points), metersPerPixel), 2);
       wallHeightM = project?.wallHeightDefaultM ?? MEASUREMENT_DEFAULTS.wallHeightM;
       areaM2 = round(wallLengthM * wallHeightM, 2);
-      label = `${areaM2} מ"ר`;
     } else if (measureTool === 'area') {
       areaM2 = round(polygonAreaM2(points, metersPerPixel), 2);
-      label = `${areaM2} מ"ר`;
     } else {
-      const m = polygonPerimeterM(points, true, metersPerPixel);
-      label = `${round(m, 2)} מ'`;
+      lengthM = round(polygonPerimeterM(points, true, metersPerPixel), 2);
     }
     finishMeasurement({
       id: uuid(),
       pageNumber: currentPage,
       tool: measureTool,
       points,
-      label,
+      lengthM,
       areaKind: measureTool === 'area' && pendingAreaKind ? pendingAreaKind : undefined,
       areaM2,
       calcMode: measureTool === 'area' ? areaCalcMode : undefined,
@@ -755,11 +752,14 @@ export default function PdfViewer() {
       >
         <canvas ref={canvasRef} />
         {pageSize.width > 0 && (
+          // Pinned to RTL rather than inherited from the page: the plan's labels keep the layout they
+          // were drawn with (and that the export rasterizers reproduce) whatever the UI direction.
           <svg
             className="overlay-svg"
             width={pageSize.width}
             height={pageSize.height}
             viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}
+            direction="rtl"
           >
             {annotationsVisible &&
               project.rooms
@@ -977,7 +977,7 @@ export default function PdfViewer() {
                             fontWeight={600}
                             transform={isDistance ? `rotate(${angleDeg} ${labelX} ${labelY})` : undefined}
                           >
-                            {isWall ? (areaNumbers.get(m.id) ?? '') : m.label}
+                            {isWall ? (areaNumbers.get(m.id) ?? '') : measurementLabel(m)}
                           </text>
                         </>
                       )}

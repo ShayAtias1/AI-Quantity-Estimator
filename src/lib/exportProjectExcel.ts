@@ -6,6 +6,7 @@ import { calculateWorkItem, effectiveWastePercent, roomMetrics } from './quantit
 import { buildProjectQuantities, PLAN_STATUS_LABELS, roomCategoryQuantity, type ProjectQuantities } from './projectQuantities';
 import { workTypeDefinition } from './workTypes';
 import { round } from './geometry';
+import { sheetRef } from './excelSheetRef';
 
 // Same palette as the single-plan workbook (exportExcel.ts).
 const C_HEADER = 'FF1F4E79';
@@ -95,7 +96,7 @@ function addPlansSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categor
   totalRow.font = { bold: true };
 
   // Where each category's totals landed, for the summary sheet's references.
-  const totalCell = new Map(cols.map((c, i) => [`${c.category}:${c.field}`, `'${PLANS_SHEET}'!${colLetter(fixed.length + 1 + i)}${totalRow.number}`]));
+  const totalCell = new Map(cols.map((c, i) => [`${c.category}:${c.field}`, `${sheetRef(PLANS_SHEET)}${colLetter(fixed.length + 1 + i)}${totalRow.number}`]));
   return totalCell;
 }
 
@@ -201,6 +202,13 @@ function addWorkItemsSheet(workbook: ExcelJS.Workbook, plans: Plan[]) {
 
 /** The whole project in one workbook: summary, per-plan totals, rooms and work items. */
 export async function exportProjectToExcel(project: Project, plans: Plan[]) {
+  const buffer = await buildProjectWorkbook(project, plans).xlsx.writeBuffer();
+  const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
+  saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `כתב-כמויות-פרויקט-${safeName}.xlsx`);
+}
+
+/** The project workbook exactly as `exportProjectToExcel` saves it — built apart so tests can read it. */
+export function buildProjectWorkbook(project: Project, plans: Plan[]): ExcelJS.Workbook {
   const q = buildProjectQuantities(plans);
   const categories = q.totals.map((t) => t.category);
 
@@ -213,8 +221,5 @@ export async function exportProjectToExcel(project: Project, plans: Plan[]) {
   addSummarySheet(summary, project, q, totalCell);
   addRoomsSheet(workbook, q, categories);
   addWorkItemsSheet(workbook, plans);
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `כתב-כמויות-פרויקט-${safeName}.xlsx`);
+  return workbook;
 }

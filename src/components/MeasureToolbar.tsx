@@ -2,6 +2,7 @@ import { useAppStore } from '../store/appStore';
 import { AREA_KIND_LABELS, MEASURE_TOOL_LABELS, type AreaCalcMode, type AreaKind, type AreaShape, type MeasureTool } from '../types';
 import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
 import { round } from '../lib/geometry';
+import { measurementLabel } from '../lib/measurementValues';
 import { isPageCalibrated } from '../lib/quantities';
 import Icon, { type IconName } from './Icon';
 
@@ -217,7 +218,7 @@ export default function MeasureToolbar() {
                   {m.areaKind ? (
                     <span className="color-dot" style={{ background: areaKindColors[m.areaKind] }} />
                   ) : null}{' '}
-                  {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: <strong>{m.label}</strong>
+                  {m.areaKind ? AREA_KIND_LABELS[m.areaKind] : MEASURE_TOOL_LABELS[m.tool]}: <strong>{measurementLabel(m)}</strong>
                   {isWall && (
                     <>
                       {' '}(אורך {round(m.wallLengthM ?? 0, 2)} מ' × גובה{' '}
@@ -231,7 +232,7 @@ export default function MeasureToolbar() {
                         onChange={(e) => {
                           const h = parseFloat(e.target.value) || 0;
                           const area = round((m.wallLengthM ?? 0) * h, 2);
-                          updateMeasurement(m.id, { wallHeightM: h, areaM2: area, label: `${area} מ"ר` });
+                          updateMeasurement(m.id, { wallHeightM: h, areaM2: area });
                         }}
                       />
                       {' '}מ')
