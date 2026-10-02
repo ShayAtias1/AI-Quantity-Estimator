@@ -145,7 +145,7 @@ export default function TopBar() {
             <button className="btn-ghost small breadcrumb-project" onClick={backToOverview} title={t('topBar.backToOverview')}>
               {currentProject.name || t('topBar.unnamedProject')}
             </button>
-            <Icon name="chevron-left" size={13} />
+            <Icon name="chevron-next" size={13} />
           </>
         )}
         <input
@@ -190,10 +190,10 @@ export default function TopBar() {
 
         <span className="top-bar-sep" />
 
-        {/* The page is dir="rtl", so previous sits on the right and next on the left. */}
+        {/* Previous comes first in reading order, so it sits on the right under RTL and the left under LTR. */}
         <div className="page-nav">
           <button disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title={t('topBar.previousPage')}>
-            <Icon name="chevron-right" />
+            <Icon name="chevron-previous" />
           </button>
           <span>
             {t('topBar.page')}
@@ -215,7 +215,7 @@ export default function TopBar() {
           {/* Calibration state is not repeated here — the page-status strip above the sidebar tabs
               is the single place that reports it and offers the action. */}
           <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)} title={t('topBar.nextPage')}>
-            <Icon name="chevron-left" />
+            <Icon name="chevron-next" />
           </button>
         </div>
 

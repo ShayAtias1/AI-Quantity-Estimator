@@ -31,7 +31,10 @@ const ORIGINAL_PDF = path.join(ROOT, 'demo', 'assets', 'BetterCalc_Demo_Apartmen
 const REVISION_PDF = path.join(ROOT, 'demo', 'assets', 'BetterCalc_Demo_Apartment_A_Revision_B.pdf');
 // Own port: never talk to whatever else may be running on :5173 / the demos' :5183.
 const DEV_PORT = 5187;
-const DEV_URL = `http://localhost:${DEV_PORT}`;
+// BC_DIR=ltr runs the whole capture with the dev-only LTR page direction (`?dir=ltr`), to prove the
+// exports do not depend on it: compare the result against an RTL capture and only the screenshots
+// and the UI-text direction may differ.
+const DEV_URL = `http://localhost:${DEV_PORT}${process.env.BC_DIR ? `/?dir=${process.env.BC_DIR}` : ''}`;
 const VIEWPORT = { width: 1600, height: 1000 };
 
 async function waitForServer(url, timeoutMs) {
@@ -122,10 +125,11 @@ async function overlayTexts(page) {
 async function captureViewer(page, name, results) {
   await page.locator('.pdf-viewport').screenshot({ path: path.join(OUT, `${name}-rtl.png`) });
   results[`${name}-rtl`] = await overlayTexts(page);
+  const pageDir = await page.evaluate(() => document.documentElement.dir);
   await page.evaluate(() => document.documentElement.setAttribute('dir', 'ltr'));
   await pause(400);
   results[`${name}-ltr`] = await overlayTexts(page);
-  await page.evaluate(() => document.documentElement.setAttribute('dir', 'rtl'));
+  await page.evaluate((dir) => document.documentElement.setAttribute('dir', dir), pageDir);
   await pause(400);
 }
 

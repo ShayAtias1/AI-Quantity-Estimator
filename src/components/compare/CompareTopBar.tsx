@@ -100,7 +100,7 @@ export default function CompareTopBar({
             <button className="btn-ghost small breadcrumb-project" onClick={() => void close()} title={t('topBar.backToOverview')}>
               {currentProject.name || t('topBar.unnamedProject')}
             </button>
-            <Icon name="chevron-left" size={13} />
+            <Icon name="chevron-next" size={13} />
           </>
         )}
         <input
@@ -142,10 +142,10 @@ export default function CompareTopBar({
 
       {/* Group 2 — the document: where we are in it, how we look at it, and its history. */}
       <div className="top-bar-group grow">
-        {/* The page is dir="rtl", so previous sits on the right and next on the left. */}
+        {/* Previous comes first in reading order, so it sits on the right under RTL and the left under LTR. */}
         <div className="page-nav">
           <button disabled={currentPageKey <= 1} onClick={() => setCurrentPageKey(currentPageKey - 1)} title={t('topBar.previousPage')}>
-            <Icon name="chevron-right" />
+            <Icon name="chevron-previous" />
           </button>
           <span>
             {t('topBar.page')}
@@ -165,7 +165,7 @@ export default function CompareTopBar({
             / {numPages}
           </span>
           <button disabled={currentPageKey >= numPages} onClick={() => setCurrentPageKey(currentPageKey + 1)} title={t('topBar.nextPage')}>
-            <Icon name="chevron-left" />
+            <Icon name="chevron-next" />
           </button>
         </div>
 

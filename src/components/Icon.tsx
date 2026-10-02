@@ -17,8 +17,8 @@ export type IconName =
   | 'rectangle'
   | 'undo'
   | 'redo'
-  | 'chevron-right'
-  | 'chevron-left'
+  | 'chevron-previous'
+  | 'chevron-next'
   | 'chevron-down'
   | 'chevron-up'
   | 'eye'
@@ -70,8 +70,10 @@ const PATHS: Record<IconName, string> = {
   rectangle: 'M4 6h16v12H4z',
   undo: 'M9 14l-4-4 4-4M5 10h9a5 5 0 010 10h-4',
   redo: 'M15 14l4-4-4-4M19 10h-9a5 5 0 000 10h4',
-  'chevron-right': 'M9 5l7 7-7 7',
-  'chevron-left': 'M15 5l-7 7 7 7',
+  // Reading-direction chevrons, drawn for RTL (previous points right, next points left); `.icon-directional`
+  // mirrors them under LTR. The other icons depict things (an arrow tool, a download tray), not a direction.
+  'chevron-previous': 'M9 5l7 7-7 7',
+  'chevron-next': 'M15 5l-7 7 7 7',
   'chevron-down': 'M5 9l7 7 7-7',
   'chevron-up': 'M5 15l7-7 7 7',
   eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 9.2a2.8 2.8 0 100 5.6 2.8 2.8 0 000-5.6z',
@@ -121,6 +123,8 @@ const PATHS: Record<IconName, string> = {
  * `title` adds a native tooltip and an accessible name; without one the icon is decorative and is
  * hidden from assistive tech, because the button's own text already names the action.
  */
+const DIRECTIONAL: ReadonlySet<IconName> = new Set<IconName>(['chevron-previous', 'chevron-next']);
+
 export default function Icon({
   name,
   size = 16,
@@ -134,7 +138,7 @@ export default function Icon({
 }) {
   return (
     <svg
-      className={`icon ${className ?? ''}`}
+      className={`icon ${DIRECTIONAL.has(name) ? 'icon-directional ' : ''}${className ?? ''}`}
       width={size}
       height={size}
       viewBox="0 0 24 24"

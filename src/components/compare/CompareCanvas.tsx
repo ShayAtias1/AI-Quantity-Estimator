@@ -942,8 +942,11 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         className="pdf-content"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: pageSize.width, height: pageSize.height }}
       >
+        {/* The plan canvases are pinned to RTL: pdf.js draws their text with the inherited direction, and the
+            export reuses these rasters, so they must not change with the UI direction. */}
         <canvas
           ref={originalCanvasRef}
+          dir="rtl"
           style={{
             position: 'absolute',
             top: 0,
@@ -966,6 +969,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         >
           <canvas
             ref={revisedCanvasRef}
+            dir="rtl"
             className="revised-sheet"
             style={{
               position: 'absolute',

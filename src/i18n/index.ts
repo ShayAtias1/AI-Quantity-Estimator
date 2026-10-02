@@ -134,11 +134,11 @@ export function useT(): TranslateFn {
  * Keeps `<html lang>`, `<html dir>` and the document title on the current language. index.html
  * carries the same values for the first paint; from here on they follow the setting.
  */
-export function syncDocumentLanguage(): void {
+export function syncDocumentLanguage(directionOverride?: 'rtl' | 'ltr' | null): void {
   const apply = (language: Language) => {
     const meta = LANGUAGES[language];
     document.documentElement.lang = meta.code;
-    document.documentElement.dir = meta.dir;
+    document.documentElement.dir = directionOverride ?? meta.dir;
     document.title = translate(language, 'app.documentTitle');
   };
   apply(useLanguageStore.getState().language);

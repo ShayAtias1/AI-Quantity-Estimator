@@ -753,7 +753,8 @@ export default function PdfViewer() {
         className="pdf-content"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: pageSize.width, height: pageSize.height }}
       >
-        <canvas ref={canvasRef} />
+        {/* pdf.js draws plan text with the canvas's inherited direction; pinned so the plan raster is the same whatever the UI direction. */}
+        <canvas ref={canvasRef} dir="rtl" />
         {pageSize.width > 0 && (
           // Pinned to RTL rather than inherited from the page: the plan's labels keep the layout they
           // were drawn with (and that the export rasterizers reproduce) whatever the UI direction.
