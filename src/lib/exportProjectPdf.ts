@@ -58,7 +58,7 @@ class ReportWriter {
 
   private newPage() {
     this.pt = new PdfPainter(this.doc.addPage([PAGE_W, PAGE_H]), this.fonts, this.x.direction);
-    this.pt.fillText(this.title, this.startX, 40, { size: 20, bold: true, color: '#0f172a' });
+    this.pt.fillText(this.title, this.startX, 40, { size: 20, bold: true, color: '#0f172a', maxWidth: PAGE_W - MARGIN * 2 - logoWidth(REPORT_LOGO_HEIGHT) - 24 });
     this.pt.fillText(this.subtitle, this.startX, 60, { size: 12, color: '#8b8f99' });
     drawLogo(this.pt, this.x.rtl ? MARGIN : PAGE_W - MARGIN - logoWidth(REPORT_LOGO_HEIGHT), 28, REPORT_LOGO_HEIGHT);
     this.y = 84;

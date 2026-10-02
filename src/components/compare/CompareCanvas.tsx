@@ -856,7 +856,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             ? x.t('compare.exportHeader.withApartment', { name: comparison.name, apartment: comparison.apartmentNumber })
             : comparison.name,
           edge(16 * mult),
-          30 * mult
+          30 * mult,
+          w - 32 * mult
         );
         ctx.fillStyle = '#8b8f99';
         ctx.font = `${12 * mult}px 'Segoe UI', sans-serif`;
@@ -874,7 +875,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
           ctx.arc(edge(dotInset), baseline - 4 * mult, 4 * mult, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = '#374151';
-          ctx.fillText(text, edge(labelInset), baseline);
+          ctx.fillText(text, edge(labelInset), baseline, Math.max(w - labelInset - 16 * mult, 50 * mult));
         };
         legendItem(190 * mult, 200 * mult, comparison.originalColorTint, originalLabel, 50 * mult);
         legendItem(revisedInset, revisedInset + 10 * mult, activeRevision?.colorTint ?? '#ef4444', revisedLabel, 50 * mult);

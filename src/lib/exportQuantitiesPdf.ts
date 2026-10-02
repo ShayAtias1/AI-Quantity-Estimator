@@ -245,7 +245,8 @@ function drawQuantityTablePages(
 
   const newPage = (withColumnHeader: boolean) => {
     pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts, x.direction);
-    pt.fillText(t('exports.quantityPdf.title', { name: project.name }), startX, 40, { size: 20, bold: true, color: '#0f172a' });
+    // Condensed to the room before the logo, so a long project/plan name never runs under it.
+    pt.fillText(t('exports.quantityPdf.title', { name: project.name }), startX, 40, { size: 20, bold: true, color: '#0f172a', maxWidth: PAGE_W - MARGIN * 2 - logoWidth(REPORT_LOGO_HEIGHT) - 24 });
     drawLogo(pt, logoX, 28, REPORT_LOGO_HEIGHT);
     pt.fillText(x.today(), startX, 60, { size: 12, color: '#8b8f99' });
     y = 84;
@@ -614,7 +615,12 @@ export async function exportQuantitiesToPdf(
       // raster header used).
       const pt = new PdfPainter(page, fonts, x.direction);
       const headerStart = x.rtl ? framed.width - 16 * mult : 16 * mult;
-      pt.fillText(project.name, headerStart, 26 * mult, { size: 18 * mult, bold: true, color: '#0f172a' });
+      pt.fillText(project.name, headerStart, 26 * mult, {
+        size: 18 * mult,
+        bold: true,
+        color: '#0f172a',
+        maxWidth: framed.width - 32 * mult - logoWidth(REPORT_LOGO_HEIGHT * mult) - 24 * mult,
+      });
       pt.fillText(t('exports.quantityPdf.planPageHeader', { page: pageNumber, date: x.today() }), headerStart, 46 * mult, {
         size: 12 * mult,
         color: '#8b8f99',

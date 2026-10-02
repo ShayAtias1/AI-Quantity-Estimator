@@ -104,7 +104,10 @@ export function drawAreaMeasurementTable<T extends WallMeasurementLike>(
 
   const newPage = () => {
     pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts, x.direction);
-    pt.fillText(t('exports.areaTable.title', { title }), startX, 40, { size: 20, bold: true, color: '#0f172a' });
+    // A long project/plan/revision name is condensed to the room before the logo (or the margin) rather than
+    // running off the page.
+    const titleRoom = PAGE_W - MARGIN * 2 - (options.showLogo ? logoWidth(REPORT_LOGO_HEIGHT) + 24 : 0);
+    pt.fillText(t('exports.areaTable.title', { title }), startX, 40, { size: 20, bold: true, color: '#0f172a', maxWidth: titleRoom });
     pt.fillText(x.today(), startX, 60, { size: 12, color: '#8b8f99' });
     // The logo sits on the side the title does not start from.
     if (options.showLogo) drawLogo(pt, x.rtl ? MARGIN : PAGE_W - MARGIN - logoWidth(REPORT_LOGO_HEIGHT), 28, REPORT_LOGO_HEIGHT);
