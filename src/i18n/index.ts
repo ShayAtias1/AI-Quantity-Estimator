@@ -15,20 +15,24 @@
 import { useCallback } from 'react';
 import { create } from 'zustand';
 import { he } from './he';
+import { en } from './en';
 
 // ---------- languages ----------
 
-export type Language = 'he';
+export type Language = 'he' | 'en';
 
 export interface LanguageMeta {
   /** BCP 47 code, as written to `<html lang>`. */
   code: Language;
   /** Text direction of the UI in this language, as written to `<html dir>`. */
   dir: 'rtl' | 'ltr';
+  /** Locale of the dates and numbers the UI shows (never of stored values). */
+  locale: string;
 }
 
 export const LANGUAGES: Record<Language, LanguageMeta> = {
-  he: { code: 'he', dir: 'rtl' },
+  he: { code: 'he', dir: 'rtl', locale: 'he-IL' },
+  en: { code: 'en', dir: 'ltr', locale: 'en-GB' },
 };
 
 export const DEFAULT_LANGUAGE: Language = 'he';
@@ -43,7 +47,7 @@ export function isLanguage(value: unknown): value is Language {
 export type Dictionary = Widen<typeof he>;
 type Widen<T> = { readonly [K in keyof T]: T[K] extends string ? string : Widen<T[K]> };
 
-const DICTIONARIES: Record<Language, Dictionary> = { he };
+const DICTIONARIES: Record<Language, Dictionary> = { he, en };
 
 /** Every dotted path to a string in the dictionary. */
 export type TranslationKey = Leaves<typeof he>;
@@ -58,7 +62,9 @@ type Lookup<T, K extends string> = K extends `${infer H}.${infer R}`
   : K extends keyof T
     ? T[K]
     : never;
-type Placeholders<S> = S extends `${string}{${infer P}}${infer R}` ? P | Placeholders<R> : never;
+type Placeholders<S> = S extends `${string}{${infer P}}${infer R}` ? PlaceholderName<P> | Placeholders<R> : never;
+/** `{count|room|rooms}` (a plural word chosen by `count`) needs the same `count` as `{count}` does. */
+type PlaceholderName<P extends string> = P extends `${infer N}|${string}` ? N : P;
 
 /** `[]` for a key without placeholders, else `[{ name: value, … }]` naming exactly its placeholders. */
 export type TranslationParams<K extends TranslationKey> = [Placeholders<Lookup<typeof he, K>>] extends [never]
@@ -79,7 +85,12 @@ export function translate<K extends TranslationKey>(language: Language, key: K, 
   const text = lookup(DICTIONARIES[language], key) ?? lookup(he, key) ?? key;
   const params = args[0] as Record<string, string | number> | undefined;
   if (!params) return text;
-  return text.replace(/\{(\w+)\}/g, (match, name: string) => (Object.hasOwn(params, name) ? String(params[name]) : match));
+  return text.replace(/\{(\w+)(?:\|([^|}]*)\|([^}]*))?\}/g, (match, name: string, one?: string, other?: string) => {
+    if (!Object.hasOwn(params, name)) return match;
+    // `{count|room|rooms}`: the word for exactly one, else the plural. Only English writes these.
+    if (one !== undefined && other !== undefined) return Number(params[name]) === 1 ? one : other;
+    return String(params[name]);
+  });
 }
 
 // ---------- the UI language setting ----------
@@ -120,6 +131,43 @@ export function t<K extends TranslationKey>(key: K, ...args: TranslationParams<K
 }
 
 export type TranslateFn = typeof t;
+
+/**
+ * The language every Excel and PDF export is written in. Pinned to Hebrew until English reports exist:
+ * an English UI must not turn the generated files English by way of the shared `t()`. Export code
+ * reaches the dictionary through `tExport` (or passes it where a shared helper takes a `TranslateFn`),
+ * never through `t`.
+ */
+export const EXPORT_LANGUAGE: Language = 'he';
+
+/** `t` for export documents: always `EXPORT_LANGUAGE`, whatever the UI language is. */
+export const tExport: TranslateFn = (key, ...args) => translate(EXPORT_LANGUAGE, key, ...args);
+
+/** The current UI language (for stores and libs; components use `useLanguage()`). */
+export function currentLanguage(): Language {
+  return useLanguageStore.getState().language;
+}
+
+/** The UI language; the component re-renders when it changes. */
+export function useLanguage(): Language {
+  return useLanguageStore((s) => s.language);
+}
+
+/**
+ * A date as the UI shows it. Hebrew keeps the numeric form it has always had; English spells the
+ * month out ("2 Oct 2026"), which reads the same wherever day-month order differs. Display only.
+ */
+export function formatDate(value: number | Date, language: Language = currentLanguage()): string {
+  const date = typeof value === 'number' ? new Date(value) : value;
+  return language === 'he'
+    ? date.toLocaleDateString(LANGUAGES.he.locale)
+    : date.toLocaleDateString(LANGUAGES[language].locale, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** A number as the UI shows it, up to two decimals. Display only — never fed back into calculations. */
+export function formatNumber(value: number, language: Language = currentLanguage()): string {
+  return value.toLocaleString(language === 'he' ? LANGUAGES.he.locale : 'en-US', { maximumFractionDigits: 2 });
+}
 
 /** `t` bound to the current UI language; the component re-renders when the language changes. */
 export function useT(): TranslateFn {

@@ -14,7 +14,7 @@ import { exportCompositesAsPdf, type ChangeTable, type CompositeImage } from '..
 import { changeTableFor, planCompareExport } from '../../lib/compareExportPlan';
 import { trackedExport } from '../../lib/analytics';
 import { notifyExportFailed } from '../../lib/exportFailure';
-import { useT } from '../../i18n';
+import { tExport, useT } from '../../i18n';
 
 type SidebarTab = 'layers' | 'measure' | 'markup';
 
@@ -102,7 +102,7 @@ export default function CompareWorkspace() {
       if (skipped.length > 0) {
         alert(t('compare.exportSkipped', { skipped: skipped.join(', ') }));
       }
-      const scopeName = pageScope === 'all' ? t('compare.exportScopeAll') : t('compare.exportScopePage', { page: restorePageKey });
+      const scopeName = pageScope === 'all' ? tExport('compare.exportScopeAll') : tExport('compare.exportScopePage', { page: restorePageKey });
       await exportCompositesAsPdf(composites, `${comparison.name}-${scopeName}`, tables);
       return { pages_count: composites.length };
     };

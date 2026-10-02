@@ -31,7 +31,8 @@ import TextNoteShape from './TextNoteShape';
 import TextNoteDialog from './TextNoteDialog';
 import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
-import { useT } from '../i18n';
+import { useLanguage, useT } from '../i18n';
+import { labelDirection } from '../lib/textDirection';
 
 const VERTEX_HIT_RADIUS_SCREEN = 9;
 /** New masks start opaque white, the colour of the paper they hide. */
@@ -147,6 +148,7 @@ function MarkupShape({ markup, strokeW, draggable }: { markup: Markup; strokeW: 
 
 export default function PdfViewer() {
   const t = useT();
+  const language = useLanguage();
   const project = useAppStore((s) => s.project);
   const currentPage = useAppStore((s) => s.currentPage);
   const setNumPages = useAppStore((s) => s.setNumPages);
@@ -753,8 +755,7 @@ export default function PdfViewer() {
         className="pdf-content"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: pageSize.width, height: pageSize.height }}
       >
-        {/* pdf.js draws plan text with the canvas's inherited direction; pinned so the plan raster is the same whatever the UI direction. */}
-        <canvas ref={canvasRef} dir="rtl" />
+        <canvas ref={canvasRef} />
         {pageSize.width > 0 && (
           // Pinned to RTL rather than inherited from the page: the plan's labels keep the layout they
           // were drawn with (and that the export rasterizers reproduce) whatever the UI direction.
@@ -788,7 +789,7 @@ export default function PdfViewer() {
                       (() => {
                         const c = polygonCentroid(r.points);
                         return (
-                          <text x={c.x} y={c.y} fontSize={10.5 / zoom} fill={r.color} fontWeight={600} textAnchor="middle" dominantBaseline="middle">
+                          <text x={c.x} y={c.y} fontSize={10.5 / zoom} fill={r.color} fontWeight={600} textAnchor="middle" dominantBaseline="middle" direction={labelDirection(r.name, language)}>
                             {r.name}
                           </text>
                         );
@@ -823,6 +824,7 @@ export default function PdfViewer() {
                       fontWeight={600}
                       textAnchor="middle"
                       dominantBaseline="middle"
+                      direction={labelDirection(label, language)}
                     >
                       {label}
                     </text>
@@ -979,6 +981,7 @@ export default function PdfViewer() {
                             fontSize={12 / zoom}
                             fill={color}
                             fontWeight={600}
+                            direction={labelDirection(isWall ? '' : measurementLabel(m), language)}
                             transform={isDistance ? `rotate(${angleDeg} ${labelX} ${labelY})` : undefined}
                           >
                             {isWall ? (areaNumbers.get(m.id) ?? '') : measurementLabel(m)}

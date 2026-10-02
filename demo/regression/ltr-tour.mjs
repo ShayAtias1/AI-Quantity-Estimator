@@ -1,5 +1,13 @@
-// LTR readiness tour: drives the real app in forced LTR (dev-only `?dir=ltr`, see src/i18n/index.ts)
-// and in normal RTL, visits the important screens, and reports layout failures.
+// LTR / English tour: drives the real app in normal Hebrew RTL and in a second mode, visits the
+// important screens, and reports layout failures.
+//
+//   node demo/regression/ltr-tour.mjs            Hebrew forced to LTR (`?dir=ltr`) — direction safety
+//   node demo/regression/ltr-tour.mjs en         the English UI (`?lang=en` → lang="en" dir="ltr")
+//
+// Both overrides are dev-only (see src/main.tsx). Selectors come from the dictionaries (he.ts / en.ts),
+// so the same steps run in either language. In English mode it also fails on any Hebrew that is not
+// the demo data's own (names, notes) — in the page text, tooltips, aria-labels, placeholders, options
+// and native dialogs.
 //
 // Per screen it checks: <html lang/dir>, no horizontal page overflow, controls / panels / dialogs
 // inside the viewport, no clipped text (excluding deliberate ellipsis), and the previous/next
@@ -16,13 +24,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { LEGACY_COMPARISON, LEGACY_PLAN } from './fixtures.mjs';
+import { he } from '../../src/i18n/he.ts';
+import { en } from '../../src/i18n/en.ts';
+
+const MODE = process.argv[2] === 'en' ? 'en' : 'ltr-he';
+const T = MODE === 'en' ? en : he; // dictionary of the language under test
+const H = he; // the baseline run is always Hebrew
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
-const OUT = path.join(ROOT, 'demo', 'output', 'ltr');
+const OUT = path.join(ROOT, 'demo', 'output', MODE === 'en' ? 'en' : 'ltr');
 const ORIGINAL_PDF = path.join(ROOT, 'demo', 'assets', 'BetterCalc_Demo_Apartment_A_Floor_Plan.pdf');
 const REVISION_PDF = path.join(ROOT, 'demo', 'assets', 'BetterCalc_Demo_Apartment_A_Revision_B.pdf');
-const DEV_PORT = 5188;
+const DEV_PORT = MODE === 'en' ? 5189 : 5188;
 const DEV_URL = `http://localhost:${DEV_PORT}`;
 const VIEWPORT = { width: 1600, height: 1000 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -162,8 +176,25 @@ function inspectLayout() {
   }
   const crumb = document.querySelector('.breadcrumb-project + svg');
   if (crumb) info.breadcrumbChevron = new DOMMatrix(getComputedStyle(crumb).transform).a < 0 ? 'mirrored' : 'drawn';
-  return { problems, info };
+  const texts = document.body.innerText.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const el of document.querySelectorAll('[title],[aria-label],[placeholder],[alt]'))
+    for (const a of ['title', 'aria-label', 'placeholder', 'alt']) if (el.getAttribute(a)) texts.push(el.getAttribute(a));
+  for (const o of document.querySelectorAll('option')) texts.push(o.textContent);
+  texts.push(document.title);
+  return { problems, info, texts };
 }
+
+/** Hebrew words that belong to the demo data (names, notes, file names), not to the interface. */
+const DEMO_WORDS = new Set([
+  ...(JSON.stringify([LEGACY_PLAN, LEGACY_COMPARISON]).match(/[\u0590-\u05FF]+/g) ?? []),
+  // The revision label the comparison migration gives a legacy comparison — stored data, kept as is.
+  'מעודכן',
+]);
+// innerText joins the lines of a multi-line note without a separator, so a run may be several words.
+const DEMO_TEXT = [...DEMO_WORDS].join('');
+/** Interface Hebrew left in a list of visible strings. */
+const interfaceHebrew = (texts) =>
+  [...new Set(texts.filter((t) => (t.match(/[\u0590-\u05FF]+/g) ?? []).some((w) => !DEMO_WORDS.has(w) && !DEMO_TEXT.includes(w))))];
 
 async function main() {
   await rm(OUT, { recursive: true, force: true });
@@ -171,91 +202,160 @@ async function main() {
   const devServer = spawn('npm', ['run', 'dev', '--', '--port', String(DEV_PORT), '--strictPort'], { cwd: ROOT, stdio: 'pipe' });
   devServer.stderr.on('data', (d) => process.stderr.write(`[vite] ${d}`));
   let browser;
-  const report = { rtl: {}, ltr: {}, overlay: {}, errors: [] };
+  const report = { base: {}, target: {}, overlay: {}, dialogs: [], notCovered: [], errors: [] };
+  let expectDialog = false;
   try {
     await waitForServer(DEV_URL, 30_000);
     browser = await chromium.launch();
-    const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-    const page = await context.newPage();
-    page.on('pageerror', (e) => report.errors.push(String(e)));
-    page.on('console', (m) => m.type() === 'error' && report.errors.push(m.text()));
-    page.on('dialog', (d) => {
-      report.errors.push(`dialog: ${d.message()}`);
-      void d.dismiss();
-    });
+    // Pass 1 is the Hebrew RTL baseline (what production shows); pass 2 is the mode under test.
+    for (const pass of ['base', 'target']) {
+      const L = pass === 'base' ? H : T;
+      // A fresh browser context per pass: the first pass must not leave data behind for the second.
+      const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+      const page = await context.newPage();
+      page.on('pageerror', (e) => report.errors.push(String(e)));
+      page.on('console', (m) => m.type() === 'error' && report.errors.push(m.text()));
+      page.on('dialog', (d) => {
+        if (expectDialog) {
+          if (pass === 'target') report.dialogs.push({ type: d.type(), message: d.message() });
+        } else report.errors.push(`dialog: ${d.message()}`);
+        void d.dismiss();
+      });
+      await page.goto(DEV_URL);
+      await page.getByRole('button', { name: H.startScreen.newProject }).waitFor();
+      await seed(page);
 
-    await page.goto(DEV_URL);
-    await page.getByRole('button', { name: 'פרויקט חדש' }).waitFor();
-    await seed(page);
-
-    for (const dir of ['rtl', 'ltr']) {
-      const results = (report[dir] = {});
-      const check = async (name, action) => {
+      const results = (report[pass] = {});
+      const check = async (name, action, { optional = false } = {}) => {
         try {
           if (action) await action();
           await pause(350);
           results[name] = await page.evaluate(inspectLayout);
-          if (dir === 'ltr') await page.screenshot({ path: path.join(OUT, `${name}.png`) });
+          if (pass === 'target') await page.screenshot({ path: path.join(OUT, `${name}.png`) });
         } catch (err) {
           results[name] = { unreachable: String(err).split('\n')[0] };
+          if (optional) {
+            results[name].optional = true;
+            if (pass === 'target') report.notCovered.push(`${name}: ${results[name].unreachable}`);
+          }
         }
       };
-      const closeModal = () => page.locator('.modal').getByRole('button', { name: 'ביטול' }).click(quick).catch(() => {});
+      const closeModal = () => page.locator('.modal').getByRole('button', { name: L.common.cancel }).click(quick).catch(() => {});
+      const tab = (key) => page.locator('.sidebar-tabs button', { hasText: L.workspace.tabs[key] });
+      const cmpTab = (key) => page.locator('.sidebar-tabs button', { hasText: L.compare.tabs[key] });
+      const planBox = async () => (await page.locator('.pdf-viewport').boundingBox());
 
-      await page.goto(dir === 'ltr' ? `${DEV_URL}/?dir=ltr` : DEV_URL);
+      const url = pass === 'base' ? DEV_URL : MODE === 'en' ? `${DEV_URL}/?lang=en` : `${DEV_URL}/?dir=ltr`;
+      await page.goto(url);
       await page.locator('.saved-list li').first().waitFor();
       await check('home');
-      await check('home-new-project', () => page.getByRole('button', { name: 'פרויקט חדש' }).click(quick));
+      await check('home-new-project', () => page.getByRole('button', { name: L.startScreen.newProject }).click(quick));
       await closeModal();
 
       await page.locator('.saved-list li', { hasText: 'פרויקט רגרסיה' }).click();
-      await page.locator('li[title="פתח את התוכנית"]').first().waitFor();
+      await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().waitFor();
       await check('overview');
       await check('overview-summary-row', () => page.locator('.project-summary-row').first().click(quick));
-      await check('overview-add-plan', () => page.getByRole('button', { name: 'תוכנית חדשה' }).click(quick));
+      await check('overview-add-plan', () => page.getByRole('button', { name: L.projectOverview.newPlan }).click(quick));
       await closeModal();
-      await check('overview-add-comparison', () => page.getByRole('button', { name: 'השוואה חדשה' }).click(quick));
+      await check('overview-add-comparison', () => page.getByRole('button', { name: L.projectOverview.newComparison }).click(quick));
       await closeModal();
 
-      await page.locator('li[title="פתח את התוכנית"]').first().click();
+      await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().click();
       await waitForPlanRender(page);
-      report.overlay[`plan-${dir}`] = await overlayTexts(page);
+      report.overlay[`plan-${pass}`] = await overlayTexts(page);
       await check('plan');
       await check('plan-room-selected', () => page.locator('.room-list li', { hasText: 'סלון' }).first().click(quick));
-      await check('plan-tab-measure', () => page.locator('.sidebar-tabs button', { hasText: 'מדידות' }).click(quick));
-      await check('plan-tab-markup', () => page.locator('.sidebar-tabs button', { hasText: 'סימונים' }).click(quick));
-      await page.locator('.sidebar-tabs button', { hasText: 'חדרים ודירות' }).click(quick).catch(() => {});
-      await check('plan-quantities', () => page.getByTitle('פתח את טבלת הכמויות').click(quick));
-      await check('plan-quantities-defaults', () => page.getByTitle('ברירות המחדל שמהן נגזרים הפחת והגבהים של פריטי עבודה חדשים').click(quick));
-      await page.getByTitle('סגור את חלונית הכמויות').click(quick).catch(() => {});
+      await check('plan-tab-measure', () => tab('measure').click(quick));
+      await check('plan-tab-markup', () => tab('markup').click(quick));
+      await tab('rooms').click(quick).catch(() => {});
+      await check('plan-quantities', () => page.getByTitle(L.quantitiesPanel.open).click(quick));
+      await check('plan-quantities-defaults', () => page.getByTitle(L.quantitiesPanel.defaultsHint).click(quick));
+      await page.getByTitle(L.quantitiesPanel.close).click(quick).catch(() => {});
       const planMenus = await page.locator('.top-bar-menu-btn').count();
       for (let i = 0; i < planMenus; i++) {
         const btn = page.locator('.top-bar-menu-btn').nth(i);
         await check(`plan-menu-${i}`, () => btn.click(quick));
         await btn.click(quick).catch(() => {});
       }
-      await check('plan-tool-calibrate', () => page.getByRole('button', { name: 'כיול קנה מידה' }).click(quick));
-      await check('plan-tool-draw', () => page.locator('.toolbar').getByRole('button', { name: 'סימון חדר' }).click(quick));
-      await page.locator('.toolbar').getByRole('button', { name: 'בחירה' }).click(quick).catch(() => {});
+      await check('plan-tool-calibrate', () => page.getByRole('button', { name: L.toolbar.calibrate }).click(quick));
+      // Two clicks on the plan open the calibration dialog.
+      await check(
+        'plan-calibration-dialog',
+        async () => {
+          const box = await planBox();
+          await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5);
+          await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+          await page.locator('.calibration-modal').waitFor({ timeout: 3000 });
+        },
+        { optional: true }
+      );
+      await closeModal();
+      await check('plan-tool-draw', () => page.locator('.toolbar').getByRole('button', { name: L.toolbar.draw }).click(quick));
+      await page.locator('.toolbar').getByRole('button', { name: L.toolbar.select }).click(quick).catch(() => {});
+      await check(
+        'plan-text-note-dialog',
+        async () => {
+          await tab('markup').click(quick);
+          await page.locator('.sidebar').getByRole('button', { name: L.markupTools.text }).first().click(quick);
+          const box = await planBox();
+          await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.6);
+          await page.locator('.text-note-modal').waitFor({ timeout: 3000 });
+        },
+        { optional: true }
+      );
+      await page.locator('.text-note-modal').getByRole('button', { name: L.common.cancel }).click(quick).catch(() => {});
+      await page.locator('.toolbar').getByRole('button', { name: L.toolbar.select }).click(quick).catch(() => {});
+      await tab('rooms').click(quick).catch(() => {});
+      await check(
+        'plan-duplicate-apartment-dialog',
+        async () => {
+          await page.getByTitle(L.rooms.duplicateApartment.replace('{apartment}', '7')).click({ timeout: 3000, force: true });
+          await page.locator('.modal').waitFor({ timeout: 3000 });
+        },
+        { optional: true }
+      );
+      await closeModal();
+      await check(
+        'plan-delete-confirm',
+        async () => {
+          await page.locator('.room-list li', { hasText: 'סלון' }).first().click(quick);
+          expectDialog = true;
+          await page.locator('.detail-header .icon-btn').last().click(quick);
+          expectDialog = false;
+          if (!report.dialogs.length) throw new Error('no confirm dialog appeared');
+        },
+        { optional: true }
+      );
+      expectDialog = false;
+      // Auto-detect (AutoDetectPanel) is switched off in the product (SHOW_AUTO_DETECT = false in RoomPanel),
+      // so there is nothing to open; its strings are translated and checked by the dictionary tests only.
 
-      await page.getByTitle('שמירה וחזרה לסקירת הפרויקט').first().click();
-      await page.locator('li[title="פתח את התוכנית"]').first().waitFor();
-      await page.getByTitle('חזרה לרשימת הפרויקטים').click();
+      await page.getByTitle(L.topBar.backToOverview).first().click();
+      await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().waitFor();
+      await page.getByTitle(L.projectOverview.backToProjects).click();
       await page.locator('.saved-list li', { hasText: 'השוואת רגרסיה' }).click();
-      await page.locator('li[title="פתח את ההשוואה"]').first().click();
+      await page.locator(`li[title="${L.projectOverview.openComparison}"]`).first().click();
       await waitForPlanRender(page);
-      report.overlay[`compare-${dir}`] = await overlayTexts(page);
+      report.overlay[`compare-${pass}`] = await overlayTexts(page);
       await check('compare');
-      await check('compare-tab-measure', () => page.locator('.sidebar-tabs button', { hasText: 'כיול ומדידה' }).click(quick));
-      await check('compare-tab-markup', () => page.locator('.sidebar-tabs button', { hasText: 'סימונים' }).click(quick));
-      await page.locator('.sidebar-tabs button', { hasText: 'שכבות ויישור' }).click(quick).catch(() => {});
+      await check('compare-tab-measure', () => cmpTab('measure').click(quick));
+      await check('compare-changes-panel', () => page.getByTitle(L.compare.changes.open).click(quick), { optional: true });
+      await page.getByTitle(L.compare.changes.close).click(quick).catch(() => {});
+      await check('compare-tab-markup', () => cmpTab('markup').click(quick));
+      await cmpTab('layers').click(quick).catch(() => {});
+      for (const mode of ['swipe', 'blink']) {
+        await check(`compare-mode-${mode}`, () => page.getByTitle(L.compare.viewModes[`${mode}Hint`]).click(quick), { optional: true });
+      }
+      await page.getByTitle(L.compare.viewModes.overlayHint).click(quick).catch(() => {});
       const cmpMenus = await page.locator('.top-bar-menu-btn').count();
       for (let i = 0; i < cmpMenus; i++) {
         const btn = page.locator('.top-bar-menu-btn').nth(i);
         await check(`compare-menu-${i}`, () => btn.click(quick));
         await btn.click(quick).catch(() => {});
       }
-      await check('compare-tool-align', () => page.locator('button[aria-label="יישור"]').click(quick));
+      await check('compare-tool-align', () => page.locator(`button[aria-label="${L.compare.tools.align}"]`).click(quick));
+      await context.close();
     }
   } finally {
     await browser?.close();
@@ -268,34 +368,49 @@ async function main() {
     failures++;
     console.log(`FAIL  ${msg}`);
   };
-  for (const [name, ltr] of Object.entries(report.ltr)) {
-    const rtl = report.rtl[name];
-    if (ltr.unreachable || rtl?.unreachable) {
-      fail(`${name}: could not be inspected (${ltr.unreachable ?? rtl?.unreachable})`);
+  const wantDir = MODE === 'en' ? 'ltr' : 'ltr';
+  const wantLang = MODE === 'en' ? 'en' : 'he';
+  for (const [name, target] of Object.entries(report.target)) {
+    const base = report.base[name];
+    if (target.unreachable || base?.unreachable) {
+      if (target.optional || base?.optional) continue; // an optional surface; listed under "not covered"
+      fail(`${name}: could not be inspected (${target.unreachable ?? base?.unreachable})`);
       continue;
     }
-    if (ltr.info.dir !== 'ltr' || ltr.info.lang !== 'he') fail(`${name}: html dir/lang is ${ltr.info.dir}/${ltr.info.lang}`);
-    if (rtl.info.dir !== 'rtl' || rtl.info.lang !== 'he') fail(`${name}: normal run html dir/lang is ${rtl.info.dir}/${rtl.info.lang}`);
-    const known = new Set(rtl.problems);
-    for (const p of ltr.problems) if (!known.has(p)) fail(`${name}: ${p}`);
-    for (const p of ltr.problems) if (known.has(p)) console.log(`note  ${name}: also in RTL — ${p}`);
-    if (ltr.info.pageNav && ltr.info.pageNav !== 'previous-left') fail(`${name}: page-nav previous is not on the left in LTR`);
-    if (rtl.info.pageNav && rtl.info.pageNav !== 'previous-right') fail(`${name}: page-nav previous is not on the right in RTL`);
-    if (ltr.info.chevrons && ltr.info.chevrons !== 'mirrored/mirrored') fail(`${name}: page-nav chevrons not mirrored in LTR (${ltr.info.chevrons})`);
-    if (rtl.info.chevrons && rtl.info.chevrons !== 'drawn/drawn') fail(`${name}: page-nav chevrons mirrored in RTL (${rtl.info.chevrons})`);
-    if (ltr.info.breadcrumbChevron && ltr.info.breadcrumbChevron !== 'mirrored') fail(`${name}: breadcrumb chevron not mirrored in LTR`);
-    if (rtl.info.breadcrumbChevron && rtl.info.breadcrumbChevron !== 'drawn') fail(`${name}: breadcrumb chevron mirrored in RTL`);
+    if (target.info.dir !== wantDir || target.info.lang !== wantLang) fail(`${name}: html lang/dir is ${target.info.lang}/${target.info.dir}, expected ${wantLang}/${wantDir}`);
+    if (base.info.dir !== 'rtl' || base.info.lang !== 'he') fail(`${name}: normal run html lang/dir is ${base.info.lang}/${base.info.dir}`);
+    const known = new Set(MODE === 'en' ? [] : base.problems);
+    for (const p of target.problems) if (!known.has(p)) fail(`${name}: ${p}`);
+    for (const p of target.problems) if (known.has(p)) console.log(`note  ${name}: also in RTL — ${p}`);
+    if (target.info.pageNav && target.info.pageNav !== 'previous-left') fail(`${name}: page-nav previous is not on the left in LTR`);
+    if (base.info.pageNav && base.info.pageNav !== 'previous-right') fail(`${name}: page-nav previous is not on the right in RTL`);
+    if (target.info.chevrons && target.info.chevrons !== 'mirrored/mirrored') fail(`${name}: page-nav chevrons not mirrored in LTR (${target.info.chevrons})`);
+    if (base.info.chevrons && base.info.chevrons !== 'drawn/drawn') fail(`${name}: page-nav chevrons mirrored in RTL (${base.info.chevrons})`);
+    if (target.info.breadcrumbChevron && target.info.breadcrumbChevron !== 'mirrored') fail(`${name}: breadcrumb chevron not mirrored in LTR`);
+    if (base.info.breadcrumbChevron && base.info.breadcrumbChevron !== 'drawn') fail(`${name}: breadcrumb chevron mirrored in RTL`);
+    if (MODE === 'en') {
+      for (const t of interfaceHebrew(target.texts)) fail(`${name}: Hebrew in the English UI: ${JSON.stringify(t.slice(0, 80))}`);
+    }
   }
+  if (MODE === 'en') {
+    for (const d of report.dialogs) if (interfaceHebrew([d.message]).length) fail(`native ${d.type} dialog in Hebrew: ${d.message}`);
+    if (!report.dialogs.length) report.notCovered.push('native confirm dialogs: none appeared');
+  }
+  // Saved geometry: every text note sits at the same place whatever the language or direction. In
+  // English the measurement labels' units read differently, so only the user's notes are compared.
+  const notesOnly = (list) => (list ?? []).filter((t) => /הערה|קיר חדש|BC-12/.test(t.text));
   for (const kind of ['plan', 'compare']) {
-    const a = JSON.stringify(report.overlay[`${kind}-rtl`]);
-    const b = JSON.stringify(report.overlay[`${kind}-ltr`]);
-    if (!report.overlay[`${kind}-rtl`]?.length) fail(`${kind}: no overlay text captured`);
-    else if (a !== b) fail(`${kind}: overlay text geometry differs between RTL and LTR`);
-    else console.log(`ok    ${kind}: ${report.overlay[`${kind}-ltr`].length} overlay texts identical in RTL and LTR`);
+    const a = JSON.stringify(MODE === 'en' ? notesOnly(report.overlay[`${kind}-base`]) : report.overlay[`${kind}-base`]);
+    const b = JSON.stringify(MODE === 'en' ? notesOnly(report.overlay[`${kind}-target`]) : report.overlay[`${kind}-target`]);
+    const count = JSON.parse(a ?? '[]').length;
+    if (!count) fail(`${kind}: no overlay text captured`);
+    else if (a !== b) fail(`${kind}: overlay text geometry differs from the Hebrew RTL run`);
+    else console.log(`ok    ${kind}: ${count} overlay texts identical to the Hebrew RTL run`);
   }
   for (const e of report.errors) fail(`page error: ${e}`);
+  for (const n of report.notCovered) console.log(`not covered: ${n}`);
   await writeFile(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-  console.log(`${Object.keys(report.ltr).length} screens checked in LTR, ${failures} failure(s). Screenshots: ${path.relative(ROOT, OUT)}`);
+  console.log(`${Object.keys(report.target).length} screens checked (${MODE}), ${failures} failure(s). Screenshots: ${path.relative(ROOT, OUT)}`);
   process.exitCode = failures ? 1 : 0;
 }
 

@@ -20,8 +20,28 @@ A browser-only quantity-takeoff tool for Israeli finishing contractors. Everythi
 PDFs and project data live in IndexedDB, there is no server, no auth. The only network traffic is
 anonymous product analytics (PostHog), which goes exclusively through `src/lib/analytics.ts` and
 never carries plan content — read `docs/ANALYTICS.md` before adding or changing an event. The UI is
-Hebrew and the document is `dir="rtl"` (`index.html`) — user-facing strings are written inline in
-the components, not in a translation file.
+Hebrew by default (`index.html` is `lang="he" dir="rtl"`); an English UI exists but has no selector
+yet. User-facing strings live in `src/i18n` — see "Languages" below.
+
+## Languages
+
+`src/i18n/he.ts` is the source dictionary and `en.ts` must match its shape (a missing key fails the
+build; `tests/i18n` checks placeholders). Components use `useT()`; stores and libs use `t()`. Counts
+that can be 1 are written `{count} {count|room|rooms}` in English (Hebrew has no such syntax). Each
+language's `<html lang dir>` and date/number locale come from `LANGUAGES`.
+
+- **Dev override, not a feature:** `?lang=en` runs the English UI and `?dir=ltr` forces a direction
+  (`src/main.tsx`, dev server only, compiled out of production). Production opens in the saved
+  language, Hebrew by default; there is no browser-language detection.
+- **Exports are pinned to Hebrew** (`EXPORT_LANGUAGE`, `tExport`) until English reports exist. Export
+  code must never call the UI's `t`; shared helpers take a `tr` argument that exports pass `tExport`.
+  Compare's export also re-renders the plan layers in a Hebrew RTL context when the page is not one.
+- Never translate saved data: names, notes, imported text, room-detection keywords (`roomProfiles`
+  labels), legacy label formats, migration fallbacks (`db/database.ts`).
+- On-plan overlay stays direction-stable (SVG pinned RTL; text notes anchored); only UI-made labels
+  (`lib/textDirection`) follow the language.
+- `node demo/regression/ltr-tour.mjs [en]` tours the UI in LTR; `capture.mjs` (+ `BC_LANG=en`) and
+  `compare.mjs` prove Hebrew UI and exports are unchanged.
 
 ## Two apps, one shell
 

@@ -2,7 +2,8 @@ import { PDFDocument } from 'pdf-lib';
 import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, Project } from '../types';
-import { t } from '../i18n';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
+import { tExport as t } from '../i18n';
 import { buildProjectQuantities, planStatusLabel, roomCategoryQuantity, type CategoryAmount } from './projectQuantities';
 
 /*
@@ -118,7 +119,7 @@ const amountHeaders = () => {
 const amountCells = (a: CategoryAmount) => [fmt(a.quantityM2), fmt(a.orderM2), fmt(a.lengthM), fmt(a.orderLengthM)];
 
 export async function exportProjectToPdf(project: Project, plans: Plan[]) {
-  const q = buildProjectQuantities(plans);
+  const q = buildProjectQuantities(plans, t);
   const date = new Date().toLocaleDateString('he-IL');
   const pdfDoc = await PDFDocument.create();
   const fonts = await embedReportFonts(pdfDoc);
@@ -150,7 +151,7 @@ export async function exportProjectToPdf(project: Project, plans: Plan[]) {
     ],
     [22, 8, 10, 10, 14],
     q.plans.map((r) => ({
-      cells: [r.plan.name, `${r.roomCount}`, `${r.calibratedPageCount}`, `${r.uncalibratedRoomCount}`, planStatusLabel(r.status)],
+      cells: [r.plan.name, `${r.roomCount}`, `${r.calibratedPageCount}`, `${r.uncalibratedRoomCount}`, planStatusLabel(r.status, t)],
     }))
   );
 

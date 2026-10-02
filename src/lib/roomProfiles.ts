@@ -15,7 +15,7 @@
 
 import { v4 as uuid } from 'uuid';
 import type { Plan, WorkItem } from '../types';
-import { t } from '../i18n';
+import { t, type TranslateFn } from '../i18n';
 
 export type TilingCategoryKey = 'regular' | 'as';
 
@@ -61,15 +61,15 @@ export function getRoomProfile(key: string | undefined | null): RoomProfile | nu
 }
 
 /** A profile's display name — shown in the type picker, and used by detection to name a room it matched. */
-export function roomProfileName(profile: RoomProfile): string {
-  return t(`roomTypes.${profile.key}`);
+export function roomProfileName(profile: RoomProfile, tr: TranslateFn = t): string {
+  return tr(`roomTypes.${profile.key}`);
 }
 
 /** Display label for a type key — falls back to the raw key if a saved project references an unknown one. */
-export function roomProfileLabel(key: string | undefined | null): string | null {
+export function roomProfileLabel(key: string | undefined | null, tr: TranslateFn = t): string | null {
   if (!key) return null;
   const profile = getRoomProfile(key);
-  return profile ? roomProfileName(profile) : key;
+  return profile ? roomProfileName(profile, tr) : key;
 }
 
 /**

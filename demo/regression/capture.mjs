@@ -18,6 +18,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { LEGACY_COMPARISON, LEGACY_PLAN } from './fixtures.mjs';
+import { he } from '../../src/i18n/he.ts';
+import { en } from '../../src/i18n/en.ts';
+
+// BC_LANG=en runs the whole capture in the English UI (`?lang=en`); selectors come from the dictionary
+// of the language under test, so the same steps run in either. Used to prove the exports do not change.
+const L = process.env.BC_LANG === 'en' ? en : he;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -34,7 +40,8 @@ const DEV_PORT = 5187;
 // BC_DIR=ltr runs the whole capture with the dev-only LTR page direction (`?dir=ltr`), to prove the
 // exports do not depend on it: compare the result against an RTL capture and only the screenshots
 // and the UI-text direction may differ.
-const DEV_URL = `http://localhost:${DEV_PORT}${process.env.BC_DIR ? `/?dir=${process.env.BC_DIR}` : ''}`;
+const DEV_QUERY = [process.env.BC_LANG && `lang=${process.env.BC_LANG}`, process.env.BC_DIR && `dir=${process.env.BC_DIR}`].filter(Boolean).join('&');
+const DEV_URL = `http://localhost:${DEV_PORT}${DEV_QUERY ? `/?${DEV_QUERY}` : ''}`;
 const VIEWPORT = { width: 1600, height: 1000 };
 
 async function waitForServer(url, timeoutMs) {
@@ -207,73 +214,73 @@ async function main() {
     });
 
     await page.goto(DEV_URL);
-    await page.getByRole('button', { name: 'פרויקט חדש' }).waitFor();
+    await page.getByRole('button', { name: L.startScreen.newProject }).waitFor();
     await seed(page);
     await page.reload();
 
     const results = {};
     await page.locator('.saved-list li').first().waitFor();
     await tourStep(page, results, 'home');
-    await tourStep(page, results, 'home-new-project', () => page.getByRole('button', { name: 'פרויקט חדש' }).click(quick));
-    await page.locator('.modal').getByRole('button', { name: 'ביטול' }).click(quick).catch(() => {});
+    await tourStep(page, results, 'home-new-project', () => page.getByRole('button', { name: L.startScreen.newProject }).click(quick));
+    await page.locator('.modal').getByRole('button', { name: L.common.cancel }).click(quick).catch(() => {});
 
     // ---- Quantity takeoff: the legacy plan, wrapped into a project on load ----
     console.log('plan');
     await page.locator('.saved-list li', { hasText: 'פרויקט רגרסיה' }).click();
-    await page.locator('li[title="פתח את התוכנית"]').first().waitFor();
+    await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().waitFor();
     await tourStep(page, results, 'overview');
     await tourStep(page, results, 'overview-summary-row', () => page.locator('.project-summary-row').first().click(quick));
-    await tourStep(page, results, 'overview-add-plan', () => page.getByRole('button', { name: 'תוכנית חדשה' }).click(quick));
-    await page.locator('.modal').getByRole('button', { name: 'ביטול' }).click(quick).catch(() => {});
-    await tourStep(page, results, 'overview-add-comparison', () => page.getByRole('button', { name: 'השוואה חדשה' }).click(quick));
-    await page.locator('.modal').getByRole('button', { name: 'ביטול' }).click(quick).catch(() => {});
-    await page.locator('li[title="פתח את התוכנית"]').first().click();
+    await tourStep(page, results, 'overview-add-plan', () => page.getByRole('button', { name: L.projectOverview.newPlan }).click(quick));
+    await page.locator('.modal').getByRole('button', { name: L.common.cancel }).click(quick).catch(() => {});
+    await tourStep(page, results, 'overview-add-comparison', () => page.getByRole('button', { name: L.projectOverview.newComparison }).click(quick));
+    await page.locator('.modal').getByRole('button', { name: L.common.cancel }).click(quick).catch(() => {});
+    await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().click();
     await waitForPlanRender(page);
     await captureViewer(page, 'plan', results);
 
     await tourStep(page, results, 'plan');
     await tourStep(page, results, 'plan-room-selected', () => page.locator('.room-list li', { hasText: 'סלון' }).first().click(quick));
-    await tourStep(page, results, 'plan-tab-measure', () => page.locator('.sidebar-tabs button', { hasText: 'מדידות' }).click(quick));
-    await tourStep(page, results, 'plan-tab-markup', () => page.locator('.sidebar-tabs button', { hasText: 'סימונים' }).click(quick));
-    await page.locator('.sidebar-tabs button', { hasText: 'חדרים ודירות' }).click(quick).catch(() => {});
-    await tourStep(page, results, 'plan-quantities', () => page.getByTitle('פתח את טבלת הכמויות').click(quick));
-    await tourStep(page, results, 'plan-quantities-defaults', () => page.getByTitle('ברירות המחדל שמהן נגזרים הפחת והגבהים של פריטי עבודה חדשים').click(quick));
-    await page.getByTitle('סגור את חלונית הכמויות').click(quick).catch(() => {});
+    await tourStep(page, results, 'plan-tab-measure', () => page.locator('.sidebar-tabs button', { hasText: L.workspace.tabs.measure }).click(quick));
+    await tourStep(page, results, 'plan-tab-markup', () => page.locator('.sidebar-tabs button', { hasText: L.workspace.tabs.markup }).click(quick));
+    await page.locator('.sidebar-tabs button', { hasText: L.workspace.tabs.rooms }).click(quick).catch(() => {});
+    await tourStep(page, results, 'plan-quantities', () => page.getByTitle(L.quantitiesPanel.open).click(quick));
+    await tourStep(page, results, 'plan-quantities-defaults', () => page.getByTitle(L.quantitiesPanel.defaultsHint).click(quick));
+    await page.getByTitle(L.quantitiesPanel.close).click(quick).catch(() => {});
     await tourMenus(page, results, 'plan');
-    await tourStep(page, results, 'plan-tool-calibrate', () => page.getByRole('button', { name: 'כיול קנה מידה' }).click(quick));
-    await tourStep(page, results, 'plan-tool-draw', () => page.locator('.toolbar').getByRole('button', { name: 'סימון חדר' }).click(quick));
-    await page.locator('.toolbar').getByRole('button', { name: 'בחירה' }).click(quick).catch(() => {});
+    await tourStep(page, results, 'plan-tool-calibrate', () => page.getByRole('button', { name: L.toolbar.calibrate }).click(quick));
+    await tourStep(page, results, 'plan-tool-draw', () => page.locator('.toolbar').getByRole('button', { name: L.toolbar.draw }).click(quick));
+    await page.locator('.toolbar').getByRole('button', { name: L.toolbar.select }).click(quick).catch(() => {});
 
-    const openExportMenu = () => page.locator('.top-bar-menu-btn', { hasText: 'ייצוא' }).click();
-    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: 'כתב כמויות — Excel' }).click(); }, 'plan.xlsx');
-    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: 'כתב כמויות — PDF' }).click(); }, 'plan.pdf');
-    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: 'עמוד 1 בלבד' }).click(); }, 'plan-page.pdf');
+    const openExportMenu = () => page.locator('.top-bar-menu-btn', { hasText: L.common.export }).click();
+    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.quantityExport.excelMenu }).click(); }, 'plan.xlsx');
+    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.quantityExport.pdfMenu }).click(); }, 'plan.pdf');
+    await download(page, async () => { await openExportMenu(); await page.getByRole('button', { name: L.topBar.pageOnly.replace('{page}', '1') }).click(); }, 'plan-page.pdf');
 
     // ---- Project overview exports ----
     console.log('project');
-    await page.getByTitle('שמירה וחזרה לסקירת הפרויקט').first().click();
-    await page.locator('li[title="פתח את התוכנית"]').first().waitFor();
-    await download(page, () => page.getByTitle('כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד').click(), 'project.xlsx');
-    await download(page, () => page.getByTitle('דוח כמויות PDF לכל תוכניות הפרויקט').click(), 'project.pdf');
+    await page.getByTitle(L.topBar.backToOverview).first().click();
+    await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().waitFor();
+    await download(page, () => page.getByTitle(L.projectOverview.excelHint).click(), 'project.xlsx');
+    await download(page, () => page.getByTitle(L.projectOverview.pdfHint).click(), 'project.pdf');
 
     // ---- Revision Compare: the legacy single-revised-layer comparison ----
     console.log('comparison');
-    await page.getByTitle('חזרה לרשימת הפרויקטים').click();
+    await page.getByTitle(L.projectOverview.backToProjects).click();
     await page.locator('.saved-list li', { hasText: 'השוואת רגרסיה' }).click();
-    await page.locator('li[title="פתח את ההשוואה"]').first().click();
+    await page.locator(`li[title="${L.projectOverview.openComparison}"]`).first().click();
     await waitForPlanRender(page);
     await captureViewer(page, 'compare', results);
     await tourStep(page, results, 'compare');
-    await tourStep(page, results, 'compare-tab-measure', () => page.locator('.sidebar-tabs button', { hasText: 'כיול ומדידה' }).click(quick));
-    await tourStep(page, results, 'compare-tab-markup', () => page.locator('.sidebar-tabs button', { hasText: 'סימונים' }).click(quick));
-    await page.locator('.sidebar-tabs button', { hasText: 'שכבות ויישור' }).click(quick).catch(() => {});
+    await tourStep(page, results, 'compare-tab-measure', () => page.locator('.sidebar-tabs button', { hasText: L.compare.tabs.measure }).click(quick));
+    await tourStep(page, results, 'compare-tab-markup', () => page.locator('.sidebar-tabs button', { hasText: L.workspace.tabs.markup }).click(quick));
+    await page.locator('.sidebar-tabs button', { hasText: L.compare.tabs.layers }).click(quick).catch(() => {});
     await tourMenus(page, results, 'compare');
-    await tourStep(page, results, 'compare-tool-align', () => page.locator('button[aria-label="יישור"]').click(quick));
-    await page.getByRole('button', { name: 'בחירה', exact: true }).first().click(quick).catch(() => {});
+    await tourStep(page, results, 'compare-tool-align', () => page.locator(`button[aria-label="${L.compare.tools.align}"]`).click(quick));
+    await page.getByRole('button', { name: L.compare.tools.select, exact: true }).first().click(quick).catch(() => {});
     await download(
       page,
       async () => {
-        await page.locator('.top-bar-menu-btn', { hasText: 'ייצוא' }).click();
+        await page.locator('.top-bar-menu-btn', { hasText: L.common.export }).click();
         await page.locator('.menu-item', { hasText: '— מעודכן' }).first().click();
       },
       'compare.pdf'

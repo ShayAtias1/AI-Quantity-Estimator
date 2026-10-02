@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import type { Plan, Project, ReportCategory } from '../types';
-import { t } from '../i18n';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
+import { tExport as t } from '../i18n';
 import { calculateWorkItem, effectiveWastePercent, roomMetrics } from './quantities';
 import { buildProjectQuantities, planStatusLabel, roomCategoryQuantity, type ProjectQuantities } from './projectQuantities';
 import { workTypeDefinition } from './workTypes';
@@ -82,7 +83,7 @@ function addPlansSheet(workbook: ExcelJS.Workbook, q: ProjectQuantities, categor
       r.roomCount,
       r.calibratedPageCount,
       r.uncalibratedRoomCount,
-      planStatusLabel(r.status),
+      planStatusLabel(r.status, t),
       ...cols.map((c) => r.byCategory[c.category]?.[c.field] ?? 0),
     ]);
     styleBody(row, i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B, fixed.length + 1);
@@ -242,7 +243,7 @@ export async function exportProjectToExcel(project: Project, plans: Plan[]) {
 
 /** The project workbook exactly as `exportProjectToExcel` saves it — built apart so tests can read it. */
 export function buildProjectWorkbook(project: Project, plans: Plan[]): ExcelJS.Workbook {
-  const q = buildProjectQuantities(plans);
+  const q = buildProjectQuantities(plans, t);
   const categories = q.totals.map((t) => t.category);
 
   const workbook = new ExcelJS.Workbook();

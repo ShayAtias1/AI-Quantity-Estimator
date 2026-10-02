@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import type { AreaKind, ExtraReportCategory, Measurement, Plan, ReportCategory, ReportCategoryTotal, RoomQuantitySummary } from '../types';
-import { t } from '../i18n';
+// Exports are pinned to EXPORT_LANGUAGE (Hebrew) until English reports exist — never the UI's `t`.
+import { tExport as t } from '../i18n';
 import { numberAreaMeasurements } from './areaMeasurements';
 import { usedExtraCategories } from './quantities';
 import { sheetRef } from './excelSheetRef';

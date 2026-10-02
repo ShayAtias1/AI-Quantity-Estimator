@@ -1,7 +1,7 @@
 import type { Comparison, RevisionLayer } from '../types/compare';
 import { changeMeasurements, changeNumbering } from './changeMeasurements';
 import type { ChangeTable } from './exportComparePdf';
-import { t } from '../i18n';
+import { t, tExport } from '../i18n';
 
 export type RevisionScope = 'active' | 'all';
 export type PageScope = 'current' | 'all';
@@ -40,6 +40,7 @@ export function planCompareExport(
       pairs.push({
         revision,
         pageKey,
+        // Shown only in the UI's "skipped" alerts, so it follows the UI language.
         label: revision
           ? t('exports.comparePdf.revisionPageLabel', { revision: revision.label, page: pageKey })
           : t('exports.comparePdf.pageLabel', { page: pageKey }),
@@ -67,7 +68,7 @@ export function mappedRevisedPage(comparison: Comparison, revisionId: string, pa
  */
 export function changeTableFor(comparisonName: string, revision: RevisionLayer | undefined, pageKey: number): ChangeTable {
   return {
-    title: t('exports.comparePdf.title', { name: comparisonName, revision: revision?.label ?? t('exports.comparePdf.original'), page: pageKey }),
+    title: tExport('exports.comparePdf.title', { name: comparisonName, revision: revision?.label ?? tExport('exports.comparePdf.original'), page: pageKey }),
     measurements: changeMeasurements(revision?.measurements ?? [], pageKey),
     numbering: changeNumbering(revision?.measurements ?? []),
   };
