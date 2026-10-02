@@ -786,15 +786,9 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         bctx.globalAlpha = 1;
 
         if (svgRef.current) {
-          // Known difference, kept on purpose: rendered as a standalone image, the overlay has always
-          // laid its text out LTR here (it inherited nothing from the page), so text notes and
-          // measurement labels in this export sit differently from the screen. The on-screen overlay
-          // is now pinned to RTL; the copy exported is set back to LTR so existing exports stay
-          // exactly as they were until that is fixed deliberately.
-          const overlay = svgRef.current.cloneNode(true) as SVGSVGElement;
-          overlay.querySelectorAll('[direction]').forEach((el) => el.removeAttribute('direction'));
-          overlay.setAttribute('direction', 'ltr');
-          const svgString = new XMLSerializer().serializeToString(overlay);
+          // Rasterized as a standalone image, the overlay inherits nothing from the page — its
+          // direction="rtl" (and each text note's own) is what lays the text out as on screen.
+          const svgString = new XMLSerializer().serializeToString(svgRef.current);
           const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
           const img = new Image(fullW, fullH);
           await new Promise<void>((resolve, reject) => {
