@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/appStore';
 import { isPageCalibrated } from '../lib/quantities';
 import Icon from './Icon';
+import { useT } from '../i18n';
 
 /**
  * Compact page state pinned above the sidebar tabs: which page is on screen, whether it carries a
@@ -13,6 +14,7 @@ export default function PageStatusBar() {
   const numPages = useAppStore((s) => s.numPages);
   const toolMode = useAppStore((s) => s.toolMode);
   const setToolMode = useAppStore((s) => s.setToolMode);
+  const t = useT();
 
   if (!project) return null;
 
@@ -24,27 +26,26 @@ export default function PageStatusBar() {
     <div className={`page-status ${calibrated ? '' : 'uncalibrated'}`}>
       <div className="page-status-line">
         <span className="page-status-page">
-          עמוד {currentPage}
-          {numPages > 1 ? ` מתוך ${numPages}` : ''}
+          {numPages > 1 ? t('pageStatus.pageOf', { page: currentPage, count: numPages }) : t('pageStatus.page', { page: currentPage })}
         </span>
         {/* A healthy page stays quiet: muted text and a ghost action that is still always present
             (never hover-only). A page that blocks calculation says so on a warning edge, with the
             action promoted to primary. */}
         {calibrated ? (
           <span className="page-status-state muted">
-            מכויל{calibration ? ` · ${calibration.realDistanceMeters} מ' ייחוס` : ''}
+            {calibration ? t('pageStatus.calibratedWithReference', { meters: calibration.realDistanceMeters }) : t('pageStatus.calibrated')}
           </span>
         ) : (
           <span className="page-status-state cal-missing">
             <Icon name="alert" size={13} />
-            לא כויל — לא ניתן לחשב כמויות
+            {t('pageStatus.notCalibrated')}
           </span>
         )}
         <button
           className={`${calibrated ? 'btn-ghost' : 'btn-primary'} small ${toolMode === 'calibrate' ? 'active' : ''}`}
           onClick={startCalibration}
         >
-          {calibrated ? 'כייל מחדש' : 'כייל עכשיו'}
+          {calibrated ? t('pageStatus.recalibrate') : t('pageStatus.calibrateNow')}
         </button>
       </div>
     </div>

@@ -8,20 +8,23 @@
  * duplicate-room should use it too rather than re-deriving the rules).
  *
  * A profile is a classification plus defaults. It is NOT a room name: the user names rooms freely,
- * and `Room.roomType` only records which profile they picked.
+ * and `Room.roomType` only records which profile they picked. The type's display name is in the
+ * dictionary (`roomTypes.<key>`); `labels` are not UI text but detection data — the Hebrew words
+ * architectural plans write in rooms — and stay here whatever the UI language.
  */
 
 import { v4 as uuid } from 'uuid';
 import type { Plan, WorkItem } from '../types';
+import { t } from '../i18n';
 
 export type TilingCategoryKey = 'regular' | 'as';
 
+export type RoomProfileKey = 'bath' | 'wc' | 'service' | 'kitchen' | 'balcony' | 'safe' | 'living' | 'bedroom' | 'hall' | 'storage';
+
 export interface RoomProfile {
-  key: string;
+  key: RoomProfileKey;
   /** Name keywords (Hebrew). Matched as substrings against text found inside the room. */
   labels: string[];
-  /** Human-readable name of the type — shown in the type picker, and used by detection to name a room it matched. */
-  displayName: string;
   tiling: TilingCategoryKey;
   cladding: boolean;
   panels: boolean;
@@ -40,16 +43,16 @@ export interface RoomProfile {
 
 /** Ordered roughly specific→generic; matching prefers the longest label so "חדר רחצה" beats "חדר". */
 export const ROOM_PROFILES: RoomProfile[] = [
-  { key: 'bath', labels: ['חדר רחצה', 'חדר אמבטיה', 'אמבטיה', 'מקלחת', 'רחצה'], displayName: 'חדר רחצה', tiling: 'as', cladding: true, panels: false, waterproofing: true },
-  { key: 'wc', labels: ['שירותי אורחים', 'שרותי אורחים', 'שירותים', 'שרותים', 'אסלה', 'שירות אורחים'], displayName: 'שירותים', tiling: 'as', cladding: true, panels: false, waterproofing: true },
-  { key: 'service', labels: ['חדר שירות', 'חדר כביסה', 'כביסה', 'חדר רחצה שירות'], displayName: 'חדר שירות', tiling: 'as', cladding: false, panels: false, waterproofing: true },
-  { key: 'kitchen', labels: ['מטבח', 'מטבחון'], displayName: 'מטבח', tiling: 'regular', cladding: true, panels: true, painting: true },
-  { key: 'balcony', labels: ['מרפסת שירות', 'מרפסת שמש', 'מרפסת'], displayName: 'מרפסת', tiling: 'as', cladding: false, panels: false, waterproofing: true },
-  { key: 'safe', labels: ['ממ"ד', 'ממ״ד', 'ממד', 'מרחב מוגן', 'מקלט'], displayName: 'ממ"ד', tiling: 'regular', cladding: false, panels: true, painting: true },
-  { key: 'living', labels: ['סלון', 'חדר מגורים', 'מגורים', 'פינת אוכל'], displayName: 'סלון', tiling: 'regular', cladding: false, panels: true, painting: true },
-  { key: 'bedroom', labels: ['חדר שינה', 'חדר הורים', 'חדר ילדים', 'חדר שינה הורים', 'שינה', 'חדר'], displayName: 'חדר שינה', tiling: 'regular', cladding: false, panels: true, painting: true },
-  { key: 'hall', labels: ['פרוזדור', 'מסדרון', 'הול', 'כניסה', 'לובי'], displayName: 'פרוזדור', tiling: 'regular', cladding: false, panels: true, painting: true },
-  { key: 'storage', labels: ['מחסן', 'ארון', 'אחסון'], displayName: 'מחסן', tiling: 'regular', cladding: false, panels: false, painting: true },
+  { key: 'bath', labels: ['חדר רחצה', 'חדר אמבטיה', 'אמבטיה', 'מקלחת', 'רחצה'], tiling: 'as', cladding: true, panels: false, waterproofing: true },
+  { key: 'wc', labels: ['שירותי אורחים', 'שרותי אורחים', 'שירותים', 'שרותים', 'אסלה', 'שירות אורחים'], tiling: 'as', cladding: true, panels: false, waterproofing: true },
+  { key: 'service', labels: ['חדר שירות', 'חדר כביסה', 'כביסה', 'חדר רחצה שירות'], tiling: 'as', cladding: false, panels: false, waterproofing: true },
+  { key: 'kitchen', labels: ['מטבח', 'מטבחון'], tiling: 'regular', cladding: true, panels: true, painting: true },
+  { key: 'balcony', labels: ['מרפסת שירות', 'מרפסת שמש', 'מרפסת'], tiling: 'as', cladding: false, panels: false, waterproofing: true },
+  { key: 'safe', labels: ['ממ"ד', 'ממ״ד', 'ממד', 'מרחב מוגן', 'מקלט'], tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'living', labels: ['סלון', 'חדר מגורים', 'מגורים', 'פינת אוכל'], tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'bedroom', labels: ['חדר שינה', 'חדר הורים', 'חדר ילדים', 'חדר שינה הורים', 'שינה', 'חדר'], tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'hall', labels: ['פרוזדור', 'מסדרון', 'הול', 'כניסה', 'לובי'], tiling: 'regular', cladding: false, panels: true, painting: true },
+  { key: 'storage', labels: ['מחסן', 'ארון', 'אחסון'], tiling: 'regular', cladding: false, panels: false, painting: true },
 ];
 
 export function getRoomProfile(key: string | undefined | null): RoomProfile | null {
@@ -57,10 +60,16 @@ export function getRoomProfile(key: string | undefined | null): RoomProfile | nu
   return ROOM_PROFILES.find((p) => p.key === key) ?? null;
 }
 
+/** A profile's display name — shown in the type picker, and used by detection to name a room it matched. */
+export function roomProfileName(profile: RoomProfile): string {
+  return t(`roomTypes.${profile.key}`);
+}
+
 /** Display label for a type key — falls back to the raw key if a saved project references an unknown one. */
 export function roomProfileLabel(key: string | undefined | null): string | null {
   if (!key) return null;
-  return getRoomProfile(key)?.displayName ?? key;
+  const profile = getRoomProfile(key);
+  return profile ? roomProfileName(profile) : key;
 }
 
 /**

@@ -8,10 +8,8 @@
  * saved label when a document is read.
  */
 
-import { AREA_UNIT } from '../types';
+import { t } from '../i18n';
 import { round } from './geometry';
-
-const LENGTH_UNIT = "מ'";
 
 /** The fields a label is made from — common to both apps' `Measurement` types. */
 export interface MeasurementValueFields {
@@ -24,12 +22,12 @@ export interface MeasurementValueFields {
 
 /** A distance or perimeter as shown: metres to the centimetre ("3.24 מ'"). */
 export function formatLengthM(lengthM: number): string {
-  return `${round(lengthM, 2)} ${LENGTH_UNIT}`;
+  return `${round(lengthM, 2)} ${t('units.m')}`;
 }
 
 /** An area as shown. `areaM2` is stored already rounded to two decimals. */
 export function formatAreaM2(areaM2: number): string {
-  return `${areaM2} ${AREA_UNIT}`;
+  return `${areaM2} ${t('units.m2')}`;
 }
 
 // The exact label formats older builds saved. Fixed for good — they describe data already on disk,

@@ -1,5 +1,6 @@
 import type { Point } from '../types';
-import { ROOM_PROFILES, type RoomProfile, type TilingCategoryKey } from './roomProfiles';
+import { ROOM_PROFILES, roomProfileName, type RoomProfile, type TilingCategoryKey } from './roomProfiles';
+import { t } from '../i18n';
 import type { PlanPageSource, PlanTextItem } from './planSource';
 
 /**
@@ -96,7 +97,7 @@ export async function runRoomDetection(
   const maxDim = 2200;
   const scale = Math.min(2, maxDim / Math.max(native.width, native.height));
 
-  report(0.05, 'מרנדר את התוכנית…');
+  report(0.05, t('detection.rendering'));
   const canvas = document.createElement('canvas');
   const handle = source.render(canvas, scale);
   await handle.promise;
@@ -105,12 +106,12 @@ export async function runRoomDetection(
   const { width: w, height: h } = canvas;
   const image = ctx.getImageData(0, 0, w, h);
 
-  report(0.2, 'מזהה קירות…');
+  report(0.2, t('detection.walls'));
   await yieldToUI();
   const wall = buildWallMask(image, opts.luminanceThreshold);
   dilate(wall, w, h, opts.wallDilation);
 
-  report(0.4, 'מזהה אזורים סגורים…');
+  report(0.4, t('detection.regions'));
   await yieldToUI();
   const { labels, components } = connectedInteriorComponents(wall, w, h);
 
@@ -118,7 +119,7 @@ export async function runRoomDetection(
   const minArea = pageArea * opts.minAreaFraction;
   const maxArea = pageArea * opts.maxAreaFraction;
 
-  report(0.65, 'משרטט גבולות חדרים…');
+  report(0.65, t('detection.outlines'));
   await yieldToUI();
 
   const textItems = await source.getTextItems().catch(() => [] as PlanTextItem[]);
@@ -148,13 +149,13 @@ export async function runRoomDetection(
     });
   }
 
-  report(0.9, 'משייך שמות חדרים…');
+  report(0.9, t('detection.naming'));
   await yieldToUI();
 
   // Give unnamed rooms a stable temporary name.
   let tempCounter = 0;
   for (const room of rooms) {
-    if (!room.name) room.name = `חדר ${++tempCounter}`;
+    if (!room.name) room.name = t('defaultNames.room', { number: ++tempCounter });
   }
 
   const summary: DetectionSummary = {
@@ -162,7 +163,7 @@ export async function runRoomDetection(
     highConfidence: rooms.filter((r) => r.confidence === 'high').length,
     needsReview: rooms.filter((r) => r.confidence === 'low').length,
   };
-  report(1, 'הושלם');
+  report(1, t('detection.done'));
   return { rooms, summary };
 }
 
@@ -403,8 +404,8 @@ function matchRoomName(polygon: Point[], textItems: PlanTextItem[]): { name: str
   for (const entry of LABEL_INDEX) {
     if (joined.includes(entry.normalized)) {
       // Prefer the literal recognized text as the room name when it's short and specific.
-      const literal = insideText.find((t) => t.includes(entry.normalized));
-      const name = literal && literal.length <= entry.normalized.length + 8 ? literal : entry.profile.displayName;
+      const literal = insideText.find((text) => text.includes(entry.normalized));
+      const name = literal && literal.length <= entry.normalized.length + 8 ? literal : roomProfileName(entry.profile);
       return { name, profile: entry.profile };
     }
   }

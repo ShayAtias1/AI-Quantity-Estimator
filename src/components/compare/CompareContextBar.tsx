@@ -2,12 +2,8 @@ import { useEffect, useState } from 'react';
 import { alignmentStatusFor, compareScaleFor, revisionPageOf, useCompareStore } from '../../store/compareStore';
 import { round } from '../../lib/geometry';
 import Icon from '../Icon';
+import { useT } from '../../i18n';
 
-const ALIGNMENT_LABELS: Record<string, string> = {
-  identity: 'לא מיושר',
-  manual: 'הותאם ידנית',
-  points: 'לפי נקודות ייחוס',
-};
 
 /**
  * The state of the source page on screen, pinned above the sidebar tabs — the Compare counterpart
@@ -21,6 +17,7 @@ const ALIGNMENT_LABELS: Record<string, string> = {
  * the revision does not have, raises its voice.
  */
 export default function CompareContextBar() {
+  const t = useT();
   const comparison = useCompareStore((s) => s.comparison);
   const currentPageKey = useCompareStore((s) => s.currentPageKey);
   const revisedNumPages = useCompareStore((s) => s.revisedNumPages);
@@ -55,18 +52,21 @@ export default function CompareContextBar() {
   };
 
   const scaleText = calibrated
-    ? `מכויל · ${round(scale.metersPerPixel * 100, 4)} ס"מ/פיקסל · לפי ${scale.source === 'original' ? 'המקור' : activeRevision?.label ?? 'הגרסה'}`
+    ? t('compare.context.calibrated', {
+        cmPerPixel: round(scale.metersPerPixel * 100, 4),
+        source: scale.source === 'original' ? t('compare.context.sourceOriginal') : activeRevision?.label ?? t('compare.context.sourceRevision'),
+      })
     : scale.state === 'ambiguous'
-      ? 'כיול ישן שאינו ניתן לפענוח — כייל מחדש'
-      : 'לא כויל — לא ניתן למדוד כמויות';
+      ? t('compare.context.ambiguous')
+      : t('compare.context.notCalibrated');
 
   return (
     <div className="compare-context">
       {/* Which revised page this source page is compared against. */}
       <div className={`compare-context-line ${revisedPageMissing ? 'is-warning' : ''}`}>
-        <span className="compare-context-label">עמוד {currentPageKey}</span>
+        <span className="compare-context-label">{t('common.page', { page: currentPageKey })}</span>
         <Icon name="link" size={13} />
-        <span className="muted">בגרסה</span>
+        <span className="muted">{t('compare.context.inRevision')}</span>
         <input
           className="page-jump-input"
           type="number"
@@ -78,13 +78,13 @@ export default function CompareContextBar() {
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
           onBlur={commitMapping}
-          title="איזה עמוד בתוכנית המעודכנת מוצג מול עמוד המקור הזה"
+          title={t('compare.context.revisedPageHint')}
         />
         <span className="muted">/ {revisedNumPages}</span>
         {revisedPageMissing && (
           <span className="cal-missing">
             <Icon name="alert" size={13} />
-            אינו קיים בגרסה
+            {t('compare.context.revisedPageMissing')}
           </span>
         )}
       </div>
@@ -99,27 +99,27 @@ export default function CompareContextBar() {
           <button
             className={`${calibrated ? 'btn-ghost' : 'btn-primary'} small ${toolMode === 'calibrate' && calibrationLayer === 'original' ? 'active' : ''}`}
             onClick={() => startCalibration('original')}
-            title="מדוד מרחק ידוע על תוכנית המקור"
+            title={t('compare.context.calibrateOriginalHint')}
           >
-            {calibrated ? 'כייל מחדש' : 'כייל עכשיו'}
+            {calibrated ? t('pageStatus.recalibrate') : t('pageStatus.calibrateNow')}
           </button>
           <button
             className={`btn-ghost small ${toolMode === 'calibrate' && calibrationLayer === 'revised' ? 'active' : ''}`}
             onClick={() => startCalibration('revised')}
             disabled={!activeRevision}
-            title="מדוד מרחק ידוע על התוכנית המעודכנת — נשמר בקואורדינטות שלה, כך שהוא נשאר נכון גם אחרי שינוי יישור"
+            title={t('compare.context.calibrateRevisedHint')}
           >
-            לפי הגרסה
+            {t('compare.context.calibrateRevised')}
           </button>
         </div>
       </div>
 
       {/* Alignment belongs to this page/revision pair, and says so. */}
       <div className="compare-context-line">
-        <span className="muted">יישור</span>
-        <span className={`status-chip ${alignmentStatus}`}>{ALIGNMENT_LABELS[alignmentStatus]}</span>
+        <span className="muted">{t('compare.context.alignmentLabel')}</span>
+        <span className={`status-chip ${alignmentStatus}`}>{t(`compare.context.alignment.${alignmentStatus}`)}</span>
         <span className="muted compare-context-scope">
-          עמוד {currentPageKey} · {activeRevision?.label ?? '—'}
+          {t('compare.context.scope', { page: currentPageKey, revision: activeRevision?.label ?? '—' })}
         </span>
       </div>
     </div>

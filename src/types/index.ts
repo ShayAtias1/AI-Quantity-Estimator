@@ -4,11 +4,6 @@ import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
 
 export type TilingCategory = 'regular' | 'as';
 
-export const TILING_CATEGORY_LABELS: Record<TilingCategory, string> = {
-  regular: 'ריצוף רגיל',
-  as: 'ריצוף AS',
-};
-
 /**
  * Addable work item types — the "+" buttons in the room panel. 'panels' is skirting (the id is kept
  * so saved projects keep loading). Each type's label, unit, basis and defaults live in
@@ -16,18 +11,8 @@ export const TILING_CATEGORY_LABELS: Record<TilingCategory, string> = {
  */
 export type WorkType = 'tiling' | 'cladding' | 'panels' | 'painting' | 'plaster' | 'waterproofing';
 
-/** Second unit, for work types that are also counted linearly. */
-export const PANEL_LENGTH_UNIT = 'מ"א';
-export const AREA_UNIT = 'מ"ר';
-
 /** A door, window or other opening in a room's walls, entered by hand in metres. */
 export type OpeningType = 'door' | 'window' | 'custom';
-
-export const OPENING_TYPE_LABELS: Record<OpeningType, string> = {
-  door: 'דלת',
-  window: 'חלון',
-  custom: 'פתח אחר',
-};
 
 export interface Opening {
   id: string;
@@ -39,12 +24,6 @@ export interface Opening {
 }
 
 /**
- * Shown wherever a quantity or length would otherwise render as 0 only because the page has no
- * scale yet — so a real zero and "not calculable" never look alike.
- */
-export const NOT_CALIBRATED_LABEL = '— לא כויל';
-
-/**
  * Work types added after the original four report categories. Each reports as its own category, and
  * reports only show their columns when a project actually uses them — so older projects export
  * exactly as before.
@@ -54,16 +33,6 @@ export type ExtraReportCategory = (typeof EXTRA_REPORT_CATEGORIES)[number];
 
 /** The categories shown in quantity reports/totals (tiling is split by category). */
 export type ReportCategory = 'tiling_regular' | 'tiling_as' | 'cladding' | 'panels' | ExtraReportCategory;
-
-export const REPORT_CATEGORY_LABELS: Record<ReportCategory, string> = {
-  tiling_regular: 'ריצוף רגיל',
-  tiling_as: 'ריצוף AS',
-  cladding: 'חיפוי קירות',
-  panels: 'פנלים',
-  painting: 'צבע',
-  plaster: 'טיח',
-  waterproofing: 'איטום',
-};
 
 /**
  * Panels (skirting) are a strip running along the room perimeter, this height (meters) tall.
@@ -193,15 +162,6 @@ export type ToolMode = 'select' | 'pan' | 'calibrate' | 'draw' | 'draw-rect' | '
 
 export type MarkupTool = 'cloud' | 'arrow' | 'rectangle' | 'text' | 'dimension' | 'mask';
 
-export const MARKUP_TOOL_LABELS: Record<MarkupTool, string> = {
-  cloud: 'ענן סימון',
-  arrow: 'חץ',
-  rectangle: 'מלבן סימון',
-  text: 'הערת טקסט',
-  dimension: 'קו מידה',
-  mask: 'הסתרה',
-};
-
 export interface Markup {
   id: string;
   pageNumber: number;
@@ -241,22 +201,11 @@ export interface ExportRegion {
 
 export type MeasureTool = 'distance' | 'area' | 'perimeter';
 
-export const MEASURE_TOOL_LABELS: Record<MeasureTool, string> = {
-  distance: 'מרחק',
-  area: 'שטח',
-  perimeter: 'היקף',
-};
-
 /** How the user draws an area measurement: click a closed polygon, or drag a rectangle's two opposite corners. */
 export type AreaShape = 'polygon' | 'rectangle';
 
 /** Area-measurement classification, used to tally demolition vs. new-construction quantities. */
 export type AreaKind = 'demolition' | 'construction';
-
-export const AREA_KIND_LABELS: Record<AreaKind, string> = {
-  demolition: 'הריסה',
-  construction: 'בנייה חדשה',
-};
 
 export const DEFAULT_AREA_KIND_COLORS: Record<AreaKind, string> = {
   demolition: '#eab308',

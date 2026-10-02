@@ -1,12 +1,15 @@
 /**
  * The work-type catalogue: what each work type measures, in which unit, with which defaults and how
  * openings affect it. `lib/quantities.ts` reads everything from here — no work type is special-cased
- * by label, unit or default value anywhere else.
+ * by label, unit or default value anywhere else. Labels are in the dictionary under the type's id
+ * (`workTypes.<id>`, and `workTypeHeights.<id>` for its height input).
  */
 
 import type { OpeningType, Plan, WorkType } from '../types';
-import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
 import { MEASUREMENT_DEFAULTS } from '../config/measurementDefaults';
+
+/** A quantity's unit, as a dictionary key under `units`: square metres or running metres. */
+export type QuantityUnit = 'm2' | 'lm';
 
 /**
  * - floorArea: the room polygon's area.
@@ -31,9 +34,8 @@ type HeightDefaultField = 'defaultCladdingHeightM' | 'defaultPanelHeightM' | 'wa
 
 export interface WorkTypeDefinition {
   id: WorkType;
-  label: string;
   /** Unit of the item's primary quantity. */
-  unit: string;
+  unit: QuantityUnit;
   basis: CalculationBasis;
   /** Waste % when neither the item nor the project sets one. */
   defaultWastePercent: number;
@@ -45,7 +47,6 @@ export interface WorkTypeDefinition {
   deductedOpeningTypes: OpeningType[];
   /** Height input for types that multiply the perimeter; absent for floor-only types. */
   height?: {
-    label: string;
     /** Plan default used when the item has no height of its own. */
     projectField?: HeightDefaultField;
     /** Used when the project has no usable default either (older projects). */
@@ -56,8 +57,7 @@ export interface WorkTypeDefinition {
 export const WORK_TYPE_DEFINITIONS: Record<WorkType, WorkTypeDefinition> = {
   tiling: {
     id: 'tiling',
-    label: 'ריצוף',
-    unit: AREA_UNIT,
+    unit: 'm2',
     basis: 'floorArea',
     defaultWastePercent: 0,
     wasteDefaultField: 'defaultTilingWastePercent',
@@ -66,59 +66,54 @@ export const WORK_TYPE_DEFINITIONS: Record<WorkType, WorkTypeDefinition> = {
   },
   cladding: {
     id: 'cladding',
-    label: 'חיפוי קירות',
-    unit: AREA_UNIT,
+    unit: 'm2',
     basis: 'wallArea',
     defaultWastePercent: 0,
     wasteDefaultField: 'defaultCladdingWastePercent',
     deductsOpenings: true,
     deductedOpeningTypes: ['door', 'window', 'custom'],
-    height: { label: "גובה חיפוי (מ')", projectField: 'defaultCladdingHeightM', fallbackM: MEASUREMENT_DEFAULTS.claddingHeightM },
+    height: { projectField: 'defaultCladdingHeightM', fallbackM: MEASUREMENT_DEFAULTS.claddingHeightM },
   },
   panels: {
     id: 'panels',
-    label: 'פנלים',
-    unit: PANEL_LENGTH_UNIT,
+    unit: 'lm',
     basis: 'perimeter',
     defaultWastePercent: 0,
     wasteDefaultField: 'defaultPanelsWastePercent',
     // Skirting stops at door openings; windows sit above it and never reduce it.
     deductsOpenings: true,
     deductedOpeningTypes: ['door'],
-    height: { label: "גובה פנל (מ')", projectField: 'defaultPanelHeightM', fallbackM: MEASUREMENT_DEFAULTS.panelHeightM },
+    height: { projectField: 'defaultPanelHeightM', fallbackM: MEASUREMENT_DEFAULTS.panelHeightM },
   },
   painting: {
     id: 'painting',
-    label: 'צבע',
-    unit: AREA_UNIT,
+    unit: 'm2',
     basis: 'wallArea',
     defaultWastePercent: 0,
     wasteDefaultField: 'defaultPaintingWastePercent',
     deductsOpenings: true,
     deductedOpeningTypes: ['door', 'window', 'custom'],
-    height: { label: "גובה קיר (מ')", projectField: 'wallHeightDefaultM', fallbackM: MEASUREMENT_DEFAULTS.wallHeightM },
+    height: { projectField: 'wallHeightDefaultM', fallbackM: MEASUREMENT_DEFAULTS.wallHeightM },
   },
   plaster: {
     id: 'plaster',
-    label: 'טיח',
-    unit: AREA_UNIT,
+    unit: 'm2',
     basis: 'wallArea',
     defaultWastePercent: 0,
     wasteDefaultField: 'defaultPlasterWastePercent',
     deductsOpenings: true,
     deductedOpeningTypes: ['door', 'window', 'custom'],
-    height: { label: "גובה קיר (מ')", projectField: 'wallHeightDefaultM', fallbackM: MEASUREMENT_DEFAULTS.wallHeightM },
+    height: { projectField: 'wallHeightDefaultM', fallbackM: MEASUREMENT_DEFAULTS.wallHeightM },
   },
   waterproofing: {
     id: 'waterproofing',
-    label: 'איטום',
-    unit: AREA_UNIT,
+    unit: 'm2',
     basis: 'floorAndUpturn',
     defaultWastePercent: 0,
     wasteDefaultField: 'defaultWaterproofingWastePercent',
     deductsOpenings: false,
     deductedOpeningTypes: [],
-    height: { label: "הגבהה בקירות (מ')", fallbackM: MEASUREMENT_DEFAULTS.waterproofingUpturnM },
+    height: { fallbackM: MEASUREMENT_DEFAULTS.waterproofingUpturnM },
   },
 };
 

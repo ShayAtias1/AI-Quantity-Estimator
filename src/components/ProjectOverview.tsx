@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { t as tr } from '../i18n';
 import { useAppStore } from '../store/appStore';
-import { buildProjectQuantities, PLAN_STATUS_LABELS, type CategoryAmount } from '../lib/projectQuantities';
+import { buildProjectQuantities, planStatusLabel, type CategoryAmount } from '../lib/projectQuantities';
 import { exportProjectToExcel } from '../lib/exportProjectExcel';
 import { exportProjectToPdf } from '../lib/exportProjectPdf';
 import { projectExportDetails, trackedExport } from '../lib/analytics';
 import { notifyExportFailed } from '../lib/exportFailure';
-import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
 import Icon from './Icon';
 import BrandLogo from './BrandLogo';
 import NewComparisonDialog from './compare/NewComparisonDialog';
@@ -25,10 +25,10 @@ const fmt = (v: number | null) => (v == null ? DASH : v.toLocaleString('he-IL', 
 
 /** The main reading of an amount: running metres for skirting, m² for everything else. */
 function primary(a: CategoryAmount): string {
-  return a.lengthM != null ? `${fmt(a.lengthM)} ${PANEL_LENGTH_UNIT}` : `${fmt(a.quantityM2)} ${AREA_UNIT}`;
+  return a.lengthM != null ? `${fmt(a.lengthM)} ${tr('units.lm')}` : `${fmt(a.quantityM2)} ${tr('units.m2')}`;
 }
 function primaryOrder(a: CategoryAmount): string {
-  return a.orderLengthM != null ? `${fmt(a.orderLengthM)} ${PANEL_LENGTH_UNIT}` : `${fmt(a.orderM2)} ${AREA_UNIT}`;
+  return a.orderLengthM != null ? `${fmt(a.orderLengthM)} ${tr('units.lm')}` : `${fmt(a.orderM2)} ${tr('units.m2')}`;
 }
 
 /**
@@ -213,7 +213,7 @@ export default function ProjectOverview() {
                           {r.calibratedPageCount > 0 ? `${r.calibratedPageCount} עמודים מכוילים` : 'לא כויל'}
                         </span>
                       </span>
-                      <span className={`plan-status plan-status-${r.status}`}>{PLAN_STATUS_LABELS[r.status]}</span>
+                      <span className={`plan-status plan-status-${r.status}`}>{planStatusLabel(r.status)}</span>
                       <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
                         <button className="icon-btn" title="שינוי שם" onClick={() => onRename(r.plan.id, r.plan.name)}>
                           <Icon name="text" />

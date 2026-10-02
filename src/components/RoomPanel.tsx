@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { t as tr } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import type { Opening, OpeningType, Plan, TilingCategory, WorkType } from '../types';
 import {
-  AREA_UNIT,
-  NOT_CALIBRATED_LABEL as NOT_CALIBRATED,
-  OPENING_TYPE_LABELS,
-  PANEL_LENGTH_UNIT,
-  TILING_CATEGORY_LABELS,
 } from '../types';
 import {
   calculateWorkItem,
@@ -17,8 +13,8 @@ import {
   openingAreaM2,
   roomMetrics,
 } from '../lib/quantities';
-import { WORK_TYPE_DEFINITIONS, WORK_TYPE_ORDER, workTypeDefinition } from '../lib/workTypes';
-import { ROOM_PROFILES, roomProfileLabel } from '../lib/roomProfiles';
+import { WORK_TYPE_ORDER, workTypeDefinition } from '../lib/workTypes';
+import { ROOM_PROFILES, roomProfileLabel, roomProfileName } from '../lib/roomProfiles';
 import {
   apartmentDuplicationWarnings,
   apartmentNumbersInProject,
@@ -207,7 +203,7 @@ export default function RoomPanel() {
           <option value="">ללא תבנית</option>
           {ROOM_PROFILES.map((p) => (
             <option key={p.key} value={p.key}>
-              {p.displayName}
+              {roomProfileName(p)}
             </option>
           ))}
         </select>
@@ -384,13 +380,13 @@ function RoomDetail({
         <div>
           <span className="metric-label">שטח</span>
           <span className={`metric-value ${noCalibration ? 'cal-missing' : ''}`}>
-            {noCalibration ? NOT_CALIBRATED : `${round(areaM2, 2)} מ"ר`}
+            {noCalibration ? tr('quantities.notCalibrated') : `${round(areaM2, 2)} מ"ר`}
           </span>
         </div>
         <div>
           <span className="metric-label">היקף</span>
           <span className={`metric-value ${noCalibration ? 'cal-missing' : ''}`}>
-            {noCalibration ? NOT_CALIBRATED : `${round(perimeterM, 2)} מ'`}
+            {noCalibration ? tr('quantities.notCalibrated') : `${round(perimeterM, 2)} מ'`}
           </span>
         </div>
       </div>
@@ -422,7 +418,7 @@ function RoomDetail({
           )}
           {ROOM_PROFILES.map((p) => (
             <option key={p.key} value={p.key}>
-              {p.displayName}
+              {roomProfileName(p)}
             </option>
           ))}
         </select>
@@ -463,7 +459,7 @@ function RoomDetail({
         {WORK_TYPE_ORDER.map((t) => (
           <button key={t} className="btn-secondary small" onClick={() => onAddWorkItem(t)}>
             <Icon name="plus" size={13} />
-            {WORK_TYPE_DEFINITIONS[t].label}
+            {tr(`workTypes.${t}`)}
           </button>
         ))}
       </div>
@@ -492,7 +488,7 @@ function RoomDetail({
           return (
             <li key={item.id}>
               <div className="work-item-header">
-                <strong>{def.label}</strong>
+                <strong>{tr(`workTypes.${def.id}`)}</strong>
                 <button className="icon-btn danger" title="הסר סוג עבודה" onClick={() => onRemoveWorkItem(item.id)}>
                   <Icon name="trash" />
                 </button>
@@ -512,13 +508,13 @@ function RoomDetail({
                         <span className="wi-metric">
                           <span className="wi-metric-label">אורך</span>
                           <span className="wi-metric-value">
-                            {round(calc.lengthM, 2)} {PANEL_LENGTH_UNIT}
+                            {round(calc.lengthM, 2)} {tr('units.lm')}
                           </span>
                         </span>
                         <span className="wi-metric order">
                           <span className="wi-metric-label">להזמנה</span>
                           <span className="wi-metric-value">
-                            {round(calc.lengthM * factor, 2)} {PANEL_LENGTH_UNIT}
+                            {round(calc.lengthM * factor, 2)} {tr('units.lm')}
                           </span>
                         </span>
                       </>
@@ -528,13 +524,13 @@ function RoomDetail({
                         {calc.lengthM != null ? 'שטח' : canDeduct ? 'כמות נטו' : 'כמות'}
                       </span>
                       <span className="wi-metric-value">
-                        {round(calc.netM2, 2)} {AREA_UNIT}
+                        {round(calc.netM2, 2)} {tr('units.m2')}
                       </span>
                     </span>
                     <span className="wi-metric order">
                       <span className="wi-metric-label">להזמנה</span>
                       <span className="wi-metric-value">
-                        {round(calc.netM2 * factor, 2)} {AREA_UNIT}
+                        {round(calc.netM2 * factor, 2)} {tr('units.m2')}
                       </span>
                     </span>
                   </div>
@@ -542,8 +538,8 @@ function RoomDetail({
                   {deducts && (calc.deductedM2 > 0 || (calc.deductedLengthM ?? 0) > 0) && (
                     <p className="wi-deduction">
                       {calc.lengthM != null && calc.grossLengthM != null && calc.deductedLengthM != null
-                        ? `היקף ${round(calc.grossLengthM, 2)} − דלתות ${round(calc.deductedLengthM, 2)} = ${round(calc.lengthM, 2)} ${PANEL_LENGTH_UNIT}`
-                        : `ברוטו ${round(calc.grossM2, 2)} − פתחים ${round(calc.deductedM2, 2)} = נטו ${round(calc.netM2, 2)} ${AREA_UNIT}`}
+                        ? `היקף ${round(calc.grossLengthM, 2)} − דלתות ${round(calc.deductedLengthM, 2)} = ${round(calc.lengthM, 2)} ${tr('units.lm')}`
+                        : `ברוטו ${round(calc.grossM2, 2)} − פתחים ${round(calc.deductedM2, 2)} = נטו ${round(calc.netM2, 2)} ${tr('units.m2')}`}
                     </p>
                   )}
                 </>
@@ -557,15 +553,15 @@ function RoomDetail({
                     value={item.tilingCategory ?? 'regular'}
                     onChange={(e) => onUpdateWorkItem(item.id, { tilingCategory: e.target.value as TilingCategory })}
                   >
-                    <option value="regular">{TILING_CATEGORY_LABELS.regular}</option>
-                    <option value="as">{TILING_CATEGORY_LABELS.as}</option>
+                    <option value="regular">{tr('tilingCategories.regular')}</option>
+                    <option value="as">{tr('tilingCategories.as')}</option>
                   </select>
                 </div>
               )}
               {/* The item follows its type's project default height until a height is typed here, which overrides it for this item only. */}
               {def.height && (
                 <div className="form-row inline">
-                  <label>{def.height.label}</label>
+                  <label>{tr(`workTypeHeights.${def.id as Exclude<typeof def.id, 'tiling'>}`)}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -643,13 +639,13 @@ function OpeningsEditor({
   return (
     <div className="openings">
       <span className="section-label">
-        פתחים{openings.length > 0 ? ` (${round(totalM2, 2)} ${AREA_UNIT})` : ''}
+        פתחים{openings.length > 0 ? ` (${round(totalM2, 2)} ${tr('units.m2')})` : ''}
       </span>
       <div className="work-item-add-row">
         {OPENING_TYPES.map((t) => (
           <button key={t} className="btn-secondary small" onClick={() => onAdd(t)}>
             <Icon name="plus" size={13} />
-            {OPENING_TYPE_LABELS[t]}
+            {tr(`openingTypes.${t}`)}
           </button>
         ))}
       </div>
@@ -664,7 +660,7 @@ function OpeningsEditor({
               >
                 {OPENING_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {OPENING_TYPE_LABELS[t]}
+                    {tr(`openingTypes.${t}`)}
                   </option>
                 ))}
               </select>
@@ -687,7 +683,7 @@ function OpeningsEditor({
                 />
               </label>
               <span className="opening-area">
-                {round(openingAreaM2(o), 2)} {AREA_UNIT}
+                {round(openingAreaM2(o), 2)} {tr('units.m2')}
               </span>
               <button className="icon-btn danger" title="מחק פתח" onClick={() => onRemove(o.id)}>
                 <Icon name="trash" />

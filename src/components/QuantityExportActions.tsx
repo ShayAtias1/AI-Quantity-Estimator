@@ -7,6 +7,7 @@ import { exportQuantitiesToExcel } from '../lib/exportExcel';
 import { exportQuantitiesToPdf, getExportablePageNumbers } from '../lib/exportQuantitiesPdf';
 import { quantityExportDetails, trackedExport } from '../lib/analytics';
 import { notifyExportFailed } from '../lib/exportFailure';
+import { useT } from '../i18n';
 
 /**
  * The two actions that produce BetterCalc's main deliverable — the quantity report — plus their
@@ -17,6 +18,7 @@ import { notifyExportFailed } from '../lib/exportFailure';
  * renders the toolbar buttons the quantities tab has always had.
  */
 export default function QuantityExportActions({ variant, onPicked }: { variant: 'menu' | 'buttons'; onPicked?: () => void }) {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const projectName = useAppStore((s) => s.currentProject?.name);
   const currentPage = useAppStore((s) => s.currentPage);
@@ -101,24 +103,24 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
             <span className="menu-check">
               <Icon name="sheet" size={13} />
             </span>
-            {exportingExcel ? 'מייצא…' : 'כתב כמויות — Excel'}
+            {exportingExcel ? t('common.exporting') : t('quantityExport.excelMenu')}
           </button>
           <button className="menu-item" onClick={handleExportPdf} disabled={!canExport || exportingPdf}>
             <span className="menu-check">
               <Icon name="file" size={13} />
             </span>
-            {exportingPdf ? 'מייצא…' : 'כתב כמויות — PDF'}
+            {exportingPdf ? t('common.exporting') : t('quantityExport.pdfMenu')}
           </button>
         </>
       ) : (
         <>
           <button className="btn-secondary small" onClick={handleExportPdf} disabled={!canExport || exportingPdf}>
             <Icon name="file" />
-            {exportingPdf ? 'מייצא…' : 'ייצוא ל-PDF'}
+            {exportingPdf ? t('common.exporting') : t('quantityExport.pdfButton')}
           </button>
           <button className="btn-primary small" onClick={handleExportExcel} disabled={!canExport || exportingExcel}>
             <Icon name="sheet" />
-            {exportingExcel ? 'מייצא…' : 'ייצוא לאקסל'}
+            {exportingExcel ? t('common.exporting') : t('quantityExport.excelButton')}
           </button>
         </>
       )}
@@ -126,14 +128,14 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       {pageDialogPages && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>איזה עמודים לייצא?</h3>
-            <p>בחר אילו עמודי תוכנית לכלול בדוח ה-PDF.</p>
+            <h3>{t('quantityExport.whichPages')}</h3>
+            <p>{t('quantityExport.pdfPagesIntro')}</p>
             <div className="modal-actions" style={{ justifyContent: 'flex-start', marginTop: 0 }}>
               <button className="btn-secondary small" onClick={() => setPageDialogPages(new Set(exportablePages))}>
-                בחר הכל
+                {t('quantityExport.selectAll')}
               </button>
               <button className="btn-secondary small" onClick={() => setPageDialogPages(new Set())}>
-                נקה בחירה
+                {t('quantityExport.clearSelection')}
               </button>
             </div>
             <ul className="page-checkbox-list">
@@ -150,15 +152,14 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
                         setPageDialogPages(next);
                       }}
                     />
-                    עמוד {p}
-                    {p === currentPage ? ' (נוכחי)' : ''}
+                    {p === currentPage ? t('quantityExport.pageCurrent', { page: p }) : t('quantityExport.page', { page: p })}
                   </label>
                 </li>
               ))}
             </ul>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setPageDialogPages(null)}>
-                ביטול
+                {t('common.cancel')}
               </button>
               <button
                 className="btn-primary"
@@ -169,7 +170,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
                   void runExportPdf(pages);
                 }}
               >
-                ייצוא
+                {t('common.export')}
               </button>
             </div>
           </div>
@@ -179,8 +180,8 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
       {excelDialog && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h3>איזה עמודים לייצא?</h3>
-            <p>בחר עמוד ספציפי לייצוא, או את כל העמודים בטבלה מסכמת אחת.</p>
+            <h3>{t('quantityExport.whichPages')}</h3>
+            <p>{t('quantityExport.excelPagesIntro')}</p>
             <div className="form-row">
               <label>
                 <input
@@ -189,7 +190,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
                   checked={excelDialog.mode === 'specific'}
                   onChange={() => setExcelDialog({ ...excelDialog, mode: 'specific' })}
                 />{' '}
-                עמוד ספציפי
+                {t('quantityExport.specificPage')}
               </label>
               {excelDialog.mode === 'specific' && (
                 <select
@@ -198,8 +199,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
                 >
                   {exportablePages.map((p) => (
                     <option key={p} value={p}>
-                      עמוד {p}
-                      {p === currentPage ? ' (נוכחי)' : ''}
+                      {p === currentPage ? t('quantityExport.pageCurrent', { page: p }) : t('quantityExport.page', { page: p })}
                     </option>
                   ))}
                 </select>
@@ -213,12 +213,12 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
                   checked={excelDialog.mode === 'all'}
                   onChange={() => setExcelDialog({ ...excelDialog, mode: 'all' })}
                 />{' '}
-                כל העמודים (טבלה מסכמת)
+                {t('quantityExport.allPagesSummary')}
               </label>
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setExcelDialog(null)}>
-                ביטול
+                {t('common.cancel')}
               </button>
               <button
                 className="btn-primary"
@@ -228,7 +228,7 @@ export default function QuantityExportActions({ variant, onPicked }: { variant: 
                   void runExportExcel(pages);
                 }}
               >
-                ייצוא
+                {t('common.export')}
               </button>
             </div>
           </div>

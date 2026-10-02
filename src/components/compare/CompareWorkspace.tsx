@@ -14,6 +14,7 @@ import { exportCompositesAsPdf, type ChangeTable, type CompositeImage } from '..
 import { changeTableFor, planCompareExport } from '../../lib/compareExportPlan';
 import { trackedExport } from '../../lib/analytics';
 import { notifyExportFailed } from '../../lib/exportFailure';
+import { useT } from '../../i18n';
 
 type SidebarTab = 'layers' | 'measure' | 'markup';
 
@@ -32,6 +33,7 @@ async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<boolean>
 }
 
 export default function CompareWorkspace() {
+  const t = useT();
   const toolMode = useCompareStore((s) => s.toolMode);
   const setToolMode = useCompareStore((s) => s.setToolMode);
   const comparison = useCompareStore((s) => s.comparison);
@@ -94,13 +96,13 @@ export default function CompareWorkspace() {
       }
 
       if (composites.length === 0) {
-        alert(`לא נמצא שילוב עמוד/גרסה שניתן לייצא${skipped.length > 0 ? `: ${skipped.join(', ')}` : '.'}`);
+        alert(skipped.length > 0 ? t('compare.exportNothingSkipped', { skipped: skipped.join(', ') }) : t('compare.exportNothing'));
         return null;
       }
       if (skipped.length > 0) {
-        alert(`השילובים הבאים אינם קיימים ולא נכללו בייצוא: ${skipped.join(', ')}`);
+        alert(t('compare.exportSkipped', { skipped: skipped.join(', ') }));
       }
-      const scopeName = pageScope === 'all' ? 'כל-העמודים' : `עמוד-${restorePageKey}`;
+      const scopeName = pageScope === 'all' ? t('compare.exportScopeAll') : t('compare.exportScopePage', { page: restorePageKey });
       await exportCompositesAsPdf(composites, `${comparison.name}-${scopeName}`, tables);
       return { pages_count: composites.length };
     };
@@ -140,18 +142,18 @@ export default function CompareWorkspace() {
           <button
             className={`tool-btn ${toolMode === 'select' ? 'active' : ''}`}
             onClick={() => setToolMode('select')}
-            aria-label="בחירה"
+            aria-label={t('compare.tools.select')}
             aria-pressed={toolMode === 'select'}
-            title="בחירה — בחירת סימונים ושינויים על התוכנית"
+            title={t('compare.tools.selectHint')}
           >
             <Icon name="select" size={20} />
           </button>
           <button
             className={`tool-btn ${toolMode === 'pan' ? 'active' : ''}`}
             onClick={() => setToolMode('pan')}
-            aria-label="הזזה"
+            aria-label={t('compare.tools.pan')}
             aria-pressed={toolMode === 'pan'}
-            title="הזזה — גרירת התצוגה"
+            title={t('compare.tools.panHint')}
           >
             <Icon name="pan" size={20} />
           </button>
@@ -163,9 +165,9 @@ export default function CompareWorkspace() {
           <button
             className={`tool-btn ${toolMode === 'align' ? 'active' : ''}`}
             onClick={() => setToolMode(toolMode === 'align' ? 'select' : 'align')}
-            aria-label="יישור"
+            aria-label={t('compare.tools.align')}
             aria-pressed={toolMode === 'align'}
-            title="יישור — גרור את התוכנית המעודכנת למקומה"
+            title={t('compare.tools.alignHint')}
           >
             <Icon name="move" size={20} />
           </button>
@@ -180,13 +182,13 @@ export default function CompareWorkspace() {
           <CompareContextBar />
           <div className="sidebar-tabs">
             <button className={tab === 'layers' ? 'active' : ''} onClick={() => setTab('layers')}>
-              שכבות ויישור
+              {t('compare.tabs.layers')}
             </button>
             <button className={tab === 'measure' ? 'active' : ''} onClick={() => setTab('measure')}>
-              כיול ומדידה
+              {t('compare.tabs.measure')}
             </button>
             <button className={tab === 'markup' ? 'active' : ''} onClick={() => setTab('markup')}>
-              סימונים
+              {t('compare.tabs.markup')}
             </button>
           </div>
           <div className="sidebar-content">

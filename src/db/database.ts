@@ -138,7 +138,11 @@ export async function saveProject(project: Project): Promise<void> {
   await db.put('takeoffProjects', project);
 }
 
-/** "קומה-3.pdf" → "קומה-3"; the name an old single-plan record's plan gets when it is wrapped. */
+/**
+ * "קומה-3.pdf" → "קומה-3"; the name an old single-plan record's plan gets when it is wrapped. The
+ * fallback is fixed Hebrew on purpose (not the UI language): migrations must give the same result
+ * whenever they run, and every record they wrap was made by the Hebrew-only app.
+ */
 function planNameFromFile(pdfFileName: string): string {
   return pdfFileName.replace(/\.pdf$/i, '').trim() || 'תוכנית 1';
 }
@@ -306,6 +310,7 @@ async function migrateLegacyRevisedLayer(db: IDBPDatabase<QtoDB>, raw: Compariso
   // after this) is what attributes the old comparison-level lists to this revision.
   const revision = {
     id: revisionId,
+    // Fixed Hebrew on purpose, like planNameFromFile: a migration of Hebrew-era data, not UI text.
     label: 'מעודכן',
     fileName: legacy.revisedFileName ?? '',
     opacity: legacy.revisedOpacity ?? 0.75,

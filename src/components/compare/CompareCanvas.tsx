@@ -5,7 +5,7 @@ import { loadComparePdfBlob } from '../../db/database';
 import { noteAlignment, trackError } from '../../lib/analytics';
 import { useCompareStore } from '../../store/compareStore';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
-import { AREA_KIND_LABELS, IDENTITY_TRANSFORM } from '../../types/compare';
+import { IDENTITY_TRANSFORM } from '../../types/compare';
 import type { Point } from '../../types';
 import type { AreaKind, ExportRegion, Markup } from '../../types/compare';
 import { applyAlignment, invertAlignment, solveAlignment } from '../../lib/alignment';
@@ -20,6 +20,7 @@ import { orderMarkups } from '../../lib/drawMarkup';
 import DimensionShape from '../DimensionShape';
 import TextNoteShape from '../TextNoteShape';
 import TextNoteDialog from '../TextNoteDialog';
+import { useT } from '../../i18n';
 
 const RENDER_SCALE = Math.min(4, Math.max(2, (window.devicePixelRatio || 1) * 2));
 /** New masks start opaque white, the colour of the paper they hide. */
@@ -191,6 +192,7 @@ export interface CompareCanvasHandle {
 }
 
 const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_props, ref) {
+  const t = useT();
   const comparison = useCompareStore((s) => s.comparison);
   const currentPageKey = useCompareStore((s) => s.currentPageKey);
   const toolMode = useCompareStore((s) => s.toolMode);
@@ -830,7 +832,9 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.fillStyle = '#0f172a';
         ctx.font = `${20 * mult}px 'Segoe UI', sans-serif`;
         ctx.fillText(
-          `${comparison.name}${comparison.apartmentNumber ? ' - דירה ' + comparison.apartmentNumber : ''}`,
+          comparison.apartmentNumber
+            ? t('compare.exportHeader.withApartment', { name: comparison.name, apartment: comparison.apartmentNumber })
+            : comparison.name,
           w - 16 * mult,
           30 * mult
         );
@@ -845,13 +849,13 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         ctx.arc(w - 190 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#374151';
-        ctx.fillText('מקור', w - 200 * mult, 50 * mult);
+        ctx.fillText(t('compare.exportHeader.original'), w - 200 * mult, 50 * mult);
         ctx.fillStyle = activeRevision?.colorTint ?? '#ef4444';
         ctx.beginPath();
         ctx.arc(w - 250 * mult, 46 * mult, 4 * mult, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#374151';
-        ctx.fillText(activeRevision?.label ?? 'מעודכן', w - 260 * mult, 50 * mult);
+        ctx.fillText(activeRevision?.label ?? t('compare.exportHeader.revisedFallback'), w - 260 * mult, 50 * mult);
 
         if (hasAreaMeasurements) {
           const drawAreaLegend = (kind: AreaKind, y: number) => {
@@ -860,7 +864,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             ctx.arc(w - 190 * mult, y - 4 * mult, 4 * mult, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#374151';
-            ctx.fillText(`${AREA_KIND_LABELS[kind]}: ${round(areaTotals[kind], 2)} מ"ר`, w - 200 * mult, y);
+            ctx.fillText(`${t(`areaKinds.${kind}`)}: ${round(areaTotals[kind], 2)} ${t('units.m2')}`, w - 200 * mult, y);
           };
           drawAreaLegend('demolition', 70 * mult);
           drawAreaLegend('construction', 90 * mult);
@@ -888,6 +892,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       currentPageKey,
       originalPageNumber,
       revisedPageNumber,
+      t,
     ]
   );
 
@@ -1259,14 +1264,14 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       {revisedPageMissing && (
         <div className="export-region-hint cal-hint-warning">
           <Icon name="alert" size={13} />
-          עמוד {revisedPageNumber} אינו קיים בגרסה "{activeRevision?.label ?? ''}" ({revisedNumPages} עמודים) — מוצגת תוכנית המקור בלבד.
+          {t('compare.canvas.revisedPageMissing', { page: revisedPageNumber, revision: activeRevision?.label ?? '', count: revisedNumPages })}
         </div>
       )}
 
       {toolMode === 'export-region' && !regionDraft && (
         <div className="export-region-hint">
           <Icon name="crop" size={13} />
-          גרור על התוכנית כדי לבחור את האזור לייצוא
+          {t('compare.canvas.exportRegionHint')}
         </div>
       )}
 
@@ -1287,10 +1292,10 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
             e.stopPropagation();
             fitToContainer(pageSize.width, pageSize.height);
           }}
-          title="איפוס תצוגה לזום המקורי"
+          title={t('viewer.resetViewHint')}
         >
           <Icon name="expand" />
-          איפוס תצוגה
+          {t('viewer.resetView')}
         </button>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../i18n';
 import { useAppStore } from '../store/appStore';
 
 export default function CalibrationDialog() {
@@ -6,6 +7,7 @@ export default function CalibrationDialog() {
   const applyCalibration = useAppStore((s) => s.applyCalibration);
   const clearCalibrationPoints = useAppStore((s) => s.clearCalibrationPoints);
   const [value, setValue] = useState('');
+  const t = useT();
 
   if (calibrationPoints.length !== 2) return null;
 
@@ -19,10 +21,10 @@ export default function CalibrationDialog() {
   return (
     <div className="modal-backdrop">
       <div className="modal calibration-modal">
-        <h3>כיול קנה מידה</h3>
-        <p>הזן את המרחק האמיתי במטרים בין שתי הנקודות שסימנת בתוכנית.</p>
+        <h3>{t('calibration.title')}</h3>
+        <p>{t('calibration.instructions')}</p>
         <div className="form-row">
-          <label>מרחק אמיתי (מטר)</label>
+          <label>{t('calibration.distanceLabel')}</label>
           <input
             type="number"
             step="0.01"
@@ -31,15 +33,15 @@ export default function CalibrationDialog() {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="לדוגמה: 5.00"
+            placeholder={t('calibration.distancePlaceholder')}
           />
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={() => clearCalibrationPoints()}>
-            ביטול
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={submit} disabled={!value}>
-            אישור כיול
+            {t('calibration.confirm')}
           </button>
         </div>
       </div>

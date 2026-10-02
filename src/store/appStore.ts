@@ -22,7 +22,8 @@ import type { Comparison } from '../types/compare';
 import { createHistoryTracker } from '../lib/undoHistory';
 import { loadPdfPlanSource } from '../lib/planSource';
 import { runRoomDetection, type DetectionSummary } from '../lib/roomDetection';
-import { buildWorkItemsForProfile, getRoomProfile } from '../lib/roomProfiles';
+import { buildWorkItemsForProfile, getRoomProfile, roomProfileName } from '../lib/roomProfiles';
+import { t } from '../i18n';
 import {
   notePlanLoaded,
   notePlanSaved,
@@ -128,7 +129,7 @@ function roomFromCandidate(candidate: DetectionCandidate, project: Plan, seed: n
     closed: true,
     // `seed` counts up across a batch, so accepting several unnamed candidates gives each one its
     // own number instead of naming them all after the same room count.
-    name: candidate.suggestedName || `חדר ${seed + 1}`,
+    name: candidate.suggestedName || t('defaultNames.room', { number: seed + 1 }),
     // Accepting is a manual act, so the room joins the apartment the user is working in — all the
     // detection metadata below is preserved untouched.
     apartmentNumber,
@@ -155,7 +156,9 @@ function newRoom(project: Plan, pageNumber: number, points: Point[], apartmentNu
     pageNumber,
     points,
     closed: true,
-    name: `${profile?.displayName ?? 'חדר'} ${project.rooms.length + 1}`,
+    name: profile
+      ? t('defaultNames.roomOfType', { type: roomProfileName(profile), number: project.rooms.length + 1 })
+      : t('defaultNames.room', { number: project.rooms.length + 1 }),
     // Stamped from the apartment the user is working in; still editable per room afterwards.
     apartmentNumber,
     notes: '',
@@ -582,7 +585,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const [source, blob] = await Promise.all([loadPlan(planId), loadPdfBlob(planId)]);
     if (!source) return null;
-    const copy = clonePlanForDuplicate(source, `${source.name} (עותק)`);
+    const copy = clonePlanForDuplicate(source, t('defaultNames.copy', { name: source.name }));
     if (blob) await savePdfBlob(copy.id, blob);
     await dbSavePlan(copy);
     const planIds = [...currentProject.planIds];
@@ -665,7 +668,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { project, currentPage, detecting } = get();
     if (!project || detecting) return;
     // A rerun replaces the previous review session rather than piling onto it.
-    set({ detecting: true, detectionProgress: 0, detectionLabel: 'מתחיל…', detectionSummary: null, detectionCandidates: [], detectionCandidatesPage: null });
+    set({ detecting: true, detectionProgress: 0, detectionLabel: t('detection.starting'), detectionSummary: null, detectionCandidates: [], detectionCandidatesPage: null });
     try {
       const { source } = await loadPdfPlanSource(project.id, () => loadPdfBlob(project.id), currentPage);
       const { rooms: detected, summary } = await runRoomDetection(source, {
@@ -693,7 +696,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         detectionSummary: summary,
       });
     } catch (err) {
-      set({ detectionLabel: err instanceof Error ? err.message : 'שגיאה בזיהוי' });
+      set({ detectionLabel: err instanceof Error ? err.message : t('detection.failed') });
     } finally {
       set({ detecting: false });
     }
@@ -1023,7 +1026,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // covers every geometry field there is.
     const copy = cloneRoomForDuplicate(original, {
       points: original.points.map((p) => ({ x: p.x + ROOM_DUPLICATE_OFFSET, y: p.y + ROOM_DUPLICATE_OFFSET })),
-      name: original.name ? `${original.name} (עותק)` : 'חדר (עותק)',
+      name: original.name ? t('defaultNames.copy', { name: original.name }) : t('defaultNames.roomCopy'),
       color: nextColor(project.rooms.length),
     });
 
@@ -1191,7 +1194,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       notePlanSaved(project);
     } catch (err) {
       // Stays dirty: the work is not on disk, and the beforeunload guard must keep warning.
-      set({ saveError: err instanceof Error ? err.message : 'שמירה נכשלה' });
+      set({ saveError: err instanceof Error ? err.message : t('errors.saveFailed') });
       console.error('Failed to save project', err);
       trackError('save_plan', err);
     } finally {

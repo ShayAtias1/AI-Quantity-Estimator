@@ -3,6 +3,7 @@ import { useCompareStore } from '../../store/compareStore';
 import { deleteComparePdfBlob, saveComparePdfBlob } from '../../db/database';
 import { trackRevisionAdded } from '../../lib/analytics';
 import Icon from '../Icon';
+import { useT } from '../../i18n';
 
 const TINT_PRESETS = ['#9ca3af', '#6b7280', '#ef4444', '#2563eb', '#16a34a', '#f59e0b', '#9333ea'];
 
@@ -28,10 +29,11 @@ function LayerRow({
   onTintChange: (c: string) => void;
   onToggleSourceColors: (v: boolean) => void;
 }) {
+  const t = useT();
   return (
     <div className="layer-row">
       <div className="layer-row-header">
-        <button className="icon-btn" onClick={onToggleVisible} title={visible ? 'הסתר שכבה' : 'הצג שכבה'} aria-pressed={visible}>
+        <button className="icon-btn" onClick={onToggleVisible} title={visible ? t('compare.layers.hide') : t('compare.layers.show')} aria-pressed={visible}>
           <Icon name={visible ? 'eye' : 'eye-off'} />
         </button>
         <span className="layer-title">{title}</span>
@@ -46,11 +48,11 @@ function LayerRow({
         value={opacity}
         onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
         disabled={!visible}
-        title="שקיפות השכבה"
+        title={t('compare.layers.opacity')}
       />
       <label className="source-color-toggle">
         <input type="checkbox" checked={useSourceColors} onChange={(e) => onToggleSourceColors(e.target.checked)} />
-        הצג בצבע המקורי של התוכנית
+        {t('compare.layers.sourceColors')}
       </label>
       <div className={`tint-swatches ${useSourceColors ? 'disabled' : ''}`}>
         {TINT_PRESETS.map((c) => (
@@ -69,6 +71,7 @@ function LayerRow({
 }
 
 export default function LayerPanel() {
+  const t = useT();
   const comparison = useCompareStore((s) => s.comparison);
   const setLayerOpacity = useCompareStore((s) => s.setLayerOpacity);
   const setLayerVisible = useCompareStore((s) => s.setLayerVisible);
@@ -96,13 +99,13 @@ export default function LayerPanel() {
   };
 
   const handleRemove = async (id: string) => {
-    if (!confirm('להסיר את התוכנית המעודכנת הזו מההשוואה?')) return;
+    if (!confirm(t('compare.layers.removeConfirm'))) return;
     removeRevision(id);
     await deleteComparePdfBlob(comparison.id, `revision:${id}`);
   };
 
   const handleRename = (id: string, current: string) => {
-    const label = window.prompt('שם התוכנית המעודכנת:', current);
+    const label = window.prompt(t('compare.layers.renamePrompt'), current);
     if (label && label.trim()) renameRevision(id, label.trim());
   };
 
@@ -111,14 +114,14 @@ export default function LayerPanel() {
       {/* 1 — which revision is active. A selectable list, in the export/display order, with its
           row actions revealed on hover like the takeoff room list. */}
       <div className="tool-group">
-        <span className="section-label">גרסאות מעודכנות</span>
+        <span className="section-label">{t('compare.layers.revisions')}</span>
         {comparison.revisions.length === 0 ? (
           <div className="empty-state">
             <Icon name="layers" size={24} />
-            <p>אין עדיין תוכנית מעודכנת להשוואה מול המקור.</p>
+            <p>{t('compare.layers.empty')}</p>
             <button className="btn-primary small" onClick={() => fileInputRef.current?.click()}>
               <Icon name="plus" />
-              הוסף תוכנית מעודכנת
+              {t('compare.layers.addRevision')}
             </button>
           </div>
         ) : (
@@ -129,7 +132,7 @@ export default function LayerPanel() {
                 className={r.id === comparison.activeRevisionId ? 'active' : ''}
                 onClick={() => setActiveRevisionId(r.id)}
                 onDoubleClick={() => handleRename(r.id, r.label)}
-                title="לחיצה להשוואה מול גרסה זו · לחיצה כפולה לשינוי שם"
+                title={t('compare.layers.revisionHint')}
               >
                 <span className="color-dot" style={{ background: r.colorTint }} />
                 <span className="revision-name">{r.label}</span>
@@ -141,7 +144,7 @@ export default function LayerPanel() {
                       e.stopPropagation();
                       moveRevision(r.id, -1);
                     }}
-                    title="העבר למעלה — הסדר קובע גם את סדר הייצוא"
+                    title={t('compare.layers.moveUp')}
                   >
                     <Icon name="chevron-up" />
                   </button>
@@ -152,7 +155,7 @@ export default function LayerPanel() {
                       e.stopPropagation();
                       moveRevision(r.id, 1);
                     }}
-                    title="העבר למטה — הסדר קובע גם את סדר הייצוא"
+                    title={t('compare.layers.moveDown')}
                   >
                     <Icon name="chevron-down" />
                   </button>
@@ -162,7 +165,7 @@ export default function LayerPanel() {
                       e.stopPropagation();
                       void handleRemove(r.id);
                     }}
-                    title="הסר תוכנית מעודכנת"
+                    title={t('compare.layers.removeRevision')}
                   >
                     <Icon name="trash" />
                   </button>
@@ -174,7 +177,7 @@ export default function LayerPanel() {
         {comparison.revisions.length > 0 && (
           <button className="btn-secondary small full-width" onClick={() => fileInputRef.current?.click()}>
             <Icon name="plus" />
-            הוסף תוכנית מעודכנת
+            {t('compare.layers.addRevision')}
           </button>
         )}
         <input
@@ -192,9 +195,9 @@ export default function LayerPanel() {
 
       {/* 2 — secondary: how each layer is drawn. */}
       <div className="tool-group">
-        <span className="section-label">תצוגת השכבות</span>
+        <span className="section-label">{t('compare.layers.display')}</span>
         <LayerRow
-          title="תוכנית מקור"
+          title={t('compare.layers.original')}
           visible={comparison.originalVisible}
           opacity={comparison.originalOpacity}
           tint={comparison.originalColorTint}

@@ -1,14 +1,12 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import type { AreaKind, ExtraReportCategory, Measurement, Plan, ReportCategory, ReportCategoryTotal, RoomQuantitySummary } from '../types';
-import { AREA_KIND_LABELS, REPORT_CATEGORY_LABELS } from '../types';
+import { t } from '../i18n';
 import { numberAreaMeasurements } from './areaMeasurements';
 import { usedExtraCategories } from './quantities';
 import { sheetRef } from './excelSheetRef';
 
 const DASH = '—';
-/** Written into quantity cells of a room whose page has no scale, so 0 is never implied. */
-const NOT_CALIBRATED = 'לא כויל';
 
 // Fill palette (matches the reference workbook "מטריצה מיכשווילי 2").
 const C_HEADER = 'FF1F4E79'; // dark blue header (white bold text)
@@ -22,41 +20,41 @@ const C_GRAND = 'FFD5F5E3'; // grand-total row on summary sheet
 
 const NUM_FMT = '#,##0.00';
 
-/** Sheet names. The summary sheet's formulas reach the data sheet by name — see `sheetRef`. */
-const SUMMARY_SHEET = 'סיכום כולל';
-const DATA_SHEET = 'כתב כמויות';
-
-const DATA_HEADERS = [
-  'דירה',
-  'חדר',
-  'שטח ריצוף רגיל (מ"ר)',
-  'שטח ריצוף AS (מ"ר)',
-  'שטח חיפוי קירות (מ"ר)',
-  'שטח פנלים (מ"ר)',
-  'פחת ריצוף רגיל (%)',
-  'פחת ריצוף AS (%)',
-  'פחת חיפוי (%)',
-  'פחת פנלים (%)',
-  'ריצוף רגיל להזמנה',
-  'ריצוף AS להזמנה',
-  'חיפוי להזמנה',
-  'פנלים להזמנה',
-  'הערות',
-  // Appended last on purpose: the order formulas below address columns by letter (C..N), so the
-  // panel length gets its own column P instead of shifting any of them.
-  'אורך פנלים (מ"א)',
-  'אורך פנלים להזמנה (מ"א)',
-];
+/** Data-sheet headers, columns A..Q. The order formulas below address these columns by letter. */
+function dataHeaders(): string[] {
+  return [
+    t('exports.common.apartment'),
+    t('exports.common.room'),
+    t('exports.excel.dataHeaders.tilingRegularArea'),
+    t('exports.excel.dataHeaders.tilingAsArea'),
+    t('exports.excel.dataHeaders.claddingArea'),
+    t('exports.excel.dataHeaders.panelsArea'),
+    t('exports.excel.dataHeaders.tilingRegularWaste'),
+    t('exports.excel.dataHeaders.tilingAsWaste'),
+    t('exports.excel.dataHeaders.claddingWaste'),
+    t('exports.excel.dataHeaders.panelsWaste'),
+    t('exports.excel.dataHeaders.tilingRegularOrder'),
+    t('exports.excel.dataHeaders.tilingAsOrder'),
+    t('exports.excel.dataHeaders.claddingOrder'),
+    t('exports.excel.dataHeaders.panelsOrder'),
+    t('exports.common.notes'),
+    // Appended last on purpose: the order formulas below address columns by letter (C..N), so the
+    // panel length gets its own column P instead of shifting any of them.
+    t('exports.excel.dataHeaders.panelsLength'),
+    t('exports.excel.dataHeaders.panelsOrderLength'),
+  ];
+}
+/** Number of data-sheet columns before the later work types' — fixed, whatever the language. */
+const DATA_COLUMN_COUNT = 17;
 const DATA_WIDTHS = [8, 26, 17, 16, 18, 14, 15, 15, 12, 12, 15, 15, 13, 13, 26, 17, 21];
 
 /** A category's net and to-order columns on the summary sheet — the original four and the later ones alike. */
 function summaryHeadersFor(category: ReportCategory): string[] {
-  const label = REPORT_CATEGORY_LABELS[category];
-  return [`${label} נטו (מ"ר)`, `${label} להזמנה (מ"ר)`];
+  const label = t(`reportCategories.${category}`);
+  return [t('exports.excel.categoryNetM2', { label }), t('exports.excel.categoryOrderM2', { label })];
 }
 
 const BASE_CATEGORIES: ReportCategory[] = ['tiling_regular', 'tiling_as', 'cladding', 'panels'];
-const SUMMARY_HEADERS = ['דירה', ...BASE_CATEGORIES.flatMap(summaryHeadersFor)];
 const SUMMARY_WIDTHS = [10, 20, 22, 18, 20, 20, 22, 16, 18];
 
 /** 1-based column number → Excel letters (1 → A, 27 → AA). */
@@ -77,7 +75,7 @@ function colLetter(n: number): string {
  */
 function extraDataColumns(extras: ExtraReportCategory[]) {
   return extras.map((category, i) => {
-    const netCol = DATA_HEADERS.length + 1 + i * 3;
+    const netCol = DATA_COLUMN_COUNT + 1 + i * 3;
     return { category, netCol, wasteCol: netCol + 1, orderCol: netCol + 2 };
   });
 }
@@ -94,15 +92,15 @@ function sumField(rooms: RoomQuantitySummary[], pick: (s: RoomQuantitySummary) =
   return round2(rooms.reduce((acc, s) => acc + (pick(s) ?? 0), 0));
 }
 
-const AREA_HEADERS = ['#', 'עמוד', 'סוג', 'אופן חישוב', "אורך (מ')", "גובה (מ')", 'שטח (מ"ר)'];
+const AREA_HEADER_KEYS = ['number', 'page', 'kind', 'calcMode', 'length', 'height', 'area'] as const;
 const AREA_WIDTHS = [6, 8, 14, 18, 14, 14, 14];
 
 /** Adds a "הריסה ובנייה" sheet listing every kind-tagged area/wall measurement (independent of room data) plus per-kind and grand totals. */
 function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measurement[]) {
-  const sheet = workbook.addWorksheet('הריסה ובנייה', { views: [{ rightToLeft: true }] });
+  const sheet = workbook.addWorksheet(t('exports.excel.sheets.areas'), { views: [{ rightToLeft: true }] });
   AREA_WIDTHS.forEach((w, i) => (sheet.getColumn(i + 1).width = w));
 
-  const headerRow = sheet.addRow(AREA_HEADERS);
+  const headerRow = sheet.addRow(AREA_HEADER_KEYS.map((k) => t(`exports.common.areaHeaders.${k}`)));
   headerRow.eachCell({ includeEmpty: true }, (c) => {
     setFill(c, C_HEADER);
     c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
@@ -122,8 +120,8 @@ function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measu
       const row = sheet.addRow([
         numbers.get(m.id) ?? '',
         m.pageNumber,
-        AREA_KIND_LABELS[kind],
-        isWall ? 'קיר (אורך × גובה)' : 'שטח בפועל',
+        t(`areaKinds.${kind}`),
+        isWall ? t('exports.common.calcWall') : t('exports.common.calcFootprint'),
         isWall ? round2(m.wallLengthM ?? 0) : DASH,
         isWall ? round2(m.wallHeightM ?? 0) : DASH,
         round2(m.areaM2 ?? 0),
@@ -138,7 +136,7 @@ function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measu
       row.getCell(7).numFmt = NUM_FMT;
     });
     grandTotal += subtotal;
-    const totalRow = sheet.addRow([`סה"כ ${AREA_KIND_LABELS[kind]}`, '', '', '', '', '', round2(subtotal)]);
+    const totalRow = sheet.addRow([t('exports.common.kindTotal', { kind: t(`areaKinds.${kind}`) }), '', '', '', '', '', round2(subtotal)]);
     totalRow.getCell(7).numFmt = NUM_FMT;
     totalRow.eachCell({ includeEmpty: true }, (c) => {
       setFill(c, C_TOTAL);
@@ -147,7 +145,7 @@ function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measu
     });
   }
 
-  const grandRow = sheet.addRow(['סה"כ כללי', '', '', '', '', '', round2(grandTotal)]);
+  const grandRow = sheet.addRow([t('exports.common.grandTotal'), '', '', '', '', '', round2(grandTotal)]);
   grandRow.getCell(7).numFmt = NUM_FMT;
   grandRow.eachCell({ includeEmpty: true }, (c) => {
     setFill(c, C_GRAND);
@@ -156,7 +154,6 @@ function addAreaMeasurementSheet(workbook: ExcelJS.Workbook, measurements: Measu
   });
 }
 
-const DEDUCTION_HEADERS = ['דירה', 'חדר', 'סוג עבודה', 'ברוטו (מ"ר)', 'ניכוי פתחים (מ"ר)', 'נטו (מ"ר)'];
 const DEDUCTION_WIDTHS = [8, 26, 16, 14, 18, 14];
 
 /**
@@ -166,16 +163,23 @@ const DEDUCTION_WIDTHS = [8, 26, 16, 14, 18, 14];
 function addOpeningDeductionSheet(workbook: ExcelJS.Workbook, summaries: RoomQuantitySummary[]) {
   const rows = summaries.flatMap((s) => s.openingDeductions.map((d) => ({ s, d })));
   if (rows.length === 0) return;
-  const sheet = workbook.addWorksheet('ניכוי פתחים', { views: [{ rightToLeft: true }] });
+  const sheet = workbook.addWorksheet(t('exports.excel.sheets.deductions'), { views: [{ rightToLeft: true }] });
   DEDUCTION_WIDTHS.forEach((w, i) => (sheet.getColumn(i + 1).width = w));
-  const headerRow = sheet.addRow(DEDUCTION_HEADERS);
+  const headerRow = sheet.addRow([
+    t('exports.common.apartment'),
+    t('exports.common.room'),
+    t('exports.excel.deductionHeaders.workType'),
+    t('exports.excel.deductionHeaders.gross'),
+    t('exports.excel.deductionHeaders.deducted'),
+    t('exports.excel.deductionHeaders.net'),
+  ]);
   headerRow.eachCell({ includeEmpty: true }, (c) => {
     setFill(c, C_HEADER);
     c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
     c.alignment = { horizontal: 'center', vertical: 'middle' };
   });
   rows.forEach(({ s, d }, i) => {
-    const row = sheet.addRow([s.apartmentNumber || DASH, s.roomName, REPORT_CATEGORY_LABELS[d.category], d.grossM2, d.deductedM2, null]);
+    const row = sheet.addRow([s.apartmentNumber || DASH, s.roomName, t(`reportCategories.${d.category}`), d.grossM2, d.deductedM2, null]);
     const r = row.number;
     // Net as a live formula, so the sheet itself shows how it was reached.
     row.getCell(6).value = { formula: `ROUND(D${r}-E${r},2)`, result: d.netM2 };
@@ -218,7 +222,7 @@ export async function exportQuantitiesToExcel(
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/octet-stream' });
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(blob, `כתב-כמויות-${safeName}.xlsx`);
+  saveAs(blob, t('exports.excel.fileName', { name: safeName }));
 }
 
 /** The plan workbook exactly as `exportQuantitiesToExcel` saves it — built apart so tests can read it. */
@@ -228,23 +232,27 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
   workbook.created = new Date();
 
   if (summaries.length > 0) {
+  /** Written into quantity cells of a room whose page has no scale, so 0 is never implied. */
+  const notCalibrated = t('exports.common.notCalibrated');
   const extras = usedExtraCategories(summaries);
   const extraCols = extraDataColumns(extras);
-  const dataHeaders = [
-    ...DATA_HEADERS,
+  const dataHeaderRow = [
+    ...dataHeaders(),
     ...extras.flatMap((c) => {
-      const label = REPORT_CATEGORY_LABELS[c];
-      return [`${label} נטו (מ"ר)`, `פחת ${label} (%)`, `${label} להזמנה`];
+      const label = t(`reportCategories.${c}`);
+      return [t('exports.excel.categoryNetM2', { label }), t('exports.excel.categoryWaste', { label }), t('exports.excel.categoryOrder', { label })];
     }),
   ];
   const dataWidths = [...DATA_WIDTHS, ...extras.flatMap(() => [15, 12, 15])];
-  const summaryHeaders = [...SUMMARY_HEADERS, ...extras.flatMap(summaryHeadersFor)];
+  const summaryHeaders = [t('exports.common.apartment'), ...BASE_CATEGORIES.flatMap(summaryHeadersFor), ...extras.flatMap(summaryHeadersFor)];
   const summaryWidths = [...SUMMARY_WIDTHS, ...extras.flatMap(() => [16, 18])];
   const summaryLastCol = summaryHeaders.length;
 
   // Created first so the tab order is [סיכום כולל, כתב כמויות]; populated after the data sheet.
-  const summarySheet = workbook.addWorksheet(SUMMARY_SHEET, { views: [{ rightToLeft: true }] });
-  const dataSheet = workbook.addWorksheet(DATA_SHEET, { views: [{ rightToLeft: true }] });
+  // Sheet names: the summary sheet's formulas reach the data sheet by this same name — see `sheetRef`.
+  const dataSheetName = t('exports.excel.sheets.data');
+  const summarySheet = workbook.addWorksheet(t('exports.excel.sheets.summary'), { views: [{ rightToLeft: true }] });
+  const dataSheet = workbook.addWorksheet(dataSheetName, { views: [{ rightToLeft: true }] });
 
   dataWidths.forEach((w, i) => (dataSheet.getColumn(i + 1).width = w));
   summaryWidths.forEach((w, i) => (summarySheet.getColumn(i + 1).width = w));
@@ -267,7 +275,7 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
   for (const key of order) {
     const rooms = groups.get(key)!;
 
-    const headerRow = dataSheet.addRow(dataHeaders);
+    const headerRow = dataSheet.addRow(dataHeaderRow);
     headerRow.eachCell({ includeEmpty: true }, (c) => {
       setFill(c, C_HEADER);
       c.font = { color: { argb: 'FFFFFFFF' }, bold: true };
@@ -280,7 +288,7 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
     for (const s of rooms) {
       // An uncalibrated page has no quantities to report — the cells say so in words instead of
       // printing 0. They stay text, so SUM() and the order formulas below simply skip them.
-      const areaCell = (v: number | null) => (s.pageCalibrated ? v ?? DASH : NOT_CALIBRATED);
+      const areaCell = (v: number | null) => (s.pageCalibrated ? v ?? DASH : notCalibrated);
       const row = dataSheet.addRow([
         s.apartmentNumber,
         s.roomName,
@@ -361,17 +369,17 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
 
     // Per-apartment totals block.
     dataSheet.addRow([]);
-    const titleRow = dataSheet.addRow(['סה"כ']);
+    const titleRow = dataSheet.addRow([t('exports.common.total')]);
     setFill(titleRow.getCell(1), C_TOTAL);
     titleRow.getCell(1).font = { bold: true };
 
     const subHeader = dataSheet.addRow([
-      'פריט',
-      'כמות נטו (מ"ר)',
-      'פחת (%)',
-      'להזמנה (מ"ר)',
-      'אורך (מ"א)',
-      'אורך להזמנה (מ"א)',
+      t('exports.common.item'),
+      t('exports.excel.totalsHeaders.net'),
+      t('exports.excel.totalsHeaders.waste'),
+      t('exports.excel.totalsHeaders.order'),
+      t('exports.excel.totalsHeaders.length'),
+      t('exports.excel.totalsHeaders.orderLength'),
     ]);
     subHeader.eachCell({ includeEmpty: true }, (c) => {
       setFill(c, C_TOTAL_HDR);
@@ -380,11 +388,11 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
     });
 
     const cats = [
-      { label: REPORT_CATEGORY_LABELS.tiling_regular, areaCol: 'C', orderCol: 'K', net: sumField(rooms, (s) => s.tilingRegularAreaM2), ord: sumField(rooms, (s) => s.tilingRegularOrderM2) },
-      { label: REPORT_CATEGORY_LABELS.tiling_as, areaCol: 'D', orderCol: 'L', net: sumField(rooms, (s) => s.tilingAsAreaM2), ord: sumField(rooms, (s) => s.tilingAsOrderM2) },
-      { label: REPORT_CATEGORY_LABELS.cladding, areaCol: 'E', orderCol: 'M', net: sumField(rooms, (s) => s.claddingAreaM2), ord: sumField(rooms, (s) => s.claddingOrderM2) },
+      { label: t('reportCategories.tiling_regular'), areaCol: 'C', orderCol: 'K', net: sumField(rooms, (s) => s.tilingRegularAreaM2), ord: sumField(rooms, (s) => s.tilingRegularOrderM2) },
+      { label: t('reportCategories.tiling_as'), areaCol: 'D', orderCol: 'L', net: sumField(rooms, (s) => s.tilingAsAreaM2), ord: sumField(rooms, (s) => s.tilingAsOrderM2) },
+      { label: t('reportCategories.cladding'), areaCol: 'E', orderCol: 'M', net: sumField(rooms, (s) => s.claddingAreaM2), ord: sumField(rooms, (s) => s.claddingOrderM2) },
       {
-        label: REPORT_CATEGORY_LABELS.panels,
+        label: t('reportCategories.panels'),
         areaCol: 'F',
         orderCol: 'N',
         lengthCol: 'P',
@@ -393,7 +401,7 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
         ord: sumField(rooms, (s) => s.panelsOrderM2),
       },
       ...extraCols.map((col) => ({
-        label: REPORT_CATEGORY_LABELS[col.category],
+        label: t(`reportCategories.${col.category}`),
         areaCol: colLetter(col.netCol),
         orderCol: colLetter(col.orderCol),
         net: sumField(rooms, (s) => s.extra[col.category].areaM2),
@@ -456,7 +464,7 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
     c.alignment = { horizontal: 'center', vertical: 'middle' };
   });
 
-  const REF = sheetRef(DATA_SHEET);
+  const REF = sheetRef(dataSheetName);
   for (const t of apartmentTotals) {
     const row = summarySheet.addRow([t.apartment, ...new Array(summaryLastCol - 1).fill(null)]);
     const rn = row.number;
@@ -500,7 +508,7 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
       ]),
     ];
 
-    const grand = summarySheet.addRow(['סה"כ כולל', ...new Array(summaryLastCol - 1).fill(null)]);
+    const grand = summarySheet.addRow([t('exports.excel.summaryGrandTotal'), ...new Array(summaryLastCol - 1).fill(null)]);
     for (let ci = 2; ci <= summaryLastCol; ci++) {
       const col = colLetter(ci); // B..I, then the extra categories
       grand.getCell(ci).value = {
@@ -521,9 +529,10 @@ export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMe
   if (uncalibratedRooms.length > 0) {
     summarySheet.addRow([]);
     const note = summarySheet.addRow([
-      `שים לב: ${uncalibratedRooms.length} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל ולא ניתן לחשב את כמויותיהם (${uncalibratedRooms
-        .map((s) => s.roomName || 'ללא שם')
-        .join(', ')}).`,
+      t('exports.excel.uncalibratedNote', {
+        count: uncalibratedRooms.length,
+        rooms: uncalibratedRooms.map((s) => s.roomName || t('exports.common.unnamedRoom')).join(', '),
+      }),
     ]);
     note.getCell(1).font = { bold: true, color: { argb: 'FF92400E' } };
   }

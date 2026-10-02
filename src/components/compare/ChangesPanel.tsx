@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCompareStore } from '../../store/compareStore';
-import { AREA_KIND_LABELS, type AreaKind } from '../../types/compare';
+import type { AreaKind } from '../../types/compare';
 import { CHANGE_KINDS, changeMeasurements, changeNumbering, changeTotals } from '../../lib/changeMeasurements';
 import { round } from '../../lib/geometry';
 import Icon from '../Icon';
+import { useT } from '../../i18n';
 
 /** Never smaller than a header plus a couple of rows, never taller than leaving a strip of plan. */
 const MIN_HEIGHT = 160;
@@ -25,6 +26,7 @@ const MAXIMIZED_RESERVED = 140;
  * belongs to another source page, takes the user there.
  */
 export default function ChangesPanel() {
+  const t = useT();
   const comparison = useCompareStore((s) => s.comparison);
   const currentPageKey = useCompareStore((s) => s.currentPageKey);
   const open = useCompareStore((s) => s.changesOpen);
@@ -94,19 +96,19 @@ export default function ChangesPanel() {
   if (!open) {
     return (
       <div className="qty-panel-collapsed">
-        <button className="btn-ghost small qty-open-btn" onClick={() => setOpen(true)} title="פתח את חלונית השינויים">
+        <button className="btn-ghost small qty-open-btn" onClick={() => setOpen(true)} title={t('compare.changes.open')}>
           <Icon name="table" />
-          שינויים
+          {t('compare.changes.title')}
         </button>
         <span className="muted">
-          {all.length} סימוני שינוי · מקור <Icon name="link" size={12} /> {activeRevision?.label ?? '—'}
+          {t('compare.changes.collapsedMeta', { count: all.length })} <Icon name="link" size={12} /> {activeRevision?.label ?? '—'}
         </span>
       </div>
     );
   }
 
   return (
-    <section className={`qty-panel changes-panel ${resizing ? 'resizing' : ''} ${maximized ? 'maximized' : ''}`} style={{ height: effectiveHeight }} aria-label="שינויים">
+    <section className={`qty-panel changes-panel ${resizing ? 'resizing' : ''} ${maximized ? 'maximized' : ''}`} style={{ height: effectiveHeight }} aria-label={t('compare.changes.title')}>
       <button
         className="qty-panel-resizer"
         onPointerDown={onPointerDown}
@@ -114,30 +116,30 @@ export default function ChangesPanel() {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onKeyDown={onResizerKeyDown}
-        aria-label="שנה את גובה חלונית השינויים"
-        title="גרור לשינוי הגובה"
+        aria-label={t('compare.changes.resize')}
+        title={t('quantitiesPanel.resizeHint')}
       />
       <header className="qty-panel-head">
         <Icon name="table" size={18} />
-        <h2 className="qty-panel-title">שינויים</h2>
+        <h2 className="qty-panel-title">{t('compare.changes.title')}</h2>
         {/* The context, at meta weight: what is being reviewed against what. */}
         <span className="qty-panel-meta">
-          מקור <Icon name="link" size={12} /> {activeRevision?.label ?? '—'} · {rows.length} סימונים
+          {t('compare.changes.source')} <Icon name="link" size={12} /> {activeRevision?.label ?? '—'} · {t('compare.changes.marks', { count: rows.length })}
         </span>
         <div className="qty-panel-actions">
           {/* All pages of this revision, or just the page on screen. */}
           <div className="segmented changes-scope">
             <button className={`tool-btn ${scope === 'all' ? 'active' : ''}`} onClick={() => setScope('all')} aria-pressed={scope === 'all'}>
-              <span className="tool-label">כל העמודים</span>
+              <span className="tool-label">{t('compare.changes.allPages')}</span>
             </button>
             <button className={`tool-btn ${scope === 'page' ? 'active' : ''}`} onClick={() => setScope('page')} aria-pressed={scope === 'page'}>
-              <span className="tool-label">עמוד {currentPageKey}</span>
+              <span className="tool-label">{t('common.page', { page: currentPageKey })}</span>
             </button>
           </div>
-          <button className="icon-btn" onClick={toggleMaximized} title={maximized ? 'החזר לגובה הקודם' : 'הגדל את החלונית'}>
+          <button className="icon-btn" onClick={toggleMaximized} title={maximized ? t('quantitiesPanel.restore') : t('quantitiesPanel.maximize')}>
             <Icon name={maximized ? 'collapse' : 'expand'} />
           </button>
-          <button className="icon-btn" onClick={() => setOpen(false)} title="סגור את חלונית השינויים">
+          <button className="icon-btn" onClick={() => setOpen(false)} title={t('compare.changes.close')}>
             <Icon name="close" />
           </button>
         </div>
@@ -148,20 +150,26 @@ export default function ChangesPanel() {
             the actual subject of the panel. */}
         <div className="changes-summary">
           {CHANGE_KINDS.map((kind) => {
-            const t = kind === 'demolition' ? demolition : construction;
+            const totals = kind === 'demolition' ? demolition : construction;
             return (
               <div key={kind} className={`changes-summary-item ${kind}`}>
                 <input
                   type="color"
                   value={comparison.areaKindColors[kind]}
                   onChange={(e) => setAreaKindColor(kind, e.target.value)}
-                  title="צבע הסימון על התוכנית"
+                  title={t('compare.changes.kindColor')}
                 />
-                <span className="changes-summary-label">{AREA_KIND_LABELS[kind]}</span>
-                <span className="muted tnum">{t.count}</span>
+                <span className="changes-summary-label">{t(`areaKinds.${kind}`)}</span>
+                <span className="muted tnum">{totals.count}</span>
                 {/* Running metres exist only for wall items, so they appear only when there are any. */}
-                {t.lengthM > 0 && <span className="changes-metric tnum">{round(t.lengthM, 2)} מ"א</span>}
-                <span className="changes-metric strong tnum">{round(t.areaM2, 2)} מ"ר</span>
+                {totals.lengthM > 0 && (
+                  <span className="changes-metric tnum">
+                    {round(totals.lengthM, 2)} {t('units.lm')}
+                  </span>
+                )}
+                <span className="changes-metric strong tnum">
+                  {round(totals.areaM2, 2)} {t('units.m2')}
+                </span>
               </div>
             );
           })}
@@ -171,23 +179,24 @@ export default function ChangesPanel() {
           <div className="empty-state">
             <Icon name="scan" size={24} />
             <p>
-              אין סימוני הריסה או בנייה חדשה
-              {scope === 'page' ? ` בעמוד ${currentPageKey}` : ''} בגרסה "{activeRevision?.label ?? ''}".
+              {scope === 'page'
+                ? t('compare.changes.emptyPage', { page: currentPageKey, revision: activeRevision?.label ?? '' })
+                : t('compare.changes.emptyAll', { revision: activeRevision?.label ?? '' })}
             </p>
-            <span className="muted">בטאב "כיול ומדידה" בחר הריסה או בנייה חדשה וסמן על התוכנית.</span>
+            <span className="muted">{t('compare.changes.emptyHint')}</span>
           </div>
         ) : (
           <div className="qty-table-scroll">
             <table className="qty-table changes-table">
               <thead>
                 <tr>
-                  <th className="num">#</th>
-                  <th>סוג</th>
-                  <th className="num">עמוד</th>
-                  <th>אופן חישוב</th>
-                  <th className="num">אורך (מ')</th>
-                  <th className="num">גובה (מ')</th>
-                  <th className="num">שטח (מ"ר)</th>
+                  <th className="num">{t('compare.changes.headers.number')}</th>
+                  <th>{t('compare.changes.headers.kind')}</th>
+                  <th className="num">{t('compare.changes.headers.page')}</th>
+                  <th>{t('compare.changes.headers.calcMode')}</th>
+                  <th className="num">{t('compare.changes.headers.length')}</th>
+                  <th className="num">{t('compare.changes.headers.height')}</th>
+                  <th className="num">{t('compare.changes.headers.area')}</th>
                   <th />
                 </tr>
               </thead>
@@ -199,7 +208,7 @@ export default function ChangesPanel() {
                       key={m.id}
                       className={m.id === selectedMeasurementId ? 'selected' : ''}
                       onClick={() => focusMeasurement(m.id)}
-                      title={m.pageNumber === currentPageKey ? 'בחר את הסימון על התוכנית' : `מעבר לעמוד ${m.pageNumber} ובחירת הסימון`}
+                      title={m.pageNumber === currentPageKey ? t('compare.changes.selectMark') : t('compare.changes.goToMark', { page: m.pageNumber })}
                     >
                       <td className="num">{numbers.get(m.id) ?? ''}</td>
                       <td>
@@ -211,18 +220,18 @@ export default function ChangesPanel() {
                             value={m.areaKind}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => setMeasurementKind(m.id, e.target.value as AreaKind)}
-                            title="שנה סיווג בלי לשרטט מחדש"
+                            title={t('compare.changes.reclassify')}
                           >
                             {CHANGE_KINDS.map((k) => (
                               <option key={k} value={k}>
-                                {AREA_KIND_LABELS[k]}
+                                {t(`areaKinds.${k}`)}
                               </option>
                             ))}
                           </select>
                         </span>
                       </td>
                       <td className="num">{m.pageNumber}</td>
-                      <td>{isWall ? 'אורך × גובה' : 'שטח בפועל'}</td>
+                      <td>{isWall ? t('measure.calcModes.wall') : t('measure.calcModes.footprint')}</td>
                       <td className="num">{isWall ? round(m.wallLengthM ?? 0, 2) : '—'}</td>
                       <td className="num">
                         {isWall ? (
@@ -247,7 +256,7 @@ export default function ChangesPanel() {
                       <td className="row-actions">
                         <button
                           className="icon-btn danger"
-                          title="מחק סימון"
+                          title={t('compare.changes.delete')}
                           onClick={(e) => {
                             e.stopPropagation();
                             deleteMeasurement(m.id);

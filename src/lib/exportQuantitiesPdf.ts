@@ -2,7 +2,8 @@ import { PDFDocument } from 'pdf-lib';
 import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
-import { AREA_UNIT, DEFAULT_AREA_KIND_COLORS, OPENING_TYPE_LABELS, PANEL_LENGTH_UNIT, REPORT_CATEGORY_LABELS } from '../types';
+import { DEFAULT_AREA_KIND_COLORS } from '../types';
+import { t } from '../i18n';
 import { loadPdfPlanSource } from './planSource';
 import { loadPdfBlob } from '../db/database';
 import {
@@ -20,8 +21,6 @@ import { numberAreaMeasurements } from './areaMeasurements';
 import { drawAreaMeasurementTable } from './areaMeasurementTable';
 
 const DASH = '—';
-/** Printed in quantity cells of a room whose page has no scale, so 0 is never implied. */
-const NOT_CALIBRATED = 'לא כויל';
 const FONT = "'Segoe UI', sans-serif";
 
 // Same palette as the Excel export, for a consistent look across formats.
@@ -173,14 +172,14 @@ function drawQuantityTablePages(
     text?: boolean;
   }
   const columns: Column[] = [
-    { header: 'דירה', weight: 7 },
-    { header: 'חדר', weight: 16, text: true },
+    { header: t('exports.common.apartment'), weight: 7 },
+    { header: t('exports.common.room'), weight: 16, text: true },
     ...categories.flatMap((): Column[] => [
-      { header: 'נטו', weight: 11, groupStart: true },
-      { header: 'להזמנה', weight: 11 },
+      { header: t('exports.quantityPdf.columns.net'), weight: 11, groupStart: true },
+      { header: t('exports.quantityPdf.columns.order'), weight: 11 },
     ]),
-    { header: 'פתחים', weight: 16, groupStart: true, text: true },
-    { header: 'הערות', weight: 18, text: true },
+    { header: t('exports.quantityPdf.columns.openings'), weight: 16, groupStart: true, text: true },
+    { header: t('exports.common.notes'), weight: 18, text: true },
   ];
   const totalWeight = columns.reduce((a, c) => a + c.weight, 0);
   const colWidths = columns.map((c) => (usableWidth * c.weight) / totalWeight);
@@ -208,8 +207,8 @@ function drawQuantityTablePages(
     headerText(columns[1].header, colRight[1], colWidths[1], top + h / 2 + 5, 12.5);
     // Group labels over each pair of columns.
     const groups = [
-      ...categories.map((c) => `${REPORT_CATEGORY_LABELS[c]} (${categoryPrimaryUnit(c)})`),
-      'פרטים',
+      ...categories.map((c) => t('exports.quantityPdf.categoryWithUnit', { label: t(`reportCategories.${c}`), unit: categoryPrimaryUnit(c) })),
+      t('exports.quantityPdf.columns.details'),
     ];
     groups.forEach((label, g) => {
       const i = 2 + g * 2;
@@ -231,7 +230,7 @@ function drawQuantityTablePages(
 
   const newPage = (withColumnHeader: boolean) => {
     pt = new PdfPainter(doc.addPage([PAGE_W, PAGE_H]), fonts);
-    pt.fillText(`כתב כמויות — ${project.name}`, right, 40, { size: 20, bold: true, color: '#0f172a' });
+    pt.fillText(t('exports.quantityPdf.title', { name: project.name }), right, 40, { size: 20, bold: true, color: '#0f172a' });
     drawLogo(pt, MARGIN, 28, REPORT_LOGO_HEIGHT);
     pt.fillText(new Date().toLocaleDateString('he-IL'), right, 60, { size: 12, color: '#8b8f99' });
     y = 84;
@@ -340,6 +339,8 @@ function drawQuantityTablePages(
     y += BLOCK_ROW_H * 0.5;
   };
 
+  /** Printed in quantity cells of a room whose page has no scale, so 0 is never implied. */
+  const notCalibrated = t('exports.common.notCalibrated');
   const num = (v: number | null) => (v == null ? DASH : `${v}`);
   const r2 = (v: number) => `${Math.round(v * 100) / 100}`;
 
@@ -353,23 +354,24 @@ function drawQuantityTablePages(
       ...categories.flatMap((c): Cell[] => {
         const q = roomCategoryQuantity(s, c);
         if (q.wastePercent == null) return [{ main: DASH, color: C_NONE }, { main: DASH, color: C_NONE }];
-        const waste = `פחת ${q.wastePercent}%`;
+        const waste = t('exports.quantityPdf.waste', { percent: q.wastePercent });
         // No scale: say why the cell is empty instead of printing 0.
-        if (!s.pageCalibrated) return [{ main: NOT_CALIBRATED, color: C_WARN }, { main: NOT_CALIBRATED, sub: waste, color: C_WARN }];
+        if (!s.pageCalibrated) return [{ main: notCalibrated, color: C_WARN }, { main: notCalibrated, sub: waste, color: C_WARN }];
         if (c === 'panels') {
-          const doors = (s.panelsDeductedLengthM ?? 0) > 0 ? ` · ניכוי דלתות ${s.panelsDeductedLengthM}` : '';
+          const doors =
+            (s.panelsDeductedLengthM ?? 0) > 0 ? ` · ${t('exports.quantityPdf.doorsDeducted', { length: s.panelsDeductedLengthM! })}` : '';
           return [
-            { main: num(q.lengthM), sub: `${num(q.quantityM2)} ${AREA_UNIT}${doors}` },
-            { main: num(q.orderLengthM), sub: `${waste} · ${num(q.orderM2)} ${AREA_UNIT}` },
+            { main: num(q.lengthM), sub: `${num(q.quantityM2)} ${t('units.m2')}${doors}` },
+            { main: num(q.orderLengthM), sub: `${waste} · ${num(q.orderM2)} ${t('units.m2')}` },
           ];
         }
         const deduction = s.openingDeductions.find((d) => d.category === c);
         return [
-          { main: num(q.quantityM2), sub: deduction ? `ניכוי פתחים ${deduction.deductedM2}` : undefined },
+          { main: num(q.quantityM2), sub: deduction ? t('exports.quantityPdf.openingsDeducted', { amount: deduction.deductedM2 }) : undefined },
           { main: num(q.orderM2), sub: waste },
         ];
       }),
-      openingsText ? { main: openingsText, sub: `${openingsArea} ${AREA_UNIT}` } : { main: DASH, color: C_NONE },
+      openingsText ? { main: openingsText, sub: `${openingsArea} ${t('units.m2')}` } : { main: DASH, color: C_NONE },
       { main: s.notes || DASH, color: s.notes ? undefined : C_NONE },
     ];
   };
@@ -389,7 +391,7 @@ function drawQuantityTablePages(
       const sum = (pick: (q: (typeof amounts)[number]) => number | null) => amounts.reduce((a, q) => a + (pick(q) ?? 0), 0);
       const linear = c === 'panels';
       return {
-        label: REPORT_CATEGORY_LABELS[c],
+        label: t(`reportCategories.${c}`),
         net: sum((q) => q.quantityM2),
         ord: sum((q) => q.orderM2),
         len: linear ? sum((q) => q.lengthM) : null,
@@ -399,8 +401,14 @@ function drawQuantityTablePages(
     if (cats.length === 0) continue;
     y += BLOCK_ROW_H * 0.3;
     drawBlock(
-      { text: `סה"כ דירה ${group.apartment || DASH}`, bg: C_TOTAL },
-      ['פריט', 'אורך (מ"א)', 'כמות נטו (מ"ר)', 'אורך להזמנה (מ"א)', 'להזמנה (מ"ר)'],
+      { text: t('exports.quantityPdf.apartmentTotal', { apartment: group.apartment || DASH }), bg: C_TOTAL },
+      [
+        t('exports.common.item'),
+        t('exports.quantityPdf.totalsHeaders.length'),
+        t('exports.quantityPdf.totalsHeaders.net'),
+        t('exports.quantityPdf.totalsHeaders.orderLength'),
+        t('exports.quantityPdf.totalsHeaders.order'),
+      ],
       [18, 12, 12, 13, 12],
       cats.map((cat) => ({
         cells: [cat.label, cat.len == null ? '' : r2(cat.len), r2(cat.net), cat.ordLen == null ? '' : r2(cat.ordLen), r2(cat.ord)],
@@ -412,17 +420,24 @@ function drawQuantityTablePages(
 
   // Grand totals.
   drawBlock(
-    { text: 'סה"כ כללי לפרויקט', bg: C_GRAND },
-    ['פריט', 'אורך (מ"א)', 'כמות נטו (מ"ר)', 'פחת %', 'אורך להזמנה (מ"א)', 'להזמנה (מ"ר)'],
+    { text: t('exports.quantityPdf.grandTotal'), bg: C_GRAND },
+    [
+      t('exports.common.item'),
+      t('exports.quantityPdf.totalsHeaders.length'),
+      t('exports.quantityPdf.totalsHeaders.net'),
+      t('exports.quantityPdf.totalsHeaders.waste'),
+      t('exports.quantityPdf.totalsHeaders.orderLength'),
+      t('exports.quantityPdf.totalsHeaders.order'),
+    ],
     [18, 12, 12, 9, 13, 12],
-    totals.map((t) => ({
+    totals.map((total) => ({
       cells: [
-        REPORT_CATEGORY_LABELS[t.category],
-        t.lengthM == null ? '' : `${t.lengthM}`,
-        `${t.quantityM2}`,
-        `${t.wastePercent}%`,
-        t.orderLengthM == null ? '' : `${t.orderLengthM}`,
-        `${t.orderM2}`,
+        t(`reportCategories.${total.category}`),
+        total.lengthM == null ? '' : `${total.lengthM}`,
+        `${total.quantityM2}`,
+        `${total.wastePercent}%`,
+        total.orderLengthM == null ? '' : `${total.orderLengthM}`,
+        `${total.orderM2}`,
       ],
       bg: C_GRAND,
       bold: false,
@@ -439,21 +454,30 @@ function drawQuantityTablePages(
   });
   if (openingRows.length > 0) {
     drawBlock(
-      { text: 'פירוט פתחים', bg: C_TOTAL },
-      ['דירה', 'חדר', 'סוג פתח', "רוחב (מ')", "גובה (מ')", 'כמות', 'שטח (מ"ר)', 'מנוכה מ־'],
+      { text: t('exports.quantityPdf.openingsBlock'), bg: C_TOTAL },
+      [
+        t('exports.common.apartment'),
+        t('exports.common.room'),
+        t('exports.quantityPdf.openingHeaders.type'),
+        t('exports.quantityPdf.openingHeaders.width'),
+        t('exports.quantityPdf.openingHeaders.height'),
+        t('exports.quantityPdf.openingHeaders.quantity'),
+        t('exports.quantityPdf.openingHeaders.area'),
+        t('exports.quantityPdf.openingHeaders.deductedFrom'),
+      ],
       [7, 16, 10, 8, 8, 6, 9, 26],
       openingRows.map(({ s, d }, i) => ({
         cells: [
           s.apartmentNumber || DASH,
           s.roomName,
-          OPENING_TYPE_LABELS[d.opening.type],
+          t(`openingTypes.${d.opening.type}`),
           num(d.opening.widthM),
           num(d.opening.heightM),
           num(d.opening.quantity),
           `${d.areaM2}`,
           d.deductedFrom.length === 0
-            ? 'לא מנוכה'
-            : d.deductedFrom.map((c) => (c === 'panels' ? 'פנלים (רוחב)' : REPORT_CATEGORY_LABELS[c])).join(', '),
+            ? t('exports.quantityPdf.notDeducted')
+            : d.deductedFrom.map((c) => (c === 'panels' ? t('exports.quantityPdf.panelsWidth') : t(`reportCategories.${c}`))).join(', '),
         ],
         bg: i % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B,
       })),
@@ -466,29 +490,37 @@ function drawQuantityTablePages(
   const deductionRows = summaries.flatMap((s) => [
     ...s.openingDeductions.map((d) => ({
       s,
-      label: REPORT_CATEGORY_LABELS[d.category],
+      label: t(`reportCategories.${d.category}`),
       gross: d.grossM2,
       deducted: d.deductedM2,
       net: d.netM2,
-      unit: AREA_UNIT,
+      unit: t('units.m2'),
     })),
     ...(s.panelsLengthM != null && (s.panelsDeductedLengthM ?? 0) > 0
       ? [
           {
             s,
-            label: REPORT_CATEGORY_LABELS.panels,
+            label: t('reportCategories.panels'),
             gross: Math.round((s.panelsLengthM + s.panelsDeductedLengthM!) * 100) / 100,
             deducted: s.panelsDeductedLengthM!,
             net: s.panelsLengthM,
-            unit: PANEL_LENGTH_UNIT,
+            unit: t('units.lm'),
           },
         ]
       : []),
   ]);
   if (deductionRows.length > 0) {
     drawBlock(
-      { text: 'ניכוי פתחים לפי סוג עבודה', bg: C_TOTAL },
-      ['דירה', 'חדר', 'סוג עבודה', 'ברוטו', 'ניכוי פתחים', 'נטו', 'יחידה'],
+      { text: t('exports.quantityPdf.deductionsBlock'), bg: C_TOTAL },
+      [
+        t('exports.common.apartment'),
+        t('exports.common.room'),
+        t('exports.quantityPdf.deductionHeaders.workType'),
+        t('exports.quantityPdf.deductionHeaders.gross'),
+        t('exports.quantityPdf.deductionHeaders.deducted'),
+        t('exports.quantityPdf.deductionHeaders.net'),
+        t('exports.quantityPdf.deductionHeaders.unit'),
+      ],
       [7, 16, 12, 10, 10, 10, 7],
       deductionRows.map((r, i) => ({
         cells: [r.s.apartmentNumber || DASH, r.s.roomName, r.label, `${r.gross}`, `${r.deducted}`, `${r.net}`, r.unit],
@@ -499,7 +531,7 @@ function drawQuantityTablePages(
     );
     ensure(BLOCK_ROW_H, false);
     pt.fillText(
-      'פתח גבוה מגובה העבודה (למשל דלת בחיפוי חלקי) מנוכה רק עד גובה העבודה; בפנלים מנוכה רוחב הדלת בלבד.',
+      t('exports.quantityPdf.deductionNote'),
       right,
       y + 8,
       { size: 11, color: C_SUB }
@@ -512,7 +544,7 @@ function drawQuantityTablePages(
   if (uncalibratedCount > 0) {
     ensure(BLOCK_ROW_H, false);
     pt.fillRect(MARGIN, y, usableWidth, BLOCK_ROW_H, C_TOTAL_HDR);
-    pt.fillText(`שים לב: ${uncalibratedCount} חדרים לא נכללו בסיכום — העמוד שלהם אינו מכויל`, right - 8, y + BLOCK_ROW_H / 2 + 4, {
+    pt.fillText(t('exports.quantityPdf.uncalibratedNote', { count: uncalibratedCount }), right - 8, y + BLOCK_ROW_H / 2 + 4, {
       size: 12,
       bold: true,
       color: '#92400e',
@@ -563,7 +595,7 @@ export async function exportQuantitiesToPdf(
       // raster header used).
       const pt = new PdfPainter(page, fonts);
       pt.fillText(project.name, framed.width - 16 * mult, 26 * mult, { size: 18 * mult, bold: true, color: '#0f172a' });
-      pt.fillText(`עמוד תוכנית ${pageNumber} · ${new Date().toLocaleDateString('he-IL')}`, framed.width - 16 * mult, 46 * mult, {
+      pt.fillText(t('exports.quantityPdf.planPageHeader', { page: pageNumber, date: new Date().toLocaleDateString('he-IL') }), framed.width - 16 * mult, 46 * mult, {
         size: 12 * mult,
         color: '#8b8f99',
       });
@@ -571,7 +603,7 @@ export async function exportQuantitiesToPdf(
     }
 
     if (showMeasurements && pageAreaMeasurements.length > 0) {
-      drawAreaMeasurementTable(pdfDoc, fonts, `${project.name} — עמוד ${pageNumber}`, pageAreaMeasurements, { showLogo: true });
+      drawAreaMeasurementTable(pdfDoc, fonts, t('exports.quantityPdf.planPageTitle', { name: project.name, page: pageNumber }), pageAreaMeasurements, { showLogo: true });
     }
   }
 
@@ -582,5 +614,5 @@ export async function exportQuantitiesToPdf(
     type: 'application/pdf',
   });
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(blob, `דוח-כמויות-${safeName}.pdf`);
+  saveAs(blob, t('exports.quantityPdf.fileName', { name: safeName }));
 }

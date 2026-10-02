@@ -2,8 +2,8 @@ import { PDFDocument } from 'pdf-lib';
 import { drawLogo, embedReportFonts, PdfPainter, REPORT_LOGO_HEIGHT, type ReportFonts } from './pdfText';
 import { saveAs } from 'file-saver';
 import type { Plan, Project } from '../types';
-import { AREA_UNIT, PANEL_LENGTH_UNIT } from '../types';
-import { buildProjectQuantities, PLAN_STATUS_LABELS, roomCategoryQuantity, type CategoryAmount } from './projectQuantities';
+import { t } from '../i18n';
+import { buildProjectQuantities, planStatusLabel, roomCategoryQuantity, type CategoryAmount } from './projectQuantities';
 
 /*
  * The project quantity report: vector text and table lines throughout (see lib/pdfText — Hebrew is
@@ -105,7 +105,16 @@ class ReportWriter {
   }
 }
 
-const AMOUNT_HEADERS = [`נטו (${AREA_UNIT})`, `להזמנה (${AREA_UNIT})`, `נטו (${PANEL_LENGTH_UNIT})`, `להזמנה (${PANEL_LENGTH_UNIT})`];
+const amountHeaders = () => {
+  const m2 = t('units.m2');
+  const lm = t('units.lm');
+  return [
+    t('exports.projectPdf.netUnit', { unit: m2 }),
+    t('exports.projectPdf.orderUnit', { unit: m2 }),
+    t('exports.projectPdf.netUnit', { unit: lm }),
+    t('exports.projectPdf.orderUnit', { unit: lm }),
+  ];
+};
 const amountCells = (a: CategoryAmount) => [fmt(a.quantityM2), fmt(a.orderM2), fmt(a.lengthM), fmt(a.orderLengthM)];
 
 export async function exportProjectToPdf(project: Project, plans: Plan[]) {
@@ -113,41 +122,54 @@ export async function exportProjectToPdf(project: Project, plans: Plan[]) {
   const date = new Date().toLocaleDateString('he-IL');
   const pdfDoc = await PDFDocument.create();
   const fonts = await embedReportFonts(pdfDoc);
-  const report = new ReportWriter(pdfDoc, fonts, `כתב כמויות לפרויקט — ${project.name}`, `${plans.length} תוכניות · ${date}`);
+  const report = new ReportWriter(
+    pdfDoc,
+    fonts,
+    t('exports.projectPdf.title', { name: project.name }),
+    t('exports.projectPdf.subtitle', { count: plans.length, date })
+  );
+  const AMOUNT_HEADERS = amountHeaders();
+  const notCalibrated = t('exports.common.notCalibrated');
 
-  report.section('סיכום כמויות');
+  report.section(t('exports.projectPdf.summary'));
   if (q.totals.length === 0) {
-    report.note('אין עדיין כמויות בפרויקט — סמן חדרים והוסף להם סוגי עבודה.');
+    report.note(t('exports.projectPdf.empty'));
   } else {
-    report.table(['פריט', ...AMOUNT_HEADERS], [18, 12, 12, 12, 12], q.totals.map((t) => ({ cells: [t.label, ...amountCells(t)] })));
+    report.table([t('exports.common.item'), ...AMOUNT_HEADERS], [18, 12, 12, 12, 12], q.totals.map((total) => ({ cells: [total.label, ...amountCells(total)] })));
   }
-  if (q.uncalibratedRoomCount > 0) report.note(`שים לב: ${q.uncalibratedRoomCount} חדרים לא נכללו — העמוד שלהם אינו מכויל.`);
+  if (q.uncalibratedRoomCount > 0) report.note(t('exports.projectPdf.uncalibratedNote', { count: q.uncalibratedRoomCount }));
 
-  report.section('תוכניות');
+  report.section(t('exports.projectPdf.plans'));
   report.table(
-    ['תוכנית', 'חדרים', 'עמודים מכוילים', 'חדרים ללא כיול', 'סטטוס כמויות'],
+    [
+      t('exports.common.plan'),
+      t('exports.projectPdf.planHeaders.rooms'),
+      t('exports.projectPdf.planHeaders.calibratedPages'),
+      t('exports.projectPdf.planHeaders.uncalibratedRooms'),
+      t('exports.projectPdf.planHeaders.status'),
+    ],
     [22, 8, 10, 10, 14],
     q.plans.map((r) => ({
-      cells: [r.plan.name, `${r.roomCount}`, `${r.calibratedPageCount}`, `${r.uncalibratedRoomCount}`, PLAN_STATUS_LABELS[r.status]],
+      cells: [r.plan.name, `${r.roomCount}`, `${r.calibratedPageCount}`, `${r.uncalibratedRoomCount}`, planStatusLabel(r.status)],
     }))
   );
 
   if (q.totals.length > 0) {
-    report.section('פירוט לפי תוכנית');
+    report.section(t('exports.projectPdf.byPlan'));
     report.table(
-      ['פריט', 'תוכנית', ...AMOUNT_HEADERS],
+      [t('exports.common.item'), t('exports.common.plan'), ...AMOUNT_HEADERS],
       [16, 20, 12, 12, 12, 12],
-      q.totals.flatMap((t) => [
-        { cells: [t.label, 'סה"כ', ...amountCells(t)], bg: C_TOTAL, bold: true },
-        ...t.perPlan.map((p) => ({ cells: ['', p.planName, ...amountCells(p)] })),
+      q.totals.flatMap((total) => [
+        { cells: [total.label, t('exports.common.total'), ...amountCells(total)], bg: C_TOTAL, bold: true },
+        ...total.perPlan.map((p) => ({ cells: ['', p.planName, ...amountCells(p)] })),
       ])
     );
 
-    report.section('פירוט חדרים');
-    const categories = q.totals.map((t) => t.category);
-    const labels = new Map(q.totals.map((t) => [t.category, t.label]));
+    report.section(t('exports.projectPdf.byRoom'));
+    const categories = q.totals.map((total) => total.category);
+    const labels = new Map(q.totals.map((total) => [total.category, total.label]));
     report.table(
-      ['תוכנית', 'דירה', 'חדר', 'פריט', ...AMOUNT_HEADERS],
+      [t('exports.common.plan'), t('exports.common.apartment'), t('exports.common.room'), t('exports.common.item'), ...AMOUNT_HEADERS],
       [16, 7, 16, 12, 10, 10, 10, 10],
       q.plans.flatMap((r) =>
         r.summaries.flatMap((s) =>
@@ -156,7 +178,7 @@ export async function exportProjectToPdf(project: Project, plans: Plan[]) {
             if (v.wastePercent == null) return [];
             const cells = s.pageCalibrated
               ? [fmt(v.quantityM2), fmt(v.orderM2), fmt(v.lengthM), fmt(v.orderLengthM)]
-              : ['לא כויל', 'לא כויל', DASH, DASH];
+              : [notCalibrated, notCalibrated, DASH, DASH];
             return [{ cells: [r.plan.name, s.apartmentNumber || DASH, s.roomName, labels.get(c)!, ...cells] }];
           })
         )
@@ -168,6 +190,6 @@ export async function exportProjectToPdf(project: Project, plans: Plan[]) {
   const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
   saveAs(
     new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: 'application/pdf' }),
-    `דוח-כמויות-פרויקט-${safeName}.pdf`
+    t('exports.projectPdf.fileName', { name: safeName })
   );
 }

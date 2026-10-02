@@ -1,6 +1,7 @@
 import type { Comparison, RevisionLayer } from '../types/compare';
 import { changeMeasurements, changeNumbering } from './changeMeasurements';
 import type { ChangeTable } from './exportComparePdf';
+import { t } from '../i18n';
 
 export type RevisionScope = 'active' | 'all';
 export type PageScope = 'current' | 'all';
@@ -36,7 +37,13 @@ export function planCompareExport(
   const pairs: ExportPair[] = [];
   for (const revision of targets) {
     for (const pageKey of pageKeys) {
-      pairs.push({ revision, pageKey, label: revision ? `${revision.label} — עמוד ${pageKey}` : `עמוד ${pageKey}` });
+      pairs.push({
+        revision,
+        pageKey,
+        label: revision
+          ? t('exports.comparePdf.revisionPageLabel', { revision: revision.label, page: pageKey })
+          : t('exports.comparePdf.pageLabel', { page: pageKey }),
+      });
     }
   }
   return pairs;
@@ -60,7 +67,7 @@ export function mappedRevisedPage(comparison: Comparison, revisionId: string, pa
  */
 export function changeTableFor(comparisonName: string, revision: RevisionLayer | undefined, pageKey: number): ChangeTable {
   return {
-    title: `${comparisonName} — ${revision?.label ?? 'מקור'} — עמוד ${pageKey}`,
+    title: t('exports.comparePdf.title', { name: comparisonName, revision: revision?.label ?? t('exports.comparePdf.original'), page: pageKey }),
     measurements: changeMeasurements(revision?.measurements ?? [], pageKey),
     numbering: changeNumbering(revision?.measurements ?? []),
   };

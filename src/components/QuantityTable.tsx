@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { t as tr } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import {
   buildReportCategoryTotals,
@@ -11,13 +12,8 @@ import { categoryPrimaryUnit, roomCategoryQuantity } from '../lib/projectQuantit
 import { round } from '../lib/geometry';
 import { projectWasteDefault, WORK_TYPE_DEFINITIONS } from '../lib/workTypes';
 import {
-  AREA_UNIT,
   EXTRA_REPORT_CATEGORIES,
-  NOT_CALIBRATED_LABEL,
-  OPENING_TYPE_LABELS,
   PANEL_HEIGHT_M,
-  PANEL_LENGTH_UNIT,
-  REPORT_CATEGORY_LABELS,
 } from '../types';
 import Icon from './Icon';
 
@@ -135,7 +131,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             const def = WORK_TYPE_DEFINITIONS[c];
             return (
               <div className="form-row inline" key={c}>
-                <label>פחת {def.label} (%)</label>
+                <label>פחת {tr(`workTypes.${def.id}`)} (%)</label>
                 <input
                   type="number"
                   step="1"
@@ -174,7 +170,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                   <th className="spacer sticky-col col-room" />
                   {categories.map((c) => (
                     <th key={c} colSpan={2} className="group-edge">
-                      {REPORT_CATEGORY_LABELS[c]} <span className="qty-group-unit">({categoryPrimaryUnit(c)})</span>
+                      {tr(`reportCategories.${c}`)} <span className="qty-group-unit">({categoryPrimaryUnit(c)})</span>
                     </th>
                   ))}
                   <th colSpan={2} className="group-edge">
@@ -219,7 +215,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                         if (!s.pageCalibrated) {
                           return [
                             <td key={`${c}-net`} className="num group-edge">
-                              <span className="cal-missing">{NOT_CALIBRATED_LABEL}</span>
+                              <span className="cal-missing">{tr('quantities.notCalibrated')}</span>
                             </td>,
                             <td key={`${c}-order`} className="num">
                               <span className="qty-sub">פחת {q.wastePercent}%</span>
@@ -233,18 +229,18 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                         // gross − deduction = net.
                         let netTitle: string | undefined;
                         if (panels) {
-                          netSub.push(`${q.quantityM2 ?? 0} ${AREA_UNIT}`);
-                          orderSub.push(`${q.orderM2 ?? 0} ${AREA_UNIT}`);
+                          netSub.push(`${q.quantityM2 ?? 0} ${tr('units.m2')}`);
+                          orderSub.push(`${q.orderM2 ?? 0} ${tr('units.m2')}`);
                           const doors = s.panelsDeductedLengthM ?? 0;
                           if (doors > 0 && q.lengthM != null) {
                             netSub.push(`ניכוי ${doors}`);
-                            netTitle = `ברוטו ${round(q.lengthM + doors, 2)} − ניכוי רוחב דלתות ${doors} = נטו ${q.lengthM} ${PANEL_LENGTH_UNIT}`;
+                            netTitle = `ברוטו ${round(q.lengthM + doors, 2)} − ניכוי רוחב דלתות ${doors} = נטו ${q.lengthM} ${tr('units.lm')}`;
                           }
                         } else {
                           const deduction = s.openingDeductions.find((d) => d.category === c);
                           if (deduction) {
                             netSub.push(`ניכוי ${deduction.deductedM2}`);
-                            netTitle = `ברוטו ${deduction.grossM2} − ניכוי פתחים ${deduction.deductedM2} = נטו ${deduction.netM2} ${AREA_UNIT}`;
+                            netTitle = `ברוטו ${deduction.grossM2} − ניכוי פתחים ${deduction.deductedM2} = נטו ${deduction.netM2} ${tr('units.m2')}`;
                           }
                         }
                         return [
@@ -260,13 +256,13 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                       })}
                       <td
                         className={`group-edge qty-openings ${openingsText ? '' : 'qty-none'}`}
-                        title={openings.map((o) => `${OPENING_TYPE_LABELS[o.type]} ${o.widthM}×${o.heightM} מ' ×${o.quantity}`).join('\n') || undefined}
+                        title={openings.map((o) => `${tr(`openingTypes.${o.type}`)} ${o.widthM}×${o.heightM} מ' ×${o.quantity}`).join('\n') || undefined}
                       >
                         {openingsText ? (
                           <>
                             <span className="qty-main">{openingsText}</span>
                             <span className="qty-sub">
-                              {openingsArea} {AREA_UNIT}
+                              {openingsArea} {tr('units.m2')}
                             </span>
                           </>
                         ) : (
@@ -305,7 +301,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
               <tbody>
                 {totals.map((t) => (
                   <tr key={t.category}>
-                    <td>{REPORT_CATEGORY_LABELS[t.category]}</td>
+                    <td>{tr(`reportCategories.${t.category}`)}</td>
                     <td>{t.lengthM ?? DASH}</td>
                     <td>{t.quantityM2}</td>
                     <td>{t.wastePercent}%</td>

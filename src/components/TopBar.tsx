@@ -8,8 +8,10 @@ import { exportAllPlanPagesToPdf, exportPlanPageToPdf } from '../lib/exportRegio
 import { planForReport } from '../lib/reportTitle';
 import { trackedExport } from '../lib/analytics';
 import { notifyExportFailed } from '../lib/exportFailure';
+import { useT } from '../i18n';
 
 export default function TopBar() {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const currentProject = useAppStore((s) => s.currentProject);
   const projectPlans = useAppStore((s) => s.projectPlans);
@@ -125,23 +127,23 @@ export default function TopBar() {
   // The save state was already tracked; it is shown in the bar, but quietly — it is a status,
   // not an action, so only the states that need attention carry colour.
   const saveLabels: Record<typeof saveState, { text: string; title: string; icon: IconName }> = {
-    saving: { text: 'שומר…', title: 'שומר את הפרויקט', icon: 'reset' },
-    saved: { text: 'נשמר', title: 'כל השינויים נשמרו', icon: 'check' },
-    unsaved: { text: 'לא נשמר', title: 'יש שינויים שטרם נשמרו', icon: 'alert' },
-    error: { text: 'שגיאה בשמירה', title: 'השמירה נכשלה — העבודה לא נשמרה', icon: 'alert' },
+    saving: { text: t('topBar.save.saving'), title: t('topBar.save.savingPlan'), icon: 'reset' },
+    saved: { text: t('topBar.save.saved'), title: t('topBar.save.savedHint'), icon: 'check' },
+    unsaved: { text: t('topBar.save.unsaved'), title: t('topBar.save.unsavedHint'), icon: 'alert' },
+    error: { text: t('topBar.save.error'), title: t('topBar.save.errorHint'), icon: 'alert' },
   };
 
   return (
     <div className="top-bar" data-save-state={saveState}>
       {/* Group 1 — identity: where we are. Project (back to its overview) › plan (editable name). */}
       <div className="top-bar-group identity">
-        <div className="app-brand" title="BetterCalc — חישוב כמויות">
+        <div className="app-brand" title={t('topBar.brandTakeoff')}>
           <BrandLogo />
         </div>
         {currentProject && (
           <>
-            <button className="btn-ghost small breadcrumb-project" onClick={backToOverview} title="שמירה וחזרה לסקירת הפרויקט">
-              {currentProject.name || 'פרויקט ללא שם'}
+            <button className="btn-ghost small breadcrumb-project" onClick={backToOverview} title={t('topBar.backToOverview')}>
+              {currentProject.name || t('topBar.unnamedProject')}
             </button>
             <Icon name="chevron-left" size={13} />
           </>
@@ -150,7 +152,7 @@ export default function TopBar() {
           className="project-name-input"
           value={project.name}
           onChange={(e) => updateProjectMeta({ name: e.target.value })}
-          title="שם התוכנית"
+          title={t('topBar.planName')}
         />
       </div>
 
@@ -158,7 +160,7 @@ export default function TopBar() {
       <div className="top-bar-group grow">
         {/* Plan switcher heads the document group — the identity group clips overflow, so its
             dropdown would be cut off there. */}
-        <TopBarMenu id="plans" openId={openMenu} setOpenId={setOpenMenu} icon="layers" label="תוכניות" variant="ghost" title="מעבר בין תוכניות הפרויקט">
+        <TopBarMenu id="plans" openId={openMenu} setOpenId={setOpenMenu} icon="layers" label={t('topBar.plans')} variant="ghost" title={t('topBar.plansHint')}>
           {projectPlans.map((p) => (
             <button key={p.id} className={`menu-item ${p.id === project.id ? 'active' : ''}`} onClick={() => switchPlan(p.id)}>
               <span className="menu-check">{p.id === project.id && <Icon name="check" size={13} />}</span>
@@ -170,7 +172,7 @@ export default function TopBar() {
             <span className="menu-check">
               <Icon name="copy" size={13} />
             </span>
-            שכפול התוכנית הזו
+            {t('topBar.duplicatePlan')}
           </button>
           <button
             className="menu-item"
@@ -182,7 +184,7 @@ export default function TopBar() {
             <span className="menu-check">
               <Icon name="home" size={13} />
             </span>
-            סקירת הפרויקט
+            {t('topBar.projectOverview')}
           </button>
         </TopBarMenu>
 
@@ -190,11 +192,11 @@ export default function TopBar() {
 
         {/* The page is dir="rtl", so previous sits on the right and next on the left. */}
         <div className="page-nav">
-          <button disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title="עמוד קודם">
+          <button disabled={currentPage <= 1} onClick={() => setCurrentPage(currentPage - 1)} title={t('topBar.previousPage')}>
             <Icon name="chevron-right" />
           </button>
           <span>
-            עמוד
+            {t('topBar.page')}
             <input
               className="page-jump-input"
               type="number"
@@ -206,13 +208,13 @@ export default function TopBar() {
                 if (e.key === 'Enter') e.currentTarget.blur();
               }}
               onBlur={commitPageJump}
-              title={`הקלד מספר עמוד (1 עד ${numPages}) ולחץ Enter`}
+              title={t('topBar.pageJumpHint', { count: numPages })}
             />
             / {numPages}
           </span>
           {/* Calibration state is not repeated here — the page-status strip above the sidebar tabs
               is the single place that reports it and offers the action. */}
-          <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)} title="עמוד הבא">
+          <button disabled={currentPage >= numPages} onClick={() => setCurrentPage(currentPage + 1)} title={t('topBar.nextPage')}>
             <Icon name="chevron-left" />
           </button>
         </div>
@@ -220,10 +222,10 @@ export default function TopBar() {
         <span className="top-bar-sep" />
 
         <div className="undo-redo-group">
-          <button className="icon-btn" onClick={undo} disabled={!canUndo} title="בטל פעולה (Ctrl+Z)">
+          <button className="icon-btn" onClick={undo} disabled={!canUndo} title={t('topBar.undo')}>
             <Icon name="undo" />
           </button>
-          <button className="icon-btn" onClick={redo} disabled={!canRedo} title="בצע שוב (Ctrl+Shift+Z)">
+          <button className="icon-btn" onClick={redo} disabled={!canRedo} title={t('topBar.redo')}>
             <Icon name="redo" />
           </button>
         </div>
@@ -241,20 +243,20 @@ export default function TopBar() {
           openId={openMenu}
           setOpenId={setOpenMenu}
           icon={annotationsVisible && measurementsVisible ? 'eye' : 'eye-off'}
-          label="תצוגה"
+          label={t('topBar.view')}
           variant="ghost"
-          title="מה מוצג על גבי התוכנית (ומיוצא ל-PDF)"
+          title={t('topBar.viewHint')}
           highlighted={!annotationsVisible || !measurementsVisible}
         >
           <button className="menu-item" onClick={toggleAnnotationsVisible}>
             <span className="menu-check">{annotationsVisible && <Icon name="check" size={13} />}</span>
-            סימוני שטחים והערות
+            {t('topBar.annotations')}
           </button>
           <button className="menu-item" onClick={toggleMeasurementsVisible}>
             <span className="menu-check">{measurementsVisible && <Icon name="check" size={13} />}</span>
-            מדידות
+            {t('topBar.measurements')}
           </button>
-          <p className="menu-hint">מה שמוסתר כאן לא ייכלל גם בייצוא ה-PDF.</p>
+          <p className="menu-hint">{t('topBar.viewNote')}</p>
         </TopBarMenu>
 
         {/* Export is the strongest action in the bar — the one filled control. */}
@@ -263,28 +265,28 @@ export default function TopBar() {
           openId={openMenu}
           setOpenId={setOpenMenu}
           icon="download"
-          label={exporting ? 'מייצא…' : 'ייצוא'}
-          title="ייצוא כתב הכמויות או התוכנית"
+          label={exporting ? t('common.exporting') : t('common.export')}
+          title={t('topBar.exportHint')}
           variant="primary"
           highlighted={!!exportRegion}
         >
           {/* The quantity report is the product's main output, so it heads the menu. */}
-          <p className="menu-hint menu-section-title">כתב כמויות</p>
+          <p className="menu-hint menu-section-title">{t('topBar.quantityReport')}</p>
           <QuantityExportActions variant="menu" onPicked={() => setOpenMenu(null)} />
 
           <div className="menu-divider" />
-          <p className="menu-hint menu-section-title">תוכנית מסומנת</p>
+          <p className="menu-hint menu-section-title">{t('topBar.markedPlan')}</p>
           <button className="menu-item" onClick={handleExportPage} disabled={exporting}>
             <span className="menu-check">
               <Icon name="map" size={13} />
             </span>
-            {exportRegion ? `האזור שנבחר (עמוד ${currentPage})` : `עמוד ${currentPage} בלבד`}
+            {exportRegion ? t('topBar.selectedRegion', { page: currentPage }) : t('topBar.pageOnly', { page: currentPage })}
           </button>
           <button className="menu-item" onClick={handleExportAllPages} disabled={exporting || numPages <= 1}>
             <span className="menu-check">
               <Icon name="layers" size={13} />
             </span>
-            כל {numPages} העמודים לקובץ אחד
+            {t('topBar.allPagesOneFile', { count: numPages })}
           </button>
           <button
             className={`menu-item ${toolMode === 'export-region' ? 'active' : ''}`}
@@ -296,26 +298,26 @@ export default function TopBar() {
             <span className="menu-check">
               <Icon name="crop" size={13} />
             </span>
-            {exportRegion ? 'שינוי אזור הייצוא' : 'בחירת אזור לייצוא'}
+            {exportRegion ? t('topBar.changeRegion') : t('topBar.chooseRegion')}
           </button>
           {exportRegion && (
             <button className="menu-item" onClick={() => setExportRegion(currentPage, null)}>
               <span className="menu-check">
                 <Icon name="close" size={13} />
               </span>
-              ביטול האזור בעמוד זה
+              {t('topBar.clearRegion')}
             </button>
           )}
           <p className="menu-hint">
             {exportRegion
-              ? 'העמוד הנוכחי ייחתך לאזור שסימנת. עמודים ללא אזור מיוצאים במלואם.'
-              : 'ללא אזור נבחר — מיוצא העמוד המלא.'}
+              ? t('topBar.regionNote')
+              : t('topBar.noRegionNote')}
           </p>
         </TopBarMenu>
 
-        <button className="btn-ghost small" onClick={backToOverview} title="שמירה וחזרה לסקירת הפרויקט">
+        <button className="btn-ghost small" onClick={backToOverview} title={t('topBar.backToOverview')}>
           <Icon name="exit" />
-          <span className="btn-label">סקירת פרויקט</span>
+          <span className="btn-label">{t('topBar.projectOverviewShort')}</span>
         </button>
       </div>
     </div>

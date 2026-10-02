@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from '../i18n';
 
 /**
  * Editor for a text-note markup: a multi-line box (window.prompt only ever gave one line) plus the
@@ -17,6 +18,7 @@ export default function TextNoteDialog({
 }) {
   const [text, setText] = useState(initialText);
   const [rotated, setRotated] = useState(initialRotation !== 0);
+  const t = useT();
 
   const submit = () => {
     const trimmed = text.replace(/\s+$/, '');
@@ -38,7 +40,7 @@ export default function TextNoteDialog({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <div className="modal text-note-modal">
-        <h3>הערת טקסט</h3>
+        <h3>{t('textNote.title')}</h3>
         <textarea
           autoFocus
           rows={5}
@@ -49,18 +51,18 @@ export default function TextNoteDialog({
             if (e.key === 'Escape') onCancel();
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit();
           }}
-          placeholder={'אפשר לכתוב כמה שורות.\nEnter יורד שורה, Ctrl+Enter שומר.'}
+          placeholder={t('textNote.placeholder')}
         />
         <label className="source-color-toggle">
           <input type="checkbox" checked={rotated} onChange={(e) => setRotated(e.target.checked)} />
-          סובב את ההערה ב-90°
+          {t('textNote.rotate')}
         </label>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onCancel}>
-            ביטול
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={submit} disabled={!text.trim()}>
-            שמור
+            {t('common.save')}
           </button>
         </div>
       </div>

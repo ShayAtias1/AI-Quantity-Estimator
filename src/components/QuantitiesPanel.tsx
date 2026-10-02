@@ -3,6 +3,7 @@ import { useAppStore } from '../store/appStore';
 import QuantityTable from './QuantityTable';
 import QuantityExportActions from './QuantityExportActions';
 import Icon from './Icon';
+import { useT } from '../i18n';
 
 /** Never smaller than a header plus a couple of rows, never taller than leaving a strip of plan. */
 const MIN_HEIGHT = 160;
@@ -22,6 +23,7 @@ const MAXIMIZED_RESERVED = 140;
  * Its height lives in session UI state; nothing here is persisted with the project.
  */
 export default function QuantitiesPanel() {
+  const t = useT();
   const open = useAppStore((s) => s.quantitiesOpen);
   const setOpen = useAppStore((s) => s.setQuantitiesOpen);
   const height = useAppStore((s) => s.quantitiesHeight);
@@ -82,11 +84,11 @@ export default function QuantitiesPanel() {
   if (!open) {
     return (
       <div className="qty-panel-collapsed">
-        <button className="btn-ghost small qty-open-btn" onClick={() => setOpen(true)} title="פתח את טבלת הכמויות">
+        <button className="btn-ghost small qty-open-btn" onClick={() => setOpen(true)} title={t('quantitiesPanel.open')}>
           <Icon name="table" />
-          כמויות
+          {t('quantitiesPanel.title')}
         </button>
-        <span className="muted">{roomCount} חדרים</span>
+        <span className="muted">{t('quantitiesPanel.rooms', { count: roomCount })}</span>
       </div>
     );
   }
@@ -95,7 +97,7 @@ export default function QuantitiesPanel() {
     <section
       className={`qty-panel ${resizing ? 'resizing' : ''} ${maximized ? 'maximized' : ''}`}
       style={{ height: effectiveHeight }}
-      aria-label="כתב כמויות"
+      aria-label={t('quantitiesPanel.region')}
     >
       <button
         className="qty-panel-resizer"
@@ -104,32 +106,32 @@ export default function QuantitiesPanel() {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onKeyDown={onResizerKeyDown}
-        aria-label="שנה את גובה חלונית הכמויות"
-        title="גרור לשינוי הגובה"
+        aria-label={t('quantitiesPanel.resize')}
+        title={t('quantitiesPanel.resizeHint')}
       />
       <header className="qty-panel-head">
         <Icon name="table" size={18} />
-        <h2 className="qty-panel-title">כמויות</h2>
-        <span className="qty-panel-meta">{roomCount} חדרים בפרויקט</span>
+        <h2 className="qty-panel-title">{t('quantitiesPanel.title')}</h2>
+        <span className="qty-panel-meta">{t('quantitiesPanel.roomsInProject', { count: roomCount })}</span>
         <div className="qty-panel-actions">
           <button
             className={`btn-ghost small ${showDefaults ? 'active' : ''}`}
             onClick={() => setShowDefaults((v) => !v)}
-            title="ברירות המחדל שמהן נגזרים הפחת והגבהים של פריטי עבודה חדשים"
+            title={t('quantitiesPanel.defaultsHint')}
           >
             <Icon name="settings" />
-            <span className="btn-label">ברירות מחדל</span>
+            <span className="btn-label">{t('quantitiesPanel.defaults')}</span>
           </button>
           <span className="top-bar-sep" />
           <QuantityExportActions variant="buttons" />
           <button
             className="icon-btn"
             onClick={toggleMaximized}
-            title={maximized ? 'החזר לגובה הקודם' : 'הגדל את החלונית'}
+            title={maximized ? t('quantitiesPanel.restore') : t('quantitiesPanel.maximize')}
           >
             <Icon name={maximized ? 'collapse' : 'expand'} />
           </button>
-          <button className="icon-btn" onClick={() => setOpen(false)} title="סגור את חלונית הכמויות">
+          <button className="icon-btn" onClick={() => setOpen(false)} title={t('quantitiesPanel.close')}>
             <Icon name="close" />
           </button>
         </div>

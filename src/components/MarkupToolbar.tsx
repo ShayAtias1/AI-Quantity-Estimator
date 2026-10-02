@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/appStore';
-import { MARKUP_TOOL_LABELS, type MarkupTool } from '../types';
+import type { MarkupTool } from '../types';
 import Icon, { type IconName } from './Icon';
+import { useT } from '../i18n';
 
 const MARKUP_TOOLS: MarkupTool[] = ['cloud', 'arrow', 'rectangle', 'text', 'dimension', 'mask'];
 const MARKUP_ICONS: Record<MarkupTool, IconName> = {
@@ -15,6 +16,7 @@ const MARKUP_ICONS: Record<MarkupTool, IconName> = {
 const MARKUP_COLORS = ['#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea', '#0f172a'];
 
 export default function MarkupToolbar() {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const currentPage = useAppStore((s) => s.currentPage);
   const toolMode = useAppStore((s) => s.toolMode);
@@ -52,23 +54,17 @@ export default function MarkupToolbar() {
     toolMode !== 'markup' || !markupTool
       ? null
       : markupTool === 'cloud'
-        ? { short: `לחץ נקודות וסגור ליד הראשונה (${markupPoints.length})` }
+        ? { short: t('markup.hints.cloud', { count: markupPoints.length }) }
         : markupTool === 'arrow' || markupTool === 'rectangle'
-          ? { short: 'לחץ נקודת התחלה וסיום' }
+          ? { short: t('markup.hints.twoPoints') }
           : markupTool === 'mask'
-            ? {
-                short: 'לחץ פינת התחלה וסיום למלבן מסתיר',
-                long: 'לחץ פינת התחלה וסיום למלבן שיסתיר את מה שמתחתיו. נוצר בלבן — אפשר לשנות את הצבע אחר כך.',
-              }
+            ? { short: t('markup.hints.mask'), long: t('markup.hints.maskLong') }
             : markupTool === 'dimension'
               ? {
-                  short: `לחץ התחלה וסיום; כל לחיצה נוספת ממשיכה את הקו (${Math.max(0, markupPoints.length - 1)})`,
-                  long: 'לחץ נקודת התחלה וסיום, וכל לחיצה נוספת ממשיכה מידה על אותו קו. סיום: Enter, לחיצה כפולה או לחיצה על העצירה האחרונה. ביטול: Esc.',
+                  short: t('markup.hints.dimension', { count: Math.max(0, markupPoints.length - 1) }),
+                  long: t('markup.hints.dimensionLong'),
                 }
-              : {
-                  short: 'לחץ במקום להוספת הערה',
-                  long: 'לחץ במקום להוספת הערה. נפתח חלון לכתיבת מספר שורות. לעריכה: לחיצה כפולה על ההערה בכלי הבחירה.',
-                };
+              : { short: t('markup.hints.text'), long: t('markup.hints.textLong') };
 
   // The colour swatches recolour the selected markup when there is one, so any markup can be
   // recoloured after it was drawn; with nothing selected they set the colour for new markups.
@@ -81,10 +77,10 @@ export default function MarkupToolbar() {
 
   return (
     <div className="markup-toolbar">
-      <h4>סימונים</h4>
+      <h4>{t('markup.title')}</h4>
 
-      <div className="markup-color-row" title={selectedMarkup ? 'משנה את הצבע של הסימון שנבחר' : 'צבע לסימונים חדשים — בחר סימון קיים כדי לשנות את הצבע שלו'}>
-        <span className="section-label">{selectedMarkup ? 'צבע הסימון' : 'צבע'}</span>
+      <div className="markup-color-row" title={selectedMarkup ? t('markup.colorSelectedHint') : t('markup.colorNewHint')}>
+        <span className="section-label">{selectedMarkup ? t('markup.colorSelected') : t('markup.color')}</span>
         {/* The swatches sit on their own line, in the same grey tray as the tool groups. */}
         <div className="markup-color-tray">
         <div className="tint-swatches">
@@ -103,29 +99,29 @@ export default function MarkupToolbar() {
           className="markup-color-input"
           value={activeColor}
           onChange={(e) => applyColor(e.target.value)}
-          title="צבע חופשי"
+          title={t('markup.freeColor')}
         />
         </div>
       </div>
 
-      <span className="section-label">כלי סימון</span>
+      <span className="section-label">{t('markup.tools')}</span>
       <div className="markup-tool-grid segmented">
-        {MARKUP_TOOLS.map((t) => (
+        {MARKUP_TOOLS.map((tool) => (
           <button
-            key={t}
-            className={`tool-btn ${toolMode === 'markup' && markupTool === t ? 'active' : ''}`}
-            aria-pressed={toolMode === 'markup' && markupTool === t}
-            onClick={() => setMarkupTool(markupTool === t ? null : t)}
+            key={tool}
+            className={`tool-btn ${toolMode === 'markup' && markupTool === tool ? 'active' : ''}`}
+            aria-pressed={toolMode === 'markup' && markupTool === tool}
+            onClick={() => setMarkupTool(markupTool === tool ? null : tool)}
           >
-            <Icon name={MARKUP_ICONS[t]} />
-            <span className="tool-label">{MARKUP_TOOL_LABELS[t]}</span>
+            <Icon name={MARKUP_ICONS[tool]} />
+            <span className="tool-label">{t(`markupTools.${tool}`)}</span>
           </button>
         ))}
       </div>
 
       {/* Text-note / dimension-label size: edits the selected note when one is selected, otherwise sets the default for new ones. */}
-      <div className="markup-size-row" title={sizeTargetMarkup ? 'משנה את גודל ההערה שנבחרה' : 'גודל ברירת מחדל להערות טקסט ולקווי מידה חדשים'}>
-        <label>גודל טקסט {Math.round(activeFontScale * 100)}%</label>
+      <div className="markup-size-row" title={sizeTargetMarkup ? t('markup.sizeSelectedHint') : t('markup.sizeDefaultHint')}>
+        <label>{t('markup.textSize', { percent: Math.round(activeFontScale * 100) })}</label>
         <input
           type="range"
           min={0.4}
@@ -134,7 +130,7 @@ export default function MarkupToolbar() {
           value={activeFontScale}
           onChange={(e) => applyFontScale(parseFloat(e.target.value))}
         />
-        <button className="icon-btn" title="חזרה לגודל ברירת המחדל" onClick={() => applyFontScale(1)}>
+        <button className="icon-btn" title={t('markup.resetSize')} onClick={() => applyFontScale(1)}>
           <Icon name="reset" />
         </button>
       </div>
@@ -146,7 +142,7 @@ export default function MarkupToolbar() {
           onClick={() => updateMarkup(selectedTextMarkup.id, { rotationDeg: selectedTextMarkup.rotationDeg ? 0 : -90 })}
         >
           <Icon name="rotate" />
-          {selectedTextMarkup.rotationDeg ? 'החזר את ההערה לאופקי' : 'סובב את ההערה ב-90°'}
+          {selectedTextMarkup.rotationDeg ? t('markup.unrotate') : t('markup.rotate')}
         </button>
       )}
 
@@ -154,14 +150,14 @@ export default function MarkupToolbar() {
       {selectedDimension && (
         <button className="btn-secondary small" onClick={() => updateMarkup(selectedDimension.id, { flipped: !selectedDimension.flipped })}>
           <Icon name="flip" />
-          הפוך את המידה לצד השני
+          {t('markup.flipDimension')}
         </button>
       )}
 
       {toolMode === 'markup' && (markupTool === 'dimension' || markupTool === 'arrow' || markupTool === 'cloud') && (
         <label className="source-color-toggle">
           <input type="checkbox" checked={markupOrtho} onChange={(e) => setMarkupOrtho(e.target.checked)} />
-          קווים ישרים בלבד (90°)
+          {t('markup.orthoOnly')}
         </label>
       )}
 
@@ -178,7 +174,7 @@ export default function MarkupToolbar() {
       {pageMarkups.length === 0 ? (
         <div className="empty-state">
           <Icon name="cloud" size={24} />
-          <p>אין עדיין סימונים בעמוד זה. בחר כלי סימון למעלה וסמן על התוכנית.</p>
+          <p>{t('markup.empty')}</p>
         </div>
       ) : (
         <ul className="measurement-list">
@@ -197,16 +193,16 @@ export default function MarkupToolbar() {
                   // The OS picker streams changes while it's open: preview them, commit once on close.
                   onChange={(e) => updateMarkupQuiet(m.id, { color: e.target.value })}
                   onBlur={() => updateMarkup(m.id, {})}
-                  title="שנה צבע"
+                  title={t('markup.changeColor')}
                 />{' '}
-                {MARKUP_TOOL_LABELS[m.tool]}
-                {m.text ? (m.tool === 'dimension' ? `: ${m.text} ס"מ` : `: ${m.text}`) : ''}
+                {t(`markupTools.${m.tool}`)}
+                {m.text ? (m.tool === 'dimension' ? `: ${m.text} ${t('units.cm')}` : `: ${m.text}`) : ''}
               </span>
               <span className="list-item-actions">
-                <button className="icon-btn" title="שכפל" onClick={(e) => { e.stopPropagation(); duplicateMarkup(m.id); }}>
+                <button className="icon-btn" title={t('markup.duplicate')} onClick={(e) => { e.stopPropagation(); duplicateMarkup(m.id); }}>
                   <Icon name="copy" />
                 </button>
-                <button className="icon-btn danger" title="מחק" onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }}>
+                <button className="icon-btn danger" title={t('markup.delete')} onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }}>
                   <Icon name="trash" />
                 </button>
               </span>
