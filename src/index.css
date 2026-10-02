@@ -190,6 +190,11 @@ button:disabled,
   display: block;
 }
 
+/* Chevrons that mean "previous / next" are drawn for RTL and mirrored when the page reads LTR. */
+.icon-directional:dir(ltr) {
+  transform: scaleX(-1);
+}
+
 /* ---------- buttons ----------
    primary (one per view) · secondary (surface + hairline) · ghost (text only) ·
    destructive. Hover is always NEUTRAL; the accent is reserved for selected/active,
@@ -748,7 +753,7 @@ button:disabled,
 .top-bar-menu {
   position: absolute;
   top: 34px;
-  left: 0;
+  inset-inline-end: 0;
   min-width: 240px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -874,7 +879,7 @@ button:disabled,
 .draw-hint {
   position: absolute;
   top: var(--s-3);
-  right: 64px;
+  inset-inline-start: 64px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -973,7 +978,7 @@ button:disabled,
 .reset-view-btn {
   position: absolute;
   bottom: 14px;
-  left: 14px;
+  inset-inline-end: 14px;
   z-index: 20;
 }
 
@@ -1745,11 +1750,11 @@ button:disabled,
 .qty-panel-resizer::after {
   content: '';
   position: absolute;
-  inset-inline: 50% ;
+  left: 50%;
   top: 2px;
   width: 44px;
   height: 2px;
-  transform: translateX(50%);
+  transform: translateX(-50%);
   border-radius: var(--r-pill);
   background: var(--border-strong);
   opacity: 0;
@@ -2260,7 +2265,7 @@ html[dir='rtl'] .qty-table .col-room {
   font: var(--t-meta);
   color: var(--muted);
   min-width: 42px;
-  text-align: left;
+  text-align: end;
 }
 .full-width {
   width: 100%;
@@ -2299,7 +2304,7 @@ html[dir='rtl'] .qty-table .col-room {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
+  text-align: end;
 }
 .compare-context .page-status {
   margin: var(--s-1) calc(-1 * var(--s-4)) 0;
@@ -2744,8 +2749,8 @@ html[dir='rtl'] .qty-table .col-room {
 .swipe-divider-handle {
   position: absolute;
   top: 50%;
-  inset-inline-start: 50%;
-  transform: translate(50%, -50%);
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 26px;
   height: 26px;
   border-radius: 50%;
