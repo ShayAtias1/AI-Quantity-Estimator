@@ -9,6 +9,7 @@ import { notifyExportFailed } from '../lib/exportFailure';
 import Icon from './Icon';
 import BrandLogo from './BrandLogo';
 import NewComparisonDialog from './compare/NewComparisonDialog';
+import LanguageSwitch from './LanguageSwitch';
 import type { Comparison } from '../types/compare';
 
 /** What a comparison row says: which flat, how many revised plans, when it was last touched. */
@@ -133,6 +134,7 @@ export default function ProjectOverview() {
           </div>
           <input
             className="project-name-input"
+            dir="auto"
             value={project.name}
             onChange={(e) => renameProject(e.target.value)}
             title={t('projectOverview.projectName')}
@@ -144,6 +146,7 @@ export default function ProjectOverview() {
             <Icon name="exit" />
             <span className="btn-label">{t('projectOverview.projects')}</span>
           </button>
+          <LanguageSwitch />
         </div>
       </div>
 
@@ -216,7 +219,7 @@ export default function ProjectOverview() {
                     <li key={r.plan.id} onClick={() => void openPlan(r.plan.id)} title={t('projectOverview.openPlan')}>
                       <Icon name="map" />
                       <span className="saved-list-text">
-                        <span className="saved-list-name">{r.plan.name}</span>
+                        <span className="saved-list-name" dir="auto">{r.plan.name}</span>
                         <span className="saved-list-meta">
                           {r.calibratedPageCount > 0
                             ? t('projectOverview.planMeta', { rooms: r.roomCount, pages: r.calibratedPageCount })
@@ -269,7 +272,7 @@ export default function ProjectOverview() {
                     <li key={c.id} onClick={() => void openComparison(c.id)} title={t('projectOverview.openComparison')}>
                       <Icon name="layers" />
                       <span className="saved-list-text">
-                        <span className="saved-list-name">{c.name}</span>
+                        <span className="saved-list-name" dir="auto">{c.name}</span>
                         <span className="saved-list-meta">{comparisonMeta(c, t)}</span>
                       </span>
                       {/* TODO: "Move to Project" for comparisons — reassign `projectId` and move the id between the

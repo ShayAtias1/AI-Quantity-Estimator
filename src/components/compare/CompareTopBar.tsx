@@ -5,6 +5,7 @@ import TopBarMenu, { type MenuId } from '../TopBarMenu';
 import Icon, { type IconName } from '../Icon';
 import BrandLogo from '../BrandLogo';
 import ViewModeSwitch from './ViewModeSwitch';
+import LanguageSwitch from '../LanguageSwitch';
 import { useT } from '../../i18n';
 
 export default function CompareTopBar({
@@ -105,6 +106,7 @@ export default function CompareTopBar({
         )}
         <input
           className="project-name-input"
+          dir="auto"
           value={comparison.name}
           onChange={(e) => updateComparisonMeta({ name: e.target.value })}
           title={t('compare.topBar.comparisonName')}
@@ -288,6 +290,7 @@ export default function CompareTopBar({
           <Icon name="exit" />
           <span className="btn-label">{currentProject ? t('topBar.projectOverviewShort') : t('compare.topBar.exit')}</span>
         </button>
+        <LanguageSwitch />
       </div>
     </div>
   );

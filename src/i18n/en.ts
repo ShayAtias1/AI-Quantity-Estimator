@@ -18,6 +18,7 @@ import type { Dictionary } from './index';
 export const en: Dictionary = {
   app: {
     documentTitle: 'BetterCalc — Quantity Takeoff from Plans',
+    language: 'Language',
   },
 
   units: {
