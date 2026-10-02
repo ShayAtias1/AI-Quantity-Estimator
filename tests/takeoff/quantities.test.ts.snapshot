@@ -1,0 +1,1496 @@
+exports[`area measurement numbering 1`] = `
+{
+  "m-demolition-1": 1,
+  "m-demolition-2": 2,
+  "m-demolition-3": 3,
+  "m-construction-1": 4
+}
+`;
+
+exports[`dimension labels: whole centimetres, no unit 1`] = `
+[
+  {
+    "segmentTexts": [
+      "87"
+    ],
+    "text": "87"
+  },
+  {
+    "segmentTexts": [
+      "136",
+      "240",
+      "1"
+    ],
+    "text": "377"
+  },
+  {
+    "segmentTexts": [
+      "0"
+    ],
+    "text": "0"
+  }
+]
+`;
+
+exports[`project quantities 1`] = `
+{
+  "plans": [
+    {
+      "plan": "plan-a",
+      "summaries": [
+        {
+          "roomId": "r-master",
+          "apartmentNumber": "7",
+          "roomName": "חדר הורים",
+          "pageCalibrated": true,
+          "panelsLengthM": 13.42,
+          "panelsOrderLengthM": 14.76,
+          "panelsDeductedLengthM": 0.9,
+          "tilingRegularAreaM2": 12.65,
+          "tilingAsAreaM2": null,
+          "claddingAreaM2": null,
+          "panelsAreaM2": 1.34,
+          "tilingRegularWastePercent": 5,
+          "tilingAsWastePercent": null,
+          "claddingWastePercent": null,
+          "panelsWastePercent": 10,
+          "tilingRegularOrderM2": 13.29,
+          "tilingAsOrderM2": null,
+          "claddingOrderM2": null,
+          "panelsOrderM2": 1.48,
+          "extra": {
+            "painting": {
+              "areaM2": 32.46,
+              "wastePercent": 0,
+              "orderM2": 32.46
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            }
+          },
+          "openingDeductions": [
+            {
+              "category": "painting",
+              "grossM2": 37.23,
+              "deductedM2": 4.77,
+              "netM2": 32.46
+            }
+          ],
+          "notes": "פרקט קיים"
+        },
+        {
+          "roomId": "r-bed1",
+          "apartmentNumber": "7",
+          "roomName": "חדר שינה",
+          "pageCalibrated": true,
+          "panelsLengthM": 14.72,
+          "panelsOrderLengthM": 16.19,
+          "panelsDeductedLengthM": 0,
+          "tilingRegularAreaM2": 13.05,
+          "tilingAsAreaM2": null,
+          "claddingAreaM2": null,
+          "panelsAreaM2": 1.77,
+          "tilingRegularWastePercent": 7,
+          "tilingAsWastePercent": null,
+          "claddingWastePercent": null,
+          "panelsWastePercent": 10,
+          "tilingRegularOrderM2": 13.96,
+          "tilingAsOrderM2": null,
+          "claddingOrderM2": null,
+          "panelsOrderM2": 1.94,
+          "extra": {
+            "painting": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "plaster": {
+              "areaM2": 32.64,
+              "wastePercent": 4,
+              "orderM2": 33.95
+            },
+            "waterproofing": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            }
+          },
+          "openingDeductions": [
+            {
+              "category": "plaster",
+              "grossM2": 35.32,
+              "deductedM2": 2.68,
+              "netM2": 32.64
+            }
+          ],
+          "notes": ""
+        },
+        {
+          "roomId": "r-living",
+          "apartmentNumber": "12",
+          "roomName": "סלון",
+          "pageCalibrated": true,
+          "panelsLengthM": 17.63,
+          "panelsOrderLengthM": 17.63,
+          "panelsDeductedLengthM": 1.8,
+          "tilingRegularAreaM2": 23.5,
+          "tilingAsAreaM2": null,
+          "claddingAreaM2": 18.76,
+          "panelsAreaM2": 1.76,
+          "tilingRegularWastePercent": 5,
+          "tilingAsWastePercent": null,
+          "claddingWastePercent": 12,
+          "panelsWastePercent": 0,
+          "tilingRegularOrderM2": 24.67,
+          "tilingAsOrderM2": null,
+          "claddingOrderM2": 21.01,
+          "panelsOrderM2": 1.76,
+          "extra": {
+            "painting": {
+              "areaM2": 50.52,
+              "wastePercent": 0,
+              "orderM2": 50.52
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            }
+          },
+          "openingDeductions": [
+            {
+              "category": "cladding",
+              "grossM2": 23.32,
+              "deductedM2": 4.56,
+              "netM2": 18.76
+            }
+          ],
+          "notes": ""
+        },
+        {
+          "roomId": "r-bath",
+          "apartmentNumber": "12",
+          "roomName": "חדר רחצה",
+          "pageCalibrated": true,
+          "panelsLengthM": null,
+          "panelsOrderLengthM": null,
+          "panelsDeductedLengthM": null,
+          "tilingRegularAreaM2": null,
+          "tilingAsAreaM2": 7.86,
+          "claddingAreaM2": 24.98,
+          "panelsAreaM2": null,
+          "tilingRegularWastePercent": null,
+          "tilingAsWastePercent": 9,
+          "claddingWastePercent": 8,
+          "panelsWastePercent": null,
+          "tilingRegularOrderM2": null,
+          "tilingAsOrderM2": 8.57,
+          "claddingOrderM2": 26.98,
+          "panelsOrderM2": null,
+          "extra": {
+            "painting": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": 11.52,
+              "wastePercent": 3,
+              "orderM2": 11.86
+            }
+          },
+          "openingDeductions": [
+            {
+              "category": "cladding",
+              "grossM2": 26.81,
+              "deductedM2": 1.83,
+              "netM2": 24.98
+            }
+          ],
+          "notes": ""
+        },
+        {
+          "roomId": "r-uncalibrated",
+          "apartmentNumber": "12",
+          "roomName": "מחסן",
+          "pageCalibrated": false,
+          "panelsLengthM": null,
+          "panelsOrderLengthM": null,
+          "panelsDeductedLengthM": null,
+          "tilingRegularAreaM2": null,
+          "tilingAsAreaM2": null,
+          "claddingAreaM2": null,
+          "panelsAreaM2": null,
+          "tilingRegularWastePercent": 5,
+          "tilingAsWastePercent": null,
+          "claddingWastePercent": null,
+          "panelsWastePercent": 10,
+          "tilingRegularOrderM2": null,
+          "tilingAsOrderM2": null,
+          "claddingOrderM2": null,
+          "panelsOrderM2": null,
+          "extra": {
+            "painting": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": 4,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            }
+          },
+          "openingDeductions": [],
+          "notes": ""
+        }
+      ],
+      "byCategory": {
+        "tiling_regular": {
+          "quantityM2": 49.2,
+          "orderM2": 51.92,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "panels": {
+          "quantityM2": 4.87,
+          "orderM2": 5.18,
+          "lengthM": 45.77,
+          "orderLengthM": 48.58
+        },
+        "painting": {
+          "quantityM2": 82.98,
+          "orderM2": 82.98,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "plaster": {
+          "quantityM2": 32.64,
+          "orderM2": 33.95,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "cladding": {
+          "quantityM2": 43.74,
+          "orderM2": 47.99,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "tiling_as": {
+          "quantityM2": 7.86,
+          "orderM2": 8.57,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "waterproofing": {
+          "quantityM2": 11.52,
+          "orderM2": 11.86,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      },
+      "roomCount": 5,
+      "calibratedPageCount": 1,
+      "uncalibratedRoomCount": 1,
+      "status": "partial"
+    },
+    {
+      "plan": "plan-b",
+      "summaries": [
+        {
+          "roomId": "r-b1",
+          "apartmentNumber": "14",
+          "roomName": "חדר שינה",
+          "pageCalibrated": true,
+          "panelsLengthM": 18.8,
+          "panelsOrderLengthM": 20.68,
+          "panelsDeductedLengthM": 0.9,
+          "tilingRegularAreaM2": 25.63,
+          "tilingAsAreaM2": null,
+          "claddingAreaM2": null,
+          "panelsAreaM2": 1.88,
+          "tilingRegularWastePercent": 6,
+          "tilingAsWastePercent": null,
+          "claddingWastePercent": null,
+          "panelsWastePercent": 10,
+          "tilingRegularOrderM2": 27.17,
+          "tilingAsOrderM2": null,
+          "claddingOrderM2": null,
+          "panelsOrderM2": 2.07,
+          "extra": {
+            "painting": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            }
+          },
+          "openingDeductions": [],
+          "notes": ""
+        },
+        {
+          "roomId": "r-b2",
+          "apartmentNumber": "14",
+          "roomName": "שירותים",
+          "pageCalibrated": true,
+          "panelsLengthM": null,
+          "panelsOrderLengthM": null,
+          "panelsDeductedLengthM": null,
+          "tilingRegularAreaM2": null,
+          "tilingAsAreaM2": 9.77,
+          "claddingAreaM2": 26.25,
+          "panelsAreaM2": null,
+          "tilingRegularWastePercent": null,
+          "tilingAsWastePercent": 6,
+          "claddingWastePercent": 8,
+          "panelsWastePercent": null,
+          "tilingRegularOrderM2": null,
+          "tilingAsOrderM2": 10.35,
+          "claddingOrderM2": 28.35,
+          "panelsOrderM2": null,
+          "extra": {
+            "painting": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": 9.77,
+              "wastePercent": 0,
+              "orderM2": 9.77
+            }
+          },
+          "openingDeductions": [],
+          "notes": ""
+        },
+        {
+          "roomId": "r-b3",
+          "apartmentNumber": "",
+          "roomName": "",
+          "pageCalibrated": true,
+          "panelsLengthM": null,
+          "panelsOrderLengthM": null,
+          "panelsDeductedLengthM": null,
+          "tilingRegularAreaM2": 3.66,
+          "tilingAsAreaM2": null,
+          "claddingAreaM2": null,
+          "panelsAreaM2": null,
+          "tilingRegularWastePercent": 6,
+          "tilingAsWastePercent": null,
+          "claddingWastePercent": null,
+          "panelsWastePercent": null,
+          "tilingRegularOrderM2": 3.88,
+          "tilingAsOrderM2": null,
+          "claddingOrderM2": null,
+          "panelsOrderM2": null,
+          "extra": {
+            "painting": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "plaster": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            },
+            "waterproofing": {
+              "areaM2": null,
+              "wastePercent": null,
+              "orderM2": null
+            }
+          },
+          "openingDeductions": [],
+          "notes": ""
+        }
+      ],
+      "byCategory": {
+        "tiling_regular": {
+          "quantityM2": 29.29,
+          "orderM2": 31.05,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "panels": {
+          "quantityM2": 1.88,
+          "orderM2": 2.07,
+          "lengthM": 18.8,
+          "orderLengthM": 20.68
+        },
+        "tiling_as": {
+          "quantityM2": 9.77,
+          "orderM2": 10.35,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "cladding": {
+          "quantityM2": 26.25,
+          "orderM2": 28.35,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        "waterproofing": {
+          "quantityM2": 9.77,
+          "orderM2": 9.77,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      },
+      "roomCount": 3,
+      "calibratedPageCount": 1,
+      "uncalibratedRoomCount": 0,
+      "status": "ready"
+    }
+  ],
+  "totals": [
+    {
+      "category": "tiling_regular",
+      "label": "ריצוף רגיל",
+      "unit": "מ\\"ר",
+      "quantityM2": 78.49,
+      "orderM2": 82.97,
+      "lengthM": null,
+      "orderLengthM": null,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 49.2,
+          "orderM2": 51.92,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        {
+          "planId": "plan-b",
+          "planName": "קומה 4",
+          "quantityM2": 29.29,
+          "orderM2": 31.05,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      ]
+    },
+    {
+      "category": "tiling_as",
+      "label": "ריצוף AS",
+      "unit": "מ\\"ר",
+      "quantityM2": 17.63,
+      "orderM2": 18.92,
+      "lengthM": null,
+      "orderLengthM": null,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 7.86,
+          "orderM2": 8.57,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        {
+          "planId": "plan-b",
+          "planName": "קומה 4",
+          "quantityM2": 9.77,
+          "orderM2": 10.35,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      ]
+    },
+    {
+      "category": "cladding",
+      "label": "חיפוי קירות",
+      "unit": "מ\\"ר",
+      "quantityM2": 69.99,
+      "orderM2": 76.34,
+      "lengthM": null,
+      "orderLengthM": null,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 43.74,
+          "orderM2": 47.99,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        {
+          "planId": "plan-b",
+          "planName": "קומה 4",
+          "quantityM2": 26.25,
+          "orderM2": 28.35,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      ]
+    },
+    {
+      "category": "panels",
+      "label": "פנלים",
+      "unit": "מ\\"א",
+      "quantityM2": 6.75,
+      "orderM2": 7.25,
+      "lengthM": 64.57,
+      "orderLengthM": 69.26,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 4.87,
+          "orderM2": 5.18,
+          "lengthM": 45.77,
+          "orderLengthM": 48.58
+        },
+        {
+          "planId": "plan-b",
+          "planName": "קומה 4",
+          "quantityM2": 1.88,
+          "orderM2": 2.07,
+          "lengthM": 18.8,
+          "orderLengthM": 20.68
+        }
+      ]
+    },
+    {
+      "category": "painting",
+      "label": "צבע",
+      "unit": "מ\\"ר",
+      "quantityM2": 82.98,
+      "orderM2": 82.98,
+      "lengthM": null,
+      "orderLengthM": null,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 82.98,
+          "orderM2": 82.98,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      ]
+    },
+    {
+      "category": "plaster",
+      "label": "טיח",
+      "unit": "מ\\"ר",
+      "quantityM2": 32.64,
+      "orderM2": 33.95,
+      "lengthM": null,
+      "orderLengthM": null,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 32.64,
+          "orderM2": 33.95,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      ]
+    },
+    {
+      "category": "waterproofing",
+      "label": "איטום",
+      "unit": "מ\\"ר",
+      "quantityM2": 21.29,
+      "orderM2": 21.63,
+      "lengthM": null,
+      "orderLengthM": null,
+      "perPlan": [
+        {
+          "planId": "plan-a",
+          "planName": "קומה 3",
+          "quantityM2": 11.52,
+          "orderM2": 11.86,
+          "lengthM": null,
+          "orderLengthM": null
+        },
+        {
+          "planId": "plan-b",
+          "planName": "קומה 4",
+          "quantityM2": 9.77,
+          "orderM2": 9.77,
+          "lengthM": null,
+          "orderLengthM": null
+        }
+      ]
+    }
+  ],
+  "uncalibratedRoomCount": 1
+}
+`;
+
+exports[`report category totals 1`] = `
+[
+  {
+    "category": "tiling_regular",
+    "quantityM2": 49.2,
+    "wastePercent": 5,
+    "orderM2": 51.92,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "tiling_as",
+    "quantityM2": 7.86,
+    "wastePercent": 9,
+    "orderM2": 8.57,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "cladding",
+    "quantityM2": 43.74,
+    "wastePercent": 8,
+    "orderM2": 47.99,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "panels",
+    "quantityM2": 4.87,
+    "wastePercent": 10,
+    "orderM2": 5.18,
+    "lengthM": 45.77,
+    "orderLengthM": 48.58
+  },
+  {
+    "category": "painting",
+    "quantityM2": 82.98,
+    "wastePercent": 0,
+    "orderM2": 82.98,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "plaster",
+    "quantityM2": 32.64,
+    "wastePercent": 4,
+    "orderM2": 33.95,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "waterproofing",
+    "quantityM2": 11.52,
+    "wastePercent": 0,
+    "orderM2": 11.86,
+    "lengthM": null,
+    "orderLengthM": null
+  }
+]
+`;
+
+exports[`report category totals 2`] = `
+[
+  {
+    "category": "tiling_regular",
+    "quantityM2": 29.29,
+    "wastePercent": 6,
+    "orderM2": 31.05,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "tiling_as",
+    "quantityM2": 9.77,
+    "wastePercent": 6,
+    "orderM2": 10.35,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "cladding",
+    "quantityM2": 26.25,
+    "wastePercent": 8,
+    "orderM2": 28.35,
+    "lengthM": null,
+    "orderLengthM": null
+  },
+  {
+    "category": "panels",
+    "quantityM2": 1.88,
+    "wastePercent": 10,
+    "orderM2": 2.07,
+    "lengthM": 18.8,
+    "orderLengthM": 20.68
+  },
+  {
+    "category": "waterproofing",
+    "quantityM2": 9.77,
+    "wastePercent": 0,
+    "orderM2": 9.77,
+    "lengthM": null,
+    "orderLengthM": null
+  }
+]
+`;
+
+exports[`room metrics and every work item, unrounded 1`] = `
+[
+  {
+    "room": "r-master",
+    "areaM2": 12.654412499999994,
+    "perimeterM": 14.31875,
+    "items": [
+      {
+        "item": "w1",
+        "grossM2": 12.654412499999994,
+        "deductedM2": 0,
+        "netM2": 12.654412499999994,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 5
+      },
+      {
+        "item": "w2",
+        "grossM2": 1.431875,
+        "deductedM2": 0.09000000000000008,
+        "netM2": 1.341875,
+        "lengthM": 13.41875,
+        "grossLengthM": 14.31875,
+        "deductedLengthM": 0.9000000000000004,
+        "waste": 10
+      },
+      {
+        "item": "w3",
+        "grossM2": 37.22875,
+        "deductedM2": 4.770000000000003,
+        "netM2": 32.458749999999995,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 0
+      }
+    ],
+    "openings": [
+      {
+        "id": "o1",
+        "areaM2": 1.89,
+        "deductedFrom": [
+          "panels",
+          "painting"
+        ]
+      },
+      {
+        "id": "o2",
+        "areaM2": 2.88,
+        "deductedFrom": [
+          "painting"
+        ]
+      }
+    ]
+  },
+  {
+    "room": "r-bed1",
+    "areaM2": 13.0496625,
+    "perimeterM": 14.718749999999998,
+    "items": [
+      {
+        "item": "w4",
+        "grossM2": 13.0496625,
+        "deductedM2": 0,
+        "netM2": 13.0496625,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 7
+      },
+      {
+        "item": "w5",
+        "grossM2": 1.7662499999999997,
+        "deductedM2": 0,
+        "netM2": 1.7662499999999997,
+        "lengthM": 14.718749999999998,
+        "grossLengthM": 14.718749999999998,
+        "deductedLengthM": 0,
+        "waste": 10
+      },
+      {
+        "item": "w6",
+        "grossM2": 35.324999999999996,
+        "deductedM2": 2.6799999999999997,
+        "netM2": 32.644999999999996,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 4
+      }
+    ],
+    "openings": [
+      {
+        "id": "o3",
+        "areaM2": 1.68,
+        "deductedFrom": [
+          "plaster"
+        ]
+      },
+      {
+        "id": "o4",
+        "areaM2": 1,
+        "deductedFrom": [
+          "plaster"
+        ]
+      }
+    ]
+  },
+  {
+    "room": "r-living",
+    "areaM2": 23.49777499999999,
+    "perimeterM": 19.432499999999997,
+    "items": [
+      {
+        "item": "w7",
+        "grossM2": 23.49777499999999,
+        "deductedM2": 0,
+        "netM2": 23.49777499999999,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 5
+      },
+      {
+        "item": "w8",
+        "grossM2": 23.318999999999996,
+        "deductedM2": 4.560000000000002,
+        "netM2": 18.758999999999993,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 12
+      },
+      {
+        "item": "w9",
+        "grossM2": 1.94325,
+        "deductedM2": 0.18000000000000016,
+        "netM2": 1.7632499999999998,
+        "lengthM": 17.632499999999997,
+        "grossLengthM": 19.432499999999997,
+        "deductedLengthM": 1.8000000000000007,
+        "waste": 0
+      },
+      {
+        "item": "w9b",
+        "grossM2": 50.524499999999996,
+        "deductedM2": 0,
+        "netM2": 50.524499999999996,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 0
+      }
+    ],
+    "openings": [
+      {
+        "id": "o5",
+        "areaM2": 3.78,
+        "deductedFrom": [
+          "cladding",
+          "panels"
+        ]
+      },
+      {
+        "id": "o6",
+        "areaM2": 3,
+        "deductedFrom": [
+          "cladding"
+        ]
+      }
+    ]
+  },
+  {
+    "room": "r-bath",
+    "areaM2": 7.861328124999993,
+    "perimeterM": 12.1875,
+    "items": [
+      {
+        "item": "w10",
+        "grossM2": 7.861328124999993,
+        "deductedM2": 0,
+        "netM2": 7.861328124999993,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 9
+      },
+      {
+        "item": "w11",
+        "grossM2": 26.812500000000004,
+        "deductedM2": 1.8300000000000018,
+        "netM2": 24.9825,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 8
+      },
+      {
+        "item": "w12",
+        "grossM2": 11.517578124999993,
+        "deductedM2": 0,
+        "netM2": 11.517578124999993,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 3
+      },
+      {
+        "item": "w13",
+        "grossM2": 0,
+        "deductedM2": 0,
+        "netM2": 0,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 0
+      }
+    ],
+    "openings": [
+      {
+        "id": "o7",
+        "areaM2": 1.47,
+        "deductedFrom": [
+          "cladding"
+        ]
+      },
+      {
+        "id": "o8",
+        "areaM2": 0.36,
+        "deductedFrom": [
+          "cladding"
+        ]
+      }
+    ]
+  },
+  {
+    "room": "r-uncalibrated",
+    "areaM2": 0,
+    "perimeterM": 0,
+    "items": [
+      {
+        "item": "w14",
+        "grossM2": 0,
+        "deductedM2": 0,
+        "netM2": 0,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 5
+      },
+      {
+        "item": "w15",
+        "grossM2": 0,
+        "deductedM2": 0,
+        "netM2": 0,
+        "lengthM": 0,
+        "grossLengthM": 0,
+        "deductedLengthM": 0,
+        "waste": 10
+      },
+      {
+        "item": "w16",
+        "grossM2": 0,
+        "deductedM2": 0,
+        "netM2": 0,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 4
+      }
+    ],
+    "openings": []
+  }
+]
+`;
+
+exports[`room metrics and every work item, unrounded 2`] = `
+[
+  {
+    "room": "r-b1",
+    "areaM2": 25.634765625,
+    "perimeterM": 19.696173867912485,
+    "items": [
+      {
+        "item": "wb1",
+        "grossM2": 25.634765625,
+        "deductedM2": 0,
+        "netM2": 25.634765625,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 6
+      },
+      {
+        "item": "wb2",
+        "grossM2": 1.9696173867912485,
+        "deductedM2": 0.08999999999999986,
+        "netM2": 1.8796173867912487,
+        "lengthM": 18.796173867912486,
+        "grossLengthM": 19.696173867912485,
+        "deductedLengthM": 0.8999999999999986,
+        "waste": 10
+      }
+    ],
+    "openings": [
+      {
+        "id": "ob1",
+        "areaM2": 1.89,
+        "deductedFrom": [
+          "panels"
+        ]
+      }
+    ]
+  },
+  {
+    "room": "r-b2",
+    "areaM2": 9.765625,
+    "perimeterM": 12.5,
+    "items": [
+      {
+        "item": "wb3",
+        "grossM2": 9.765625,
+        "deductedM2": 0,
+        "netM2": 9.765625,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 6
+      },
+      {
+        "item": "wb4",
+        "grossM2": 26.25,
+        "deductedM2": 0,
+        "netM2": 26.25,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 8
+      },
+      {
+        "item": "wb5",
+        "grossM2": 9.765625,
+        "deductedM2": 0,
+        "netM2": 9.765625,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 0
+      }
+    ],
+    "openings": []
+  },
+  {
+    "room": "r-b3",
+    "areaM2": 3.6621093749999964,
+    "perimeterM": 7.8125,
+    "items": [
+      {
+        "item": "wb6",
+        "grossM2": 3.6621093749999964,
+        "deductedM2": 0,
+        "netM2": 3.6621093749999964,
+        "lengthM": null,
+        "grossLengthM": null,
+        "deductedLengthM": null,
+        "waste": 6
+      }
+    ],
+    "openings": []
+  }
+]
+`;
+
+exports[`room quantity summaries 1`] = `
+[
+  {
+    "roomId": "r-master",
+    "apartmentNumber": "7",
+    "roomName": "חדר הורים",
+    "pageCalibrated": true,
+    "panelsLengthM": 13.42,
+    "panelsOrderLengthM": 14.76,
+    "panelsDeductedLengthM": 0.9,
+    "tilingRegularAreaM2": 12.65,
+    "tilingAsAreaM2": null,
+    "claddingAreaM2": null,
+    "panelsAreaM2": 1.34,
+    "tilingRegularWastePercent": 5,
+    "tilingAsWastePercent": null,
+    "claddingWastePercent": null,
+    "panelsWastePercent": 10,
+    "tilingRegularOrderM2": 13.29,
+    "tilingAsOrderM2": null,
+    "claddingOrderM2": null,
+    "panelsOrderM2": 1.48,
+    "extra": {
+      "painting": {
+        "areaM2": 32.46,
+        "wastePercent": 0,
+        "orderM2": 32.46
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      }
+    },
+    "openingDeductions": [
+      {
+        "category": "painting",
+        "grossM2": 37.23,
+        "deductedM2": 4.77,
+        "netM2": 32.46
+      }
+    ],
+    "notes": "פרקט קיים"
+  },
+  {
+    "roomId": "r-bed1",
+    "apartmentNumber": "7",
+    "roomName": "חדר שינה",
+    "pageCalibrated": true,
+    "panelsLengthM": 14.72,
+    "panelsOrderLengthM": 16.19,
+    "panelsDeductedLengthM": 0,
+    "tilingRegularAreaM2": 13.05,
+    "tilingAsAreaM2": null,
+    "claddingAreaM2": null,
+    "panelsAreaM2": 1.77,
+    "tilingRegularWastePercent": 7,
+    "tilingAsWastePercent": null,
+    "claddingWastePercent": null,
+    "panelsWastePercent": 10,
+    "tilingRegularOrderM2": 13.96,
+    "tilingAsOrderM2": null,
+    "claddingOrderM2": null,
+    "panelsOrderM2": 1.94,
+    "extra": {
+      "painting": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "plaster": {
+        "areaM2": 32.64,
+        "wastePercent": 4,
+        "orderM2": 33.95
+      },
+      "waterproofing": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      }
+    },
+    "openingDeductions": [
+      {
+        "category": "plaster",
+        "grossM2": 35.32,
+        "deductedM2": 2.68,
+        "netM2": 32.64
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "roomId": "r-living",
+    "apartmentNumber": "12",
+    "roomName": "סלון",
+    "pageCalibrated": true,
+    "panelsLengthM": 17.63,
+    "panelsOrderLengthM": 17.63,
+    "panelsDeductedLengthM": 1.8,
+    "tilingRegularAreaM2": 23.5,
+    "tilingAsAreaM2": null,
+    "claddingAreaM2": 18.76,
+    "panelsAreaM2": 1.76,
+    "tilingRegularWastePercent": 5,
+    "tilingAsWastePercent": null,
+    "claddingWastePercent": 12,
+    "panelsWastePercent": 0,
+    "tilingRegularOrderM2": 24.67,
+    "tilingAsOrderM2": null,
+    "claddingOrderM2": 21.01,
+    "panelsOrderM2": 1.76,
+    "extra": {
+      "painting": {
+        "areaM2": 50.52,
+        "wastePercent": 0,
+        "orderM2": 50.52
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      }
+    },
+    "openingDeductions": [
+      {
+        "category": "cladding",
+        "grossM2": 23.32,
+        "deductedM2": 4.56,
+        "netM2": 18.76
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "roomId": "r-bath",
+    "apartmentNumber": "12",
+    "roomName": "חדר רחצה",
+    "pageCalibrated": true,
+    "panelsLengthM": null,
+    "panelsOrderLengthM": null,
+    "panelsDeductedLengthM": null,
+    "tilingRegularAreaM2": null,
+    "tilingAsAreaM2": 7.86,
+    "claddingAreaM2": 24.98,
+    "panelsAreaM2": null,
+    "tilingRegularWastePercent": null,
+    "tilingAsWastePercent": 9,
+    "claddingWastePercent": 8,
+    "panelsWastePercent": null,
+    "tilingRegularOrderM2": null,
+    "tilingAsOrderM2": 8.57,
+    "claddingOrderM2": 26.98,
+    "panelsOrderM2": null,
+    "extra": {
+      "painting": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": 11.52,
+        "wastePercent": 3,
+        "orderM2": 11.86
+      }
+    },
+    "openingDeductions": [
+      {
+        "category": "cladding",
+        "grossM2": 26.81,
+        "deductedM2": 1.83,
+        "netM2": 24.98
+      }
+    ],
+    "notes": ""
+  },
+  {
+    "roomId": "r-uncalibrated",
+    "apartmentNumber": "12",
+    "roomName": "מחסן",
+    "pageCalibrated": false,
+    "panelsLengthM": null,
+    "panelsOrderLengthM": null,
+    "panelsDeductedLengthM": null,
+    "tilingRegularAreaM2": null,
+    "tilingAsAreaM2": null,
+    "claddingAreaM2": null,
+    "panelsAreaM2": null,
+    "tilingRegularWastePercent": 5,
+    "tilingAsWastePercent": null,
+    "claddingWastePercent": null,
+    "panelsWastePercent": 10,
+    "tilingRegularOrderM2": null,
+    "tilingAsOrderM2": null,
+    "claddingOrderM2": null,
+    "panelsOrderM2": null,
+    "extra": {
+      "painting": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": 4,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      }
+    },
+    "openingDeductions": [],
+    "notes": ""
+  }
+]
+`;
+
+exports[`room quantity summaries 2`] = `
+[
+  {
+    "roomId": "r-b1",
+    "apartmentNumber": "14",
+    "roomName": "חדר שינה",
+    "pageCalibrated": true,
+    "panelsLengthM": 18.8,
+    "panelsOrderLengthM": 20.68,
+    "panelsDeductedLengthM": 0.9,
+    "tilingRegularAreaM2": 25.63,
+    "tilingAsAreaM2": null,
+    "claddingAreaM2": null,
+    "panelsAreaM2": 1.88,
+    "tilingRegularWastePercent": 6,
+    "tilingAsWastePercent": null,
+    "claddingWastePercent": null,
+    "panelsWastePercent": 10,
+    "tilingRegularOrderM2": 27.17,
+    "tilingAsOrderM2": null,
+    "claddingOrderM2": null,
+    "panelsOrderM2": 2.07,
+    "extra": {
+      "painting": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      }
+    },
+    "openingDeductions": [],
+    "notes": ""
+  },
+  {
+    "roomId": "r-b2",
+    "apartmentNumber": "14",
+    "roomName": "שירותים",
+    "pageCalibrated": true,
+    "panelsLengthM": null,
+    "panelsOrderLengthM": null,
+    "panelsDeductedLengthM": null,
+    "tilingRegularAreaM2": null,
+    "tilingAsAreaM2": 9.77,
+    "claddingAreaM2": 26.25,
+    "panelsAreaM2": null,
+    "tilingRegularWastePercent": null,
+    "tilingAsWastePercent": 6,
+    "claddingWastePercent": 8,
+    "panelsWastePercent": null,
+    "tilingRegularOrderM2": null,
+    "tilingAsOrderM2": 10.35,
+    "claddingOrderM2": 28.35,
+    "panelsOrderM2": null,
+    "extra": {
+      "painting": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": 9.77,
+        "wastePercent": 0,
+        "orderM2": 9.77
+      }
+    },
+    "openingDeductions": [],
+    "notes": ""
+  },
+  {
+    "roomId": "r-b3",
+    "apartmentNumber": "",
+    "roomName": "",
+    "pageCalibrated": true,
+    "panelsLengthM": null,
+    "panelsOrderLengthM": null,
+    "panelsDeductedLengthM": null,
+    "tilingRegularAreaM2": 3.66,
+    "tilingAsAreaM2": null,
+    "claddingAreaM2": null,
+    "panelsAreaM2": null,
+    "tilingRegularWastePercent": 6,
+    "tilingAsWastePercent": null,
+    "claddingWastePercent": null,
+    "panelsWastePercent": null,
+    "tilingRegularOrderM2": 3.88,
+    "tilingAsOrderM2": null,
+    "claddingOrderM2": null,
+    "panelsOrderM2": null,
+    "extra": {
+      "painting": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "plaster": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      },
+      "waterproofing": {
+        "areaM2": null,
+        "wastePercent": null,
+        "orderM2": null
+      }
+    },
+    "openingDeductions": [],
+    "notes": ""
+  }
+]
+`;

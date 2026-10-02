@@ -276,8 +276,17 @@ export interface Measurement {
   pageNumber: number;
   tool: MeasureTool;
   points: Point[];
-  /** Computed display value, cached at creation time (e.g. "3.24 מ'" or "12.5 מ\"ר"). */
-  label: string;
+  /**
+   * For tool === 'distance' | 'perimeter': the measured length in metres, rounded to the centimetre —
+   * fixed when the measurement is made. Its label is made from this (lib/measurementValues).
+   * Filled on load from `label` for measurements saved before this field existed.
+   */
+  lengthM?: number;
+  /**
+   * Legacy: the display text older builds saved instead of a number (e.g. "3.24 מ'" or "12.5 מ\"ר").
+   * No longer written; read only to recover the value of a measurement saved that way.
+   */
+  label?: string;
   /** For tool === 'area': classifies the marked area for the demolition/construction summary. */
   areaKind?: AreaKind;
   /** For tool === 'area': raw computed square-meter value, kept alongside `label` so summaries don't need to re-parse it. */

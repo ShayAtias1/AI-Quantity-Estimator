@@ -1,9 +1,10 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import type { AreaKind, ExtraReportCategory, Measurement, Plan, ReportCategoryTotal, RoomQuantitySummary } from '../types';
+import type { AreaKind, ExtraReportCategory, Measurement, Plan, ReportCategory, ReportCategoryTotal, RoomQuantitySummary } from '../types';
 import { AREA_KIND_LABELS, REPORT_CATEGORY_LABELS } from '../types';
 import { numberAreaMeasurements } from './areaMeasurements';
 import { usedExtraCategories } from './quantities';
+import { sheetRef } from './excelSheetRef';
 
 const DASH = '—';
 /** Written into quantity cells of a room whose page has no scale, so 0 is never implied. */
@@ -20,6 +21,10 @@ const C_TOTAL_HDR = 'FFA9C4D9'; // per-apartment totals sub-header
 const C_GRAND = 'FFD5F5E3'; // grand-total row on summary sheet
 
 const NUM_FMT = '#,##0.00';
+
+/** Sheet names. The summary sheet's formulas reach the data sheet by name — see `sheetRef`. */
+const SUMMARY_SHEET = 'סיכום כולל';
+const DATA_SHEET = 'כתב כמויות';
 
 const DATA_HEADERS = [
   'דירה',
@@ -44,17 +49,14 @@ const DATA_HEADERS = [
 ];
 const DATA_WIDTHS = [8, 26, 17, 16, 18, 14, 15, 15, 12, 12, 15, 15, 13, 13, 26, 17, 21];
 
-const SUMMARY_HEADERS = [
-  'דירה',
-  'ריצוף רגיל נטו (מ"ר)',
-  'ריצוף רגיל להזמנה (מ"ר)',
-  'ריצוף AS נטו (מ"ר)',
-  'ריצוף AS להזמנה (מ"ר)',
-  'חיפוי קירות נטו (מ"ר)',
-  'חיפוי קירות להזמנה (מ"ר)',
-  'פנלים נטו (מ"ר)',
-  'פנלים להזמנה (מ"ר)',
-];
+/** A category's net and to-order columns on the summary sheet — the original four and the later ones alike. */
+function summaryHeadersFor(category: ReportCategory): string[] {
+  const label = REPORT_CATEGORY_LABELS[category];
+  return [`${label} נטו (מ"ר)`, `${label} להזמנה (מ"ר)`];
+}
+
+const BASE_CATEGORIES: ReportCategory[] = ['tiling_regular', 'tiling_as', 'cladding', 'panels'];
+const SUMMARY_HEADERS = ['דירה', ...BASE_CATEGORIES.flatMap(summaryHeadersFor)];
 const SUMMARY_WIDTHS = [10, 20, 22, 18, 20, 20, 22, 16, 18];
 
 /** 1-based column number → Excel letters (1 → A, 27 → AA). */
@@ -212,6 +214,15 @@ export async function exportQuantitiesToExcel(
   _totals: ReportCategoryTotal[],
   areaMeasurements: Measurement[] = []
 ) {
+  const workbook = buildQuantitiesWorkbook(summaries, areaMeasurements);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/octet-stream' });
+  const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
+  saveAs(blob, `כתב-כמויות-${safeName}.xlsx`);
+}
+
+/** The plan workbook exactly as `exportQuantitiesToExcel` saves it — built apart so tests can read it. */
+export function buildQuantitiesWorkbook(summaries: RoomQuantitySummary[], areaMeasurements: Measurement[] = []): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'BetterCalc';
   workbook.created = new Date();
@@ -227,19 +238,13 @@ export async function exportQuantitiesToExcel(
     }),
   ];
   const dataWidths = [...DATA_WIDTHS, ...extras.flatMap(() => [15, 12, 15])];
-  const summaryHeaders = [
-    ...SUMMARY_HEADERS,
-    ...extras.flatMap((c) => {
-      const label = REPORT_CATEGORY_LABELS[c];
-      return [`${label} נטו (מ"ר)`, `${label} להזמנה (מ"ר)`];
-    }),
-  ];
+  const summaryHeaders = [...SUMMARY_HEADERS, ...extras.flatMap(summaryHeadersFor)];
   const summaryWidths = [...SUMMARY_WIDTHS, ...extras.flatMap(() => [16, 18])];
   const summaryLastCol = summaryHeaders.length;
 
   // Created first so the tab order is [סיכום כולל, כתב כמויות]; populated after the data sheet.
-  const summarySheet = workbook.addWorksheet('סיכום כולל', { views: [{ rightToLeft: true }] });
-  const dataSheet = workbook.addWorksheet('כתב כמויות', { views: [{ rightToLeft: true }] });
+  const summarySheet = workbook.addWorksheet(SUMMARY_SHEET, { views: [{ rightToLeft: true }] });
+  const dataSheet = workbook.addWorksheet(DATA_SHEET, { views: [{ rightToLeft: true }] });
 
   dataWidths.forEach((w, i) => (dataSheet.getColumn(i + 1).width = w));
   summaryWidths.forEach((w, i) => (summarySheet.getColumn(i + 1).width = w));
@@ -375,11 +380,11 @@ export async function exportQuantitiesToExcel(
     });
 
     const cats = [
-      { label: 'ריצוף רגיל', areaCol: 'C', orderCol: 'K', net: sumField(rooms, (s) => s.tilingRegularAreaM2), ord: sumField(rooms, (s) => s.tilingRegularOrderM2) },
-      { label: 'ריצוף AS', areaCol: 'D', orderCol: 'L', net: sumField(rooms, (s) => s.tilingAsAreaM2), ord: sumField(rooms, (s) => s.tilingAsOrderM2) },
-      { label: 'חיפוי קירות', areaCol: 'E', orderCol: 'M', net: sumField(rooms, (s) => s.claddingAreaM2), ord: sumField(rooms, (s) => s.claddingOrderM2) },
+      { label: REPORT_CATEGORY_LABELS.tiling_regular, areaCol: 'C', orderCol: 'K', net: sumField(rooms, (s) => s.tilingRegularAreaM2), ord: sumField(rooms, (s) => s.tilingRegularOrderM2) },
+      { label: REPORT_CATEGORY_LABELS.tiling_as, areaCol: 'D', orderCol: 'L', net: sumField(rooms, (s) => s.tilingAsAreaM2), ord: sumField(rooms, (s) => s.tilingAsOrderM2) },
+      { label: REPORT_CATEGORY_LABELS.cladding, areaCol: 'E', orderCol: 'M', net: sumField(rooms, (s) => s.claddingAreaM2), ord: sumField(rooms, (s) => s.claddingOrderM2) },
       {
-        label: 'פנלים',
+        label: REPORT_CATEGORY_LABELS.panels,
         areaCol: 'F',
         orderCol: 'N',
         lengthCol: 'P',
@@ -451,21 +456,21 @@ export async function exportQuantitiesToExcel(
     c.alignment = { horizontal: 'center', vertical: 'middle' };
   });
 
-  const REF = "'כתב כמויות'";
+  const REF = sheetRef(DATA_SHEET);
   for (const t of apartmentTotals) {
     const row = summarySheet.addRow([t.apartment, ...new Array(summaryLastCol - 1).fill(null)]);
     const rn = row.number;
-    row.getCell(2).value = { formula: `${REF}!B${t.regRow}`, result: t.netReg };
-    row.getCell(3).value = { formula: `${REF}!D${t.regRow}`, result: t.ordReg };
-    row.getCell(4).value = { formula: `${REF}!B${t.asRow}`, result: t.netAs };
-    row.getCell(5).value = { formula: `${REF}!D${t.asRow}`, result: t.ordAs };
-    row.getCell(6).value = { formula: `${REF}!B${t.cladRow}`, result: t.netClad };
-    row.getCell(7).value = { formula: `${REF}!D${t.cladRow}`, result: t.ordClad };
-    row.getCell(8).value = { formula: `${REF}!B${t.panRow}`, result: t.netPan };
-    row.getCell(9).value = { formula: `${REF}!D${t.panRow}`, result: t.ordPan };
+    row.getCell(2).value = { formula: `${REF}B${t.regRow}`, result: t.netReg };
+    row.getCell(3).value = { formula: `${REF}D${t.regRow}`, result: t.ordReg };
+    row.getCell(4).value = { formula: `${REF}B${t.asRow}`, result: t.netAs };
+    row.getCell(5).value = { formula: `${REF}D${t.asRow}`, result: t.ordAs };
+    row.getCell(6).value = { formula: `${REF}B${t.cladRow}`, result: t.netClad };
+    row.getCell(7).value = { formula: `${REF}D${t.cladRow}`, result: t.ordClad };
+    row.getCell(8).value = { formula: `${REF}B${t.panRow}`, result: t.netPan };
+    row.getCell(9).value = { formula: `${REF}D${t.panRow}`, result: t.ordPan };
     t.extraRows.forEach((x, i) => {
-      row.getCell(10 + i * 2).value = { formula: `${REF}!B${x.row}`, result: x.net };
-      row.getCell(11 + i * 2).value = { formula: `${REF}!D${x.row}`, result: x.ord };
+      row.getCell(10 + i * 2).value = { formula: `${REF}B${x.row}`, result: x.net };
+      row.getCell(11 + i * 2).value = { formula: `${REF}D${x.row}`, result: x.ord };
     });
 
     const argb = rn % 2 === 0 ? C_ZEBRA_A : C_ZEBRA_B;
@@ -530,8 +535,5 @@ export async function exportQuantitiesToExcel(
     addAreaMeasurementSheet(workbook, areaMeasurements);
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { type: 'application/octet-stream' });
-  const safeName = project.name.replace(/[\\/:*?"<>|]/g, '_');
-  saveAs(blob, `כתב-כמויות-${safeName}.xlsx`);
+  return workbook;
 }
