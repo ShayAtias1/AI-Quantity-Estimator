@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { t as tr } from '../i18n';
+import { useT } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import {
   buildReportCategoryTotals,
@@ -30,6 +30,7 @@ const DASH = '—';
  * Nothing here computes anything: every number comes from lib/quantities, unchanged.
  */
 export default function QuantityTable({ showDefaults = false }: { showDefaults?: boolean }) {
+  const t = useT();
   const project = useAppStore((s) => s.project);
   const updateProjectMeta = useAppStore((s) => s.updateProjectMeta);
 
@@ -51,10 +52,10 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
       {showDefaults && (
         <div className="defaults-panel">
           <p className="defaults-note">
-            ברירות מחדל לחישוב — משפיעות על פריטי עבודה חדשים ועל פריטים ללא ערך משלהם.
+            {t('quantityTable.defaultsNote')}
           </p>
           <div className="form-row inline">
-            <label>גובה חיפוי (מ')</label>
+            <label>{t('quantityTable.claddingHeight')}</label>
             <input
               type="number"
               step="0.05"
@@ -64,7 +65,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             />
           </div>
           <div className="form-row inline">
-            <label>גובה פנלים (מ')</label>
+            <label>{t('quantityTable.panelHeight')}</label>
             <input
               type="number"
               step="0.01"
@@ -74,7 +75,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             />
           </div>
           <div className="form-row inline">
-            <label>פחת ריצוף רגיל (%)</label>
+            <label>{t('quantityTable.tilingRegularWaste')}</label>
             <input
               type="number"
               step="1"
@@ -85,7 +86,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             />
           </div>
           <div className="form-row inline">
-            <label>פחת ריצוף AS (%)</label>
+            <label>{t('quantityTable.tilingAsWaste')}</label>
             <input
               type="number"
               step="1"
@@ -96,7 +97,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             />
           </div>
           <div className="form-row inline">
-            <label>פחת חיפוי (%)</label>
+            <label>{t('quantityTable.claddingWaste')}</label>
             <input
               type="number"
               step="1"
@@ -107,7 +108,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             />
           </div>
           <div className="form-row inline">
-            <label>פחת פנלים (%)</label>
+            <label>{t('quantityTable.panelsWaste')}</label>
             <input
               type="number"
               step="1"
@@ -118,7 +119,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             />
           </div>
           <div className="form-row inline">
-            <label>גובה קיר לצבע/טיח (מ')</label>
+            <label>{t('quantityTable.wallHeight')}</label>
             <input
               type="number"
               step="0.05"
@@ -131,7 +132,7 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
             const def = WORK_TYPE_DEFINITIONS[c];
             return (
               <div className="form-row inline" key={c}>
-                <label>פחת {tr(`workTypes.${def.id}`)} (%)</label>
+                <label>{t('quantityTable.workTypeWaste', { label: t(`workTypes.${def.id}`) })}</label>
                 <input
                   type="number"
                   step="1"
@@ -149,15 +150,12 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
       {summaries.length === 0 ? (
         <div className="empty-state">
           <Icon name="table" size={28} />
-          <p>
-            אין עדיין כמויות לחישוב. סמן חדרים על התוכנית בטאב "חדרים ודירות".
-            {hasAreaMeasurements && ' יש לך סימוני הריסה/בנייה — ייצוא ה-PDF וה-Excel יכללו אותם.'}
-          </p>
+          <p>{hasAreaMeasurements ? t('quantityTable.emptyWithAreas') : t('quantityTable.empty')}</p>
         </div>
       ) : (
         <>
           {categories.length === 0 && (
-            <p className="qty-table-hint muted">לחדרים אין עדיין סוגי עבודה — הוסף סוג עבודה לחדר כדי לראות את כמויותיו.</p>
+            <p className="qty-table-hint muted">{t('quantityTable.noWorkItems')}</p>
           )}
           <div className="qty-table-scroll">
             <table className="qty-table qty-grid">
@@ -170,26 +168,26 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                   <th className="spacer sticky-col col-room" />
                   {categories.map((c) => (
                     <th key={c} colSpan={2} className="group-edge">
-                      {tr(`reportCategories.${c}`)} <span className="qty-group-unit">({categoryPrimaryUnit(c)})</span>
+                      {t(`reportCategories.${c}`)} <span className="qty-group-unit">({categoryPrimaryUnit(c)})</span>
                     </th>
                   ))}
                   <th colSpan={2} className="group-edge">
-                    פרטים
+                    {t('quantityTable.details')}
                   </th>
                 </tr>
                 <tr className="qty-col-row">
-                  <th className="sticky-col col-apt">דירה</th>
-                  <th className="sticky-col col-room">חדר</th>
+                  <th className="sticky-col col-apt">{t('quantityTable.apartment')}</th>
+                  <th className="sticky-col col-room">{t('quantityTable.room')}</th>
                   {categories.map((c) => [
                     <th key={`${c}-net`} className="num group-edge">
-                      נטו
+                      {t('quantityTable.net')}
                     </th>,
                     <th key={`${c}-order`} className="num">
-                      להזמנה
+                      {t('quantityTable.order')}
                     </th>,
                   ])}
-                  <th className="group-edge">פתחים</th>
-                  <th>הערות</th>
+                  <th className="group-edge">{t('quantityTable.openings')}</th>
+                  <th>{t('quantityTable.notes')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -215,32 +213,37 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                         if (!s.pageCalibrated) {
                           return [
                             <td key={`${c}-net`} className="num group-edge">
-                              <span className="cal-missing">{tr('quantities.notCalibrated')}</span>
+                              <span className="cal-missing">{t('quantities.notCalibrated')}</span>
                             </td>,
                             <td key={`${c}-order`} className="num">
-                              <span className="qty-sub">פחת {q.wastePercent}%</span>
+                              <span className="qty-sub">{t('quantityTable.waste', { percent: q.wastePercent })}</span>
                             </td>,
                           ];
                         }
                         const panels = c === 'panels';
                         const netSub: string[] = [];
-                        const orderSub: string[] = [`פחת ${q.wastePercent}%`];
+                        const orderSub: string[] = [t('quantityTable.waste', { percent: q.wastePercent })];
                         // The deduction reads as one short word under the net; hovering spells out
                         // gross − deduction = net.
                         let netTitle: string | undefined;
                         if (panels) {
-                          netSub.push(`${q.quantityM2 ?? 0} ${tr('units.m2')}`);
-                          orderSub.push(`${q.orderM2 ?? 0} ${tr('units.m2')}`);
+                          netSub.push(`${q.quantityM2 ?? 0} ${t('units.m2')}`);
+                          orderSub.push(`${q.orderM2 ?? 0} ${t('units.m2')}`);
                           const doors = s.panelsDeductedLengthM ?? 0;
                           if (doors > 0 && q.lengthM != null) {
-                            netSub.push(`ניכוי ${doors}`);
-                            netTitle = `ברוטו ${round(q.lengthM + doors, 2)} − ניכוי רוחב דלתות ${doors} = נטו ${q.lengthM} ${tr('units.lm')}`;
+                            netSub.push(t('quantityTable.deduction', { amount: doors }));
+                            netTitle = t('quantityTable.doorsTitle', { gross: round(q.lengthM + doors, 2), doors, net: q.lengthM, unit: t('units.lm') });
                           }
                         } else {
                           const deduction = s.openingDeductions.find((d) => d.category === c);
                           if (deduction) {
-                            netSub.push(`ניכוי ${deduction.deductedM2}`);
-                            netTitle = `ברוטו ${deduction.grossM2} − ניכוי פתחים ${deduction.deductedM2} = נטו ${deduction.netM2} ${tr('units.m2')}`;
+                            netSub.push(t('quantityTable.deduction', { amount: deduction.deductedM2 }));
+                            netTitle = t('quantityTable.openingsTitle', {
+                              gross: deduction.grossM2,
+                              deducted: deduction.deductedM2,
+                              net: deduction.netM2,
+                              unit: t('units.m2'),
+                            });
                           }
                         }
                         return [
@@ -256,13 +259,19 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
                       })}
                       <td
                         className={`group-edge qty-openings ${openingsText ? '' : 'qty-none'}`}
-                        title={openings.map((o) => `${tr(`openingTypes.${o.type}`)} ${o.widthM}×${o.heightM} מ' ×${o.quantity}`).join('\n') || undefined}
+                        title={
+                          openings
+                            .map((o) =>
+                              t('quantityTable.openingTitle', { type: t(`openingTypes.${o.type}`), width: o.widthM, height: o.heightM, quantity: o.quantity })
+                            )
+                            .join('\n') || undefined
+                        }
                       >
                         {openingsText ? (
                           <>
                             <span className="qty-main">{openingsText}</span>
                             <span className="qty-sub">
-                              {openingsArea} {tr('units.m2')}
+                              {openingsArea} {t('units.m2')}
                             </span>
                           </>
                         ) : (
@@ -281,32 +290,32 @@ export default function QuantityTable({ showDefaults = false }: { showDefaults?:
 
           {hasUncalibratedRooms && (
             <div className="warning-box">
-              חדרים בעמודים שלא כוילו אינם מחושבים ואינם נכללים בסיכום שלהלן. כייל את אותם עמודים כדי לקבל את כמויותיהם.
+              {t('quantityTable.uncalibratedWarning')}
             </div>
           )}
 
           <div className="qty-summary">
-            <h4 className="qty-totals-title">סה"כ</h4>
+            <h4 className="qty-totals-title">{t('quantityTable.total')}</h4>
             <table className="qty-summary-table">
               <thead>
                 <tr>
-                  <th>פריט</th>
-                  <th>אורך (מ"א)</th>
-                  <th>כמות נטו (מ"ר)</th>
-                  <th>פחת</th>
-                  <th>אורך להזמנה (מ"א)</th>
-                  <th>להזמנה (מ"ר)</th>
+                  <th>{t('quantityTable.totalsHeaders.item')}</th>
+                  <th>{t('quantityTable.totalsHeaders.length')}</th>
+                  <th>{t('quantityTable.totalsHeaders.net')}</th>
+                  <th>{t('quantityTable.totalsHeaders.waste')}</th>
+                  <th>{t('quantityTable.totalsHeaders.orderLength')}</th>
+                  <th>{t('quantityTable.totalsHeaders.order')}</th>
                 </tr>
               </thead>
               <tbody>
-                {totals.map((t) => (
-                  <tr key={t.category}>
-                    <td>{tr(`reportCategories.${t.category}`)}</td>
-                    <td>{t.lengthM ?? DASH}</td>
-                    <td>{t.quantityM2}</td>
-                    <td>{t.wastePercent}%</td>
-                    <td className="order">{t.orderLengthM ?? DASH}</td>
-                    <td className="order">{t.orderM2}</td>
+                {totals.map((total) => (
+                  <tr key={total.category}>
+                    <td>{t(`reportCategories.${total.category}`)}</td>
+                    <td>{total.lengthM ?? DASH}</td>
+                    <td>{total.quantityM2}</td>
+                    <td>{total.wastePercent}%</td>
+                    <td className="order">{total.orderLengthM ?? DASH}</td>
+                    <td className="order">{total.orderM2}</td>
                   </tr>
                 ))}
               </tbody>

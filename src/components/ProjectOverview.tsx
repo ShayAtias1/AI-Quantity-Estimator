@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { t as tr } from '../i18n';
+import { useT, type TranslateFn } from '../i18n';
 import { useAppStore } from '../store/appStore';
 import { buildProjectQuantities, planStatusLabel, type CategoryAmount } from '../lib/projectQuantities';
 import { exportProjectToExcel } from '../lib/exportProjectExcel';
@@ -12,11 +12,17 @@ import NewComparisonDialog from './compare/NewComparisonDialog';
 import type { Comparison } from '../types/compare';
 
 /** What a comparison row says: which flat, how many revised plans, when it was last touched. */
-function comparisonMeta(c: Comparison): string {
+function comparisonMeta(c: Comparison, t: TranslateFn): string {
   const parts: string[] = [];
-  if (c.apartmentNumber) parts.push(`דירה ${c.apartmentNumber}`);
-  parts.push(c.revisions.length === 0 ? 'אין עדיין גרסה' : c.revisions.length === 1 ? 'גרסה אחת' : `${c.revisions.length} גרסאות`);
-  parts.push(`עודכן ${new Date(c.updatedAt).toLocaleDateString('he-IL')}`);
+  if (c.apartmentNumber) parts.push(t('projectOverview.comparisonMeta.apartment', { apartment: c.apartmentNumber }));
+  parts.push(
+    c.revisions.length === 0
+      ? t('projectOverview.comparisonMeta.noRevision')
+      : c.revisions.length === 1
+        ? t('projectOverview.comparisonMeta.oneRevision')
+        : t('projectOverview.comparisonMeta.revisions', { count: c.revisions.length })
+  );
+  parts.push(t('projectOverview.comparisonMeta.updated', { date: new Date(c.updatedAt).toLocaleDateString('he-IL') }));
   return parts.join(' · ');
 }
 
@@ -24,11 +30,11 @@ const DASH = '—';
 const fmt = (v: number | null) => (v == null ? DASH : v.toLocaleString('he-IL', { maximumFractionDigits: 2 }));
 
 /** The main reading of an amount: running metres for skirting, m² for everything else. */
-function primary(a: CategoryAmount): string {
-  return a.lengthM != null ? `${fmt(a.lengthM)} ${tr('units.lm')}` : `${fmt(a.quantityM2)} ${tr('units.m2')}`;
+function primary(a: CategoryAmount, t: TranslateFn): string {
+  return a.lengthM != null ? `${fmt(a.lengthM)} ${t('units.lm')}` : `${fmt(a.quantityM2)} ${t('units.m2')}`;
 }
-function primaryOrder(a: CategoryAmount): string {
-  return a.orderLengthM != null ? `${fmt(a.orderLengthM)} ${tr('units.lm')}` : `${fmt(a.orderM2)} ${tr('units.m2')}`;
+function primaryOrder(a: CategoryAmount, t: TranslateFn): string {
+  return a.orderLengthM != null ? `${fmt(a.orderLengthM)} ${t('units.lm')}` : `${fmt(a.orderM2)} ${t('units.m2')}`;
 }
 
 /**
@@ -37,6 +43,7 @@ function primaryOrder(a: CategoryAmount): string {
  * Everything shown is computed from the saved plans by lib/projectQuantities.
  */
 export default function ProjectOverview() {
+  const t = useT();
   const project = useAppStore((s) => s.currentProject);
   const plans = useAppStore((s) => s.projectPlans);
   const closeProject = useAppStore((s) => s.closeProject);
@@ -96,22 +103,22 @@ export default function ProjectOverview() {
   };
 
   const onRename = (planId: string, current: string) => {
-    const next = window.prompt('שם התוכנית:', current);
+    const next = window.prompt(t('projectOverview.renamePlanPrompt'), current);
     if (next && next.trim() && next.trim() !== current) void renamePlan(planId, next.trim());
   };
 
   const onDelete = (planId: string, name: string) => {
-    if (!confirm(`למחוק את התוכנית "${name}" ואת כל המדידות שבה? הפעולה בלתי הפיכה.`)) return;
+    if (!confirm(t('projectOverview.deletePlanConfirm', { name }))) return;
     void deletePlan(planId);
   };
 
   const onRenameComparison = (comparisonId: string, current: string) => {
-    const next = window.prompt('שם ההשוואה:', current);
+    const next = window.prompt(t('projectOverview.renameComparisonPrompt'), current);
     if (next && next.trim() && next.trim() !== current) void renameComparison(comparisonId, next.trim());
   };
 
   const onDeleteComparison = (comparisonId: string, name: string) => {
-    if (!confirm(`למחוק את ההשוואה "${name}" עם כל הגרסאות והסימונים שבה? הפעולה בלתי הפיכה.`)) return;
+    if (!confirm(t('projectOverview.deleteComparisonConfirm', { name }))) return;
     void deleteComparison(comparisonId);
   };
 
@@ -126,14 +133,14 @@ export default function ProjectOverview() {
             className="project-name-input"
             value={project.name}
             onChange={(e) => renameProject(e.target.value)}
-            title="שם הפרויקט"
+            title={t('projectOverview.projectName')}
           />
         </div>
         <div className="top-bar-group grow" />
         <div className="top-bar-group output">
-          <button className="btn-ghost small" onClick={() => void closeProject()} title="חזרה לרשימת הפרויקטים">
+          <button className="btn-ghost small" onClick={() => void closeProject()} title={t('projectOverview.backToProjects')}>
             <Icon name="exit" />
-            <span className="btn-label">פרויקטים</span>
+            <span className="btn-label">{t('projectOverview.projects')}</span>
           </button>
         </div>
       </div>
@@ -144,19 +151,19 @@ export default function ProjectOverview() {
           <div className="home-content project-overview">
             <div className="home-panel project-start">
               <div className="home-panel-text">
-                <h2>מה תרצה להוסיף לפרויקט?</h2>
-                <p className="muted">פרויקט יכול להכיל כמה תוכניות כמויות וכמה השוואות גרסאות. אפשר להוסיף את השני בכל שלב.</p>
+                <h2>{t('projectOverview.startTitle')}</h2>
+                <p className="muted">{t('projectOverview.startIntro')}</p>
               </div>
               <div className="project-start-options">
                 <button className="project-start-option" onClick={() => setAdding(true)} disabled={!!busy}>
                   <Icon name="map" size={22} />
-                  <span className="project-start-title">תוכנית כמויות חדשה</span>
-                  <span className="project-start-desc muted">העלאת תוכנית PDF, כיול, סימון חדרים וחישוב כמויות לפי סוגי עבודה.</span>
+                  <span className="project-start-title">{t('projectOverview.newPlanTitle')}</span>
+                  <span className="project-start-desc muted">{t('projectOverview.newPlanDesc')}</span>
                 </button>
                 <button className="project-start-option" onClick={() => setAddingComparison(true)} disabled={!!busy}>
                   <Icon name="layers" size={22} />
-                  <span className="project-start-title">השוואת גרסאות חדשה</span>
-                  <span className="project-start-desc muted">תוכנית מקור מול גרסה מעודכנת — יישור, שכבות וסימון הריסה ובנייה חדשה.</span>
+                  <span className="project-start-title">{t('projectOverview.newComparisonTitle')}</span>
+                  <span className="project-start-desc muted">{t('projectOverview.newComparisonDesc')}</span>
                 </button>
               </div>
             </div>
@@ -166,8 +173,8 @@ export default function ProjectOverview() {
             <div className="home-panel">
               <div className="home-panel-head">
                 <div className="home-panel-text">
-                  <h2>חישוב כמויות</h2>
-                  <p className="muted">כל תוכנית נמדדת בנפרד — קנה מידה, חדרים ופתחים משלה.</p>
+                  <h2>{t('projectOverview.takeoffTitle')}</h2>
+                  <p className="muted">{t('projectOverview.takeoffIntro')}</p>
                 </div>
                 {/* The project exports cover the quantity plans only, so they live in this panel. */}
                 <div className="panel-head-actions">
@@ -175,23 +182,23 @@ export default function ProjectOverview() {
                     className="btn-secondary"
                     disabled={!!busy || plans.length === 0}
                     onClick={() => void run('excel', () => runProjectExport('project_excel', () => exportProjectToExcel(project, plans)))}
-                    title="כתב כמויות לכל תוכניות הפרויקט בקובץ Excel אחד"
+                    title={t('projectOverview.excelHint')}
                   >
                     <Icon name="sheet" />
-                    {busy === 'excel' ? 'מייצא…' : 'Excel'}
+                    {busy === 'excel' ? t('common.exporting') : t('projectOverview.excel')}
                   </button>
                   <button
                     className="btn-secondary"
                     disabled={!!busy || plans.length === 0}
                     onClick={() => void run('pdf', () => runProjectExport('project_pdf', () => exportProjectToPdf(project, plans)))}
-                    title="דוח כמויות PDF לכל תוכניות הפרויקט"
+                    title={t('projectOverview.pdfHint')}
                   >
                     <Icon name="download" />
-                    {busy === 'pdf' ? 'מייצא…' : 'PDF'}
+                    {busy === 'pdf' ? t('common.exporting') : t('projectOverview.pdf')}
                   </button>
                   <button className="btn-primary" onClick={() => setAdding(true)} disabled={!!busy}>
                     <Icon name="plus" />
-                    תוכנית חדשה
+                    {t('projectOverview.newPlan')}
                   </button>
                 </div>
               </div>
@@ -199,34 +206,35 @@ export default function ProjectOverview() {
               {plans.length === 0 ? (
                 <div className="empty-state">
                   <Icon name="file" size={24} />
-                  <p>אין עדיין תוכניות כמויות בפרויקט. הוסף תוכנית מקובץ PDF כדי להתחיל למדוד.</p>
+                  <p>{t('projectOverview.noPlans')}</p>
                 </div>
               ) : (
                 <ul className="saved-list plan-list">
                   {quantities.plans.map((r) => (
-                    <li key={r.plan.id} onClick={() => void openPlan(r.plan.id)} title="פתח את התוכנית">
+                    <li key={r.plan.id} onClick={() => void openPlan(r.plan.id)} title={t('projectOverview.openPlan')}>
                       <Icon name="map" />
                       <span className="saved-list-text">
                         <span className="saved-list-name">{r.plan.name}</span>
                         <span className="saved-list-meta">
-                          {r.roomCount} חדרים ·{' '}
-                          {r.calibratedPageCount > 0 ? `${r.calibratedPageCount} עמודים מכוילים` : 'לא כויל'}
+                          {r.calibratedPageCount > 0
+                            ? t('projectOverview.planMeta', { rooms: r.roomCount, pages: r.calibratedPageCount })
+                            : t('projectOverview.planMetaUncalibrated', { rooms: r.roomCount })}
                         </span>
                       </span>
                       <span className={`plan-status plan-status-${r.status}`}>{planStatusLabel(r.status)}</span>
                       <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
-                        <button className="icon-btn" title="שינוי שם" onClick={() => onRename(r.plan.id, r.plan.name)}>
+                        <button className="icon-btn" title={t('projectOverview.rename')} onClick={() => onRename(r.plan.id, r.plan.name)}>
                           <Icon name="text" />
                         </button>
                         <button
                           className="icon-btn"
-                          title="שכפל תוכנית"
+                          title={t('projectOverview.duplicatePlan')}
                           disabled={!!busy}
                           onClick={() => void run('dup', () => duplicatePlan(r.plan.id))}
                         >
                           <Icon name="copy" />
                         </button>
-                        <button className="icon-btn danger" title="מחק תוכנית" onClick={() => onDelete(r.plan.id, r.plan.name)}>
+                        <button className="icon-btn danger" title={t('projectOverview.deletePlan')} onClick={() => onDelete(r.plan.id, r.plan.name)}>
                           <Icon name="trash" />
                         </button>
                       </span>
@@ -239,37 +247,37 @@ export default function ProjectOverview() {
             <div className="home-panel">
               <div className="home-panel-head">
                 <div className="home-panel-text">
-                  <h2>השוואת תוכניות</h2>
-                  <p className="muted">תוכנית מקור מול גרסאות מעודכנות — יישור, שכבות, וסימון הריסה ובנייה חדשה.</p>
+                  <h2>{t('projectOverview.compareTitle')}</h2>
+                  <p className="muted">{t('projectOverview.compareIntro')}</p>
                 </div>
                 <button className="btn-primary" onClick={() => setAddingComparison(true)} disabled={!!busy}>
                   <Icon name="plus" />
-                  השוואה חדשה
+                  {t('projectOverview.newComparison')}
                 </button>
               </div>
 
               {comparisons.length === 0 ? (
                 <div className="empty-state">
                   <Icon name="layers" size={24} />
-                  <p>אין עדיין השוואות בפרויקט. צור השוואה מתוכנית מקור ומגרסה מעודכנת.</p>
+                  <p>{t('projectOverview.noComparisons')}</p>
                 </div>
               ) : (
                 <ul className="saved-list plan-list">
                   {comparisons.map((c) => (
-                    <li key={c.id} onClick={() => void openComparison(c.id)} title="פתח את ההשוואה">
+                    <li key={c.id} onClick={() => void openComparison(c.id)} title={t('projectOverview.openComparison')}>
                       <Icon name="layers" />
                       <span className="saved-list-text">
                         <span className="saved-list-name">{c.name}</span>
-                        <span className="saved-list-meta">{comparisonMeta(c)}</span>
+                        <span className="saved-list-meta">{comparisonMeta(c, t)}</span>
                       </span>
                       {/* TODO: "Move to Project" for comparisons — reassign `projectId` and move the id between the
                           two projects' `comparisonIds`. Also the way to fold legacy comparisons, which the
                           migration wrapped into one project each (`legacy-cmp-*`), into their real project. */}
                       <span className="list-item-actions" onClick={(e) => e.stopPropagation()}>
-                        <button className="icon-btn" title="שינוי שם" onClick={() => onRenameComparison(c.id, c.name)}>
+                        <button className="icon-btn" title={t('projectOverview.rename')} onClick={() => onRenameComparison(c.id, c.name)}>
                           <Icon name="text" />
                         </button>
-                        <button className="icon-btn danger" title="מחק השוואה" onClick={() => onDeleteComparison(c.id, c.name)}>
+                        <button className="icon-btn danger" title={t('projectOverview.deleteComparison')} onClick={() => onDeleteComparison(c.id, c.name)}>
                           <Icon name="trash" />
                         </button>
                       </span>
@@ -281,39 +289,39 @@ export default function ProjectOverview() {
 
             <div className="home-panel">
               <div className="home-panel-text">
-                <h2>סיכום כמויות לפרויקט</h2>
-                <p className="muted">סכום כל התוכניות. לחץ על שורה כדי לראות את חלקה של כל תוכנית.</p>
+                <h2>{t('projectOverview.summaryTitle')}</h2>
+                <p className="muted">{t('projectOverview.summaryIntro')}</p>
               </div>
               {quantities.totals.length === 0 ? (
-                <p className="muted project-summary-empty">אין עדיין כמויות — סמן חדרים בתוכניות והוסף להם סוגי עבודה.</p>
+                <p className="muted project-summary-empty">{t('projectOverview.summaryEmpty')}</p>
               ) : (
                 <table className="qty-summary-table project-summary-table">
                   <thead>
                     <tr>
-                      <th>פריט</th>
-                      <th>כמות נטו</th>
-                      <th>להזמנה (כולל פחת)</th>
+                      <th>{t('projectOverview.item')}</th>
+                      <th>{t('projectOverview.net')}</th>
+                      <th>{t('projectOverview.order')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {quantities.totals.map((t) => {
-                      const open = expanded.has(t.category);
+                    {quantities.totals.map((total) => {
+                      const open = expanded.has(total.category);
                       return (
-                        <Fragment key={t.category}>
-                          <tr className="project-summary-row" onClick={() => toggle(t.category)}>
+                        <Fragment key={total.category}>
+                          <tr className="project-summary-row" onClick={() => toggle(total.category)}>
                             <td>
                               <Icon name={open ? 'chevron-up' : 'chevron-down'} size={13} />
-                              {t.label}
+                              {total.label}
                             </td>
-                            <td>{primary(t)}</td>
-                            <td className="order">{primaryOrder(t)}</td>
+                            <td>{primary(total, t)}</td>
+                            <td className="order">{primaryOrder(total, t)}</td>
                           </tr>
                           {open &&
-                            t.perPlan.map((p) => (
+                            total.perPlan.map((p) => (
                               <tr key={p.planId} className="project-summary-plan">
                                 <td>{p.planName}</td>
-                                <td>{primary(p)}</td>
-                                <td>{primaryOrder(p)}</td>
+                                <td>{primary(p, t)}</td>
+                                <td>{primaryOrder(p, t)}</td>
                               </tr>
                             ))}
                         </Fragment>
@@ -324,7 +332,7 @@ export default function ProjectOverview() {
               )}
               {quantities.uncalibratedRoomCount > 0 && (
                 <div className="warning-box">
-                  {quantities.uncalibratedRoomCount} חדרים נמצאים בעמודים שלא כוילו ואינם נכללים בסיכום.
+                  {t('projectOverview.uncalibratedRooms', { count: quantities.uncalibratedRoomCount })}
                 </div>
               )}
             </div>
@@ -341,6 +349,7 @@ export default function ProjectOverview() {
 }
 
 function AddPlanDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (file: File, name: string) => Promise<void> }) {
+  const t = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
@@ -348,7 +357,7 @@ function AddPlanDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (file: 
   const pick = (f: File | null | undefined) => {
     if (!f) return;
     if (!(f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))) {
-      alert('נא לבחור קובץ PDF');
+      alert(t('projectOverview.addPlan.notPdf'));
       return;
     }
     setFile(f);
@@ -358,18 +367,18 @@ function AddPlanDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (file: 
   const confirm = async () => {
     if (!file) return;
     onClose();
-    await onAdd(file, name.trim() || 'תוכנית חדשה');
+    await onAdd(file, name.trim() || t('projectOverview.addPlan.defaultName'));
   };
 
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h3>תוכנית כמויות חדשה</h3>
+        <h3>{t('projectOverview.addPlan.title')}</h3>
         <div className="form-row">
-          <label>תוכנית (PDF)</label>
+          <label>{t('projectOverview.addPlan.fileLabel')}</label>
           <button className="btn-secondary file-pick" onClick={() => fileInputRef.current?.click()}>
             <Icon name={file ? 'check' : 'file'} />
-            {file ? file.name : 'בחר קובץ PDF'}
+            {file ? file.name : t('projectOverview.addPlan.pickPdf')}
           </button>
           <input
             ref={fileInputRef}
@@ -383,15 +392,15 @@ function AddPlanDialog({ onClose, onAdd }: { onClose: () => void; onAdd: (file: 
           />
         </div>
         <div className="form-row">
-          <label>שם התוכנית</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="לדוגמה: קומה 3" />
+          <label>{t('projectOverview.addPlan.nameLabel')}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('projectOverview.addPlan.namePlaceholder')} />
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>
-            ביטול
+            {t('common.cancel')}
           </button>
           <button className="btn-primary" onClick={() => void confirm()} disabled={!file}>
-            הוסף תוכנית
+            {t('projectOverview.addPlan.add')}
           </button>
         </div>
       </div>
