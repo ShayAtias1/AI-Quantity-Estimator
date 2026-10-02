@@ -315,7 +315,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
   const scale = resolveCompareScale(page, revisionPage);
   const metersPerPixel = scale.metersPerPixel;
 
-  const originalSource = useLayerRender(
+  useLayerRender(
     comparison?.id,
     'original',
     originalPageNumber,
@@ -326,7 +326,7 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
     setOriginalNumPages,
     setRenderedOriginalKey
   );
-  const revisedSource = useLayerRender(
+  useLayerRender(
     comparison?.id,
     activeRevisionId ? `revision:${activeRevisionId}` : '',
     revisedPageNumber,
@@ -770,34 +770,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         const bctx = bodyCanvas.getContext('2d');
         if (!bctx) return null;
 
-        // pdf.js lays the plan's own text out with the canvas's direction and language, which a canvas takes
-        // from the page. The exported plan has always been rasterized as in the Hebrew RTL page, so under any
-        // other UI language the two layers are rendered again on a canvas that sits in an RTL Hebrew context
-        // (attached, off screen, only for the render): an export never depends on the UI language.
-        let originalRaster: HTMLCanvasElement = originalCanvasRef.current;
-        let revisedRaster: HTMLCanvasElement = revisedCanvasRef.current;
-        if (getComputedStyle(originalRaster).direction !== 'rtl' || document.documentElement.lang !== 'he') {
-          const rerender = async (source: PdfPlanSource | null, screen: HTMLCanvasElement, tint: string, sourceColors: boolean) => {
-            if (!source) return screen;
-            const host = document.createElement('div');
-            host.lang = 'he';
-            host.dir = 'rtl';
-            host.style.cssText = 'position:fixed;left:-100000px;top:0;visibility:hidden;pointer-events:none';
-            const copy = document.createElement('canvas');
-            host.appendChild(copy);
-            document.body.appendChild(host);
-            try {
-              const handle = sourceColors ? source.render(copy, RENDER_SCALE) : source.renderTinted(copy, RENDER_SCALE, tint);
-              await handle.promise;
-            } finally {
-              host.remove();
-            }
-            return copy;
-          };
-          originalRaster = await rerender(originalSource, originalRaster, comparison.originalColorTint, comparison.originalUseSourceColors ?? false);
-          revisedRaster = await rerender(revisedSource, revisedRaster, activeRevision?.colorTint ?? '#ef4444', activeRevision?.useSourceColors ?? false);
-        }
-
+        const originalRaster = originalCanvasRef.current;
+        const revisedRaster = revisedCanvasRef.current;
         bctx.fillStyle = '#ffffff';
         bctx.fillRect(0, 0, fullW, fullH);
         if (comparison.originalVisible) {
@@ -932,8 +906,6 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
       currentPageKey,
       originalPageNumber,
       revisedPageNumber,
-      originalSource,
-      revisedSource,
     ]
   );
 
@@ -983,8 +955,12 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         className="pdf-content"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: pageSize.width, height: pageSize.height }}
       >
+        {/* The plan's own raster must not depend on the UI language: pdf.js lays its text out with the canvas's
+            direction and language, so the canvases are pinned to the Hebrew RTL context production has always used. */}
         <canvas
           ref={originalCanvasRef}
+          dir="rtl"
+          lang="he"
           style={{
             position: 'absolute',
             top: 0,
@@ -1007,6 +983,8 @@ const CompareCanvas = forwardRef<CompareCanvasHandle>(function CompareCanvas(_pr
         >
           <canvas
             ref={revisedCanvasRef}
+            dir="rtl"
+            lang="he"
             className="revised-sheet"
             style={{
               position: 'absolute',

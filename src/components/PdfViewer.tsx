@@ -755,7 +755,8 @@ export default function PdfViewer() {
         className="pdf-content"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, width: pageSize.width, height: pageSize.height }}
       >
-        <canvas ref={canvasRef} />
+        {/* Pinned to the Hebrew RTL context: pdf.js lays the plan's text out with the canvas's direction and language, and the plan must look the same in every UI language. */}
+        <canvas ref={canvasRef} dir="rtl" lang="he" />
         {pageSize.width > 0 && (
           // Pinned to RTL rather than inherited from the page: the plan's labels keep the layout they
           // were drawn with (and that the export rasterizers reproduce) whatever the UI direction.

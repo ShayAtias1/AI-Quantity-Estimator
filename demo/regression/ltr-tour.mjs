@@ -92,11 +92,24 @@ async function waitForPlanRender(page) {
 }
 
 async function overlayTexts(page) {
+  await page.evaluate(() => document.fonts.ready); // text boxes are measured with the final fonts
   return page.evaluate(() =>
     Array.from(document.querySelectorAll('.pdf-viewport .overlay-svg text')).map((t) => {
       const b = t.getBBox();
       const r = (v) => Math.round(v * 100) / 100;
       return { text: t.textContent, x: r(b.x), y: r(b.y), width: r(b.width), height: r(b.height) };
+    })
+  );
+}
+
+/** Hash of the pixels of every plan canvas (the imported PDF's own raster) — must not depend on the UI language. */
+async function canvasHashes(page) {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.pdf-viewport canvas')).map((c) => {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let h = 2166136261;
+      for (let i = 0; i < d.length; i++) h = Math.imul(h ^ d[i], 16777619);
+      return `${c.width}x${c.height}:${(h >>> 0).toString(16)}`;
     })
   );
 }
@@ -202,7 +215,7 @@ async function main() {
   const devServer = spawn('npm', ['run', 'dev', '--', '--port', String(DEV_PORT), '--strictPort'], { cwd: ROOT, stdio: 'pipe' });
   devServer.stderr.on('data', (d) => process.stderr.write(`[vite] ${d}`));
   let browser;
-  const report = { base: {}, target: {}, overlay: {}, dialogs: [], notCovered: [], errors: [] };
+  const report = { base: {}, target: {}, overlay: {}, rasters: {}, dialogs: [], notCovered: [], errors: [] };
   let expectDialog = false;
   try {
     await waitForServer(DEV_URL, 30_000);
@@ -264,6 +277,7 @@ async function main() {
       await page.locator(`li[title="${L.projectOverview.openPlan}"]`).first().click();
       await waitForPlanRender(page);
       report.overlay[`plan-${pass}`] = await overlayTexts(page);
+      report.rasters[`plan-${pass}`] = await canvasHashes(page);
       await check('plan');
       await check('plan-room-selected', () => page.locator('.room-list li', { hasText: 'סלון' }).first().click(quick));
       await check('plan-tab-measure', () => tab('measure').click(quick));
@@ -338,6 +352,7 @@ async function main() {
       await page.locator(`li[title="${L.projectOverview.openComparison}"]`).first().click();
       await waitForPlanRender(page);
       report.overlay[`compare-${pass}`] = await overlayTexts(page);
+      report.rasters[`compare-${pass}`] = await canvasHashes(page);
       await check('compare');
       await check('compare-tab-measure', () => cmpTab('measure').click(quick));
       await check('compare-changes-panel', () => page.getByTitle(L.compare.changes.open).click(quick), { optional: true });
@@ -406,6 +421,13 @@ async function main() {
     if (!count) fail(`${kind}: no overlay text captured`);
     else if (a !== b) fail(`${kind}: overlay text geometry differs from the Hebrew RTL run`);
     else console.log(`ok    ${kind}: ${count} overlay texts identical to the Hebrew RTL run`);
+  }
+  // The imported PDF itself: pixel-identical in the Hebrew RTL run and the run under test.
+  for (const kind of ['plan', 'compare']) {
+    const a = report.rasters[`${kind}-base`], b = report.rasters[`${kind}-target`];
+    if (!a?.length) fail(`${kind}: no plan raster captured`);
+    else if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${kind}: the plan raster differs between the Hebrew RTL run and ${MODE} (${a} vs ${b})`);
+    else console.log(`ok    ${kind}: plan raster (${a.length} canvas${a.length > 1 ? 'es' : ''}) pixel-identical to the Hebrew RTL run`);
   }
   for (const e of report.errors) fail(`page error: ${e}`);
   for (const n of report.notCovered) console.log(`not covered: ${n}`);
