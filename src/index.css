@@ -2852,3 +2852,31 @@ html[dir='rtl'] .qty-table .col-room {
   display: inline-block;
   padding: 2px 4px;
 }
+
+/* Grid controls in the View menu */
+.grid-menu-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 8px 4px;
+}
+.grid-spacing-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.grid-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-h);
+}
+.grid-custom-row input[type='text'] {
+  width: 72px;
+  text-align: center;
+}
+.grid-menu-controls .menu-hint {
+  margin: 0;
+}

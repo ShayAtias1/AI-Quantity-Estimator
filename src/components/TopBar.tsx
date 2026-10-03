@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { selectSaveState, useAppStore } from '../store/appStore';
 import QuantityExportActions from './QuantityExportActions';
 import LanguageSwitch from './LanguageSwitch';
+import GridMenuSection from './GridMenuSection';
 import TopBarMenu, { type MenuId } from './TopBarMenu';
 import Icon, { type IconName } from './Icon';
 import BrandLogo from './BrandLogo';
@@ -261,6 +262,7 @@ export default function TopBar() {
             {t('topBar.measurements')}
           </button>
           <p className="menu-hint">{t('topBar.viewNote')}</p>
+          <GridMenuSection />
         </TopBarMenu>
 
         {/* Export is the strongest action in the bar — the one filled control. */}

@@ -33,6 +33,9 @@ import { useCanvasTransform } from '../hooks/useCanvasTransform';
 import { loadPdfBlob } from '../db/database';
 import { useLanguage, useT } from '../i18n';
 import { labelDirection } from '../lib/textDirection';
+import { computeGrid } from '../lib/grid';
+import { useGridStore } from '../store/gridStore';
+import GridLayer from './GridLayer';
 
 const VERTEX_HIT_RADIUS_SCREEN = 9;
 /** New masks start opaque white, the colour of the paper they hide. */
@@ -154,6 +157,9 @@ export default function PdfViewer() {
   const setNumPages = useAppStore((s) => s.setNumPages);
   const toolMode = useAppStore((s) => s.toolMode);
   const annotationsVisible = useAppStore((s) => s.annotationsVisible);
+  const gridEnabled = useGridStore((s) => s.enabled);
+  const gridSpacingM = useGridStore((s) => s.spacingM);
+  const gridOpacity = useGridStore((s) => s.opacity);
   const measurementsVisible = useAppStore((s) => s.measurementsVisible);
   const markupFontScale = useAppStore((s) => s.markupFontScale);
   const undo = useAppStore((s) => s.undo);
@@ -277,6 +283,7 @@ export default function PdfViewer() {
   const room = project?.rooms.find((r) => r.id === selectedRoomId) ?? null;
   const metersPerPixel = project?.pages[currentPage]?.calibration?.metersPerPixel ?? 0;
   // A tool that yields real-world numbers is active on a page with no scale.
+  const grid = computeGrid(metersPerPixel, gridSpacingM, zoom);
   const needsCalibrationHint =
     metersPerPixel === 0 && (toolMode === 'measure' || (toolMode === 'markup' && markupTool === 'dimension'));
   // Numbered per page (not project-wide) so the on-canvas wall number always matches its row in that page's own exported table.
@@ -767,6 +774,10 @@ export default function PdfViewer() {
             viewBox={`0 0 ${pageSize.width} ${pageSize.height}`}
             direction="rtl"
           >
+            {/* Measurement grid: first child, so everything else draws over it. Native pixels like the
+                rest of the overlay, so it pans and zooms with the plan; the spacing is the real-world
+                one over the page's own scale and does not depend on zoom or UI direction. */}
+            {gridEnabled && grid && <GridLayer grid={grid} width={pageSize.width} height={pageSize.height} zoom={zoom} opacity={gridOpacity} />}
             {annotationsVisible &&
               project.rooms
                 .filter((r) => r.pageNumber === currentPage)
